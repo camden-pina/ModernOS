@@ -77,6 +77,7 @@ image: $(TARGET_BOOT) $(TARGET_KERNEL)
 		sudo cp $(TARGET_BOOT) $(MNT_DIR)/EFI/BOOT/$(TARGET_BOOT); \
 		sudo cp $(TARGET_KERNEL) $(MNT_DIR)/ModernOS/$(TARGET_KERNEL); \
 		sudo cp lib/fonts/dfltfont.psf $(MNT_DIR)/ModernOS/fonts; \
+		sudo cp config.ini $(MNT_DIR)/ModernOS/config.ini; \
 		sync; \
 		sudo umount $(MNT_DIR); \
 		sudo losetup -d $$LOOPDEV; \

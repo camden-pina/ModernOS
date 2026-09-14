@@ -4,8 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${default}",
-                "/home/camdenpina/Documents/test/kernel/x86_64/include",
-                "/home/camdenpina/Documents/test/kernel/x86_64/lib/lai/include"
+                "/home/camdenp/Documents/test/kernel/x86_64/include",
+                "/home/camdenp/Documents/test/kernel/x86_64/lib/lai/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

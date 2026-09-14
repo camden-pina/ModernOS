@@ -35,7 +35,6 @@
   UefiApplicationEntryPoint
   UefiLib
   CpuLib
-  UefiCpuLib
   IoLib
-  SerialIoLib
+  SerialPortLib
 

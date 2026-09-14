@@ -14,22 +14,31 @@ MAKE_J        := $(MAKE) -j$(NPROC)
 CYAN          := \033[36m
 RESET         := \033[0m
 
+# ============================================
 # EDK2 repository settings
-EDK2_VERSION  ?= edk2-stable202211
+# ============================================
+EDK2_VERSION  ?= edk2-stable202608
 EDK2_REPO     ?= https://github.com/tianocore/edk2.git
 EDK2_DIR      ?= $(PROJECT_DIR)/edk2
 
-# Build control flags (set these to 1 to skip steps)
+# ============================================
+# Build control flags
+# ============================================
 SKIP_CONFIGURE ?=
 SKIP_BUILD     ?=
 SKIP_INSTALL   ?=
 
-# Build options for EDK2
-BUILD_TYPE    ?= RELEASE# or DEBUG
-ARCH          ?= X64        # Supported values: X64 or IA32
-TOOLCHAIN     ?= GCC5# Using GCC toolchain
+# ============================================
+# EDK2 build options
+# ============================================
+BUILD_TYPE     ?= RELEASE
+ARCH           ?= X64
+TOOLCHAIN      ?= GCC
 
 ARCH := $(strip $(ARCH))
+
+# EDK2 platform
+PLATFORM       := Bootloader_$(ARCH)/MyPlatform.dsc
 
 # ============================================
 # Phony targets
@@ -37,104 +46,150 @@ ARCH := $(strip $(ARCH))
 .PHONY: help setup copy_arch build install bootloader symlink all clean
 
 # --------------------------------------------
-# help - Show usage information
+# help
 # --------------------------------------------
 help:
 	@echo "$(CYAN)Usage:$(RESET)"
-	@echo "  make setup                         - Clone and prepare the EDK2 repository and build BaseTools."
-	@echo "  make bootloader [ARCH=<arch>]      - Build the bootloader for the specified architecture (default ARCH=X64)."
-	@echo "  make build                         - Build the bootloader using MyPlatform.dsc and MyBootloader.inf in the ARCH directory."
-	@echo "  make install                       - Copy the generated bootable EFI file to the build directory."
-	@echo "  make symlink SRC=<src> DEST=<dest>   - Create a relative symlink from SRC to DEST."
+	@echo "  make setup                         - Clone and prepare EDK2 and build BaseTools."
+	@echo "  make bootloader [ARCH=<arch>]      - Build the bootloader for the specified architecture."
+	@echo "  make build                         - Build the bootloader using MyPlatform.dsc."
+	@echo "  make install                       - Copy the generated EFI file to the build directory."
+	@echo "  make symlink SRC=<src> DEST=<dest> - Create a relative symlink."
 	@echo "  make all                           - Run setup, build, and install sequentially."
-	@echo "  make clean                         - Clean up build artifacts and EDK2 build files."
+	@echo "  make clean                         - Clean build artifacts."
 
 # --------------------------------------------
-# setup - Clone and set up EDK2 repository and build BaseTools
+# setup
 # --------------------------------------------
 setup:
-	@echo "$(CYAN)[Setup] Creating build directory...$(RESET)"
-	@mkdir -p $(BUILD_DIR)
+	@export HOST_WARNINGS="-Wno-error=unused-but-set-variable"; \
+	echo "$(CYAN)[Setup] Creating build directory...$(RESET)"; \
+	mkdir -p "$(BUILD_DIR)"
+
 	@if [ ! -d "$(EDK2_DIR)" ]; then \
-	  echo "$(CYAN)[Setup] Cloning EDK2 repository (tag $(EDK2_VERSION)) from $(EDK2_REPO)...$(RESET)"; \
-	  git clone --depth 1 -c advice.detachedHead=false --branch $(EDK2_VERSION) $(EDK2_REPO) $(EDK2_DIR); \
-	  cd $(EDK2_DIR) && git submodule update --init; \
+	  echo "$(CYAN)[Setup] Cloning EDK2 repository (tag $(EDK2_VERSION))...$(RESET)"; \
+	  git clone --depth 1 -c advice.detachedHead=false \
+	    --branch "$(EDK2_VERSION)" "$(EDK2_REPO)" "$(EDK2_DIR)"; \
+	  cd "$(EDK2_DIR)" && git submodule update --init; \
 	else \
 	  echo "$(CYAN)[Setup] EDK2 repository already exists at $(EDK2_DIR).$(RESET)"; \
 	fi
+
 	@echo "$(CYAN)[Setup] Building BaseTools...$(RESET)"
-	@cd $(EDK2_DIR) && . ./edksetup.sh && $(MAKE) -C BaseTools all
+	@cd "$(EDK2_DIR)" && . ./edksetup.sh && $(MAKE) -C BaseTools all
 
 # --------------------------------------------
-# copy_arch - Copy architecture-specific bootloader files to the EDK2 directory
+# copy_arch
 # --------------------------------------------
 copy_arch:
 	@if [ ! -d "$(ARCH)" ]; then \
 	  echo "$(CYAN)[Error] Directory '$(ARCH)' not found in $(PROJECT_DIR).$(RESET)"; \
 	  exit 1; \
 	fi
+
 	@echo "$(CYAN)[Copy] Copying $(ARCH) to $(EDK2_DIR)/Bootloader_$(ARCH)...$(RESET)"
-	@mkdir -p $(EDK2_DIR)
-	@rm -rf $(EDK2_DIR)/$(ARCH)
-	@cp -r $(ARCH) $(EDK2_DIR)/Bootloader_$(ARCH)
+
+	@mkdir -p "$(EDK2_DIR)"
+	@rm -rf "$(EDK2_DIR)/Bootloader_$(ARCH)"
+	@cp -r "$(ARCH)" "$(EDK2_DIR)/Bootloader_$(ARCH)"
 
 # --------------------------------------------
-# build - Build the bootloader using MyPlatform.dsc
+# build
 # --------------------------------------------
 build:
 	@if [ ! -d "$(EDK2_DIR)" ]; then \
 	  echo "$(CYAN)[Build] EDK2 directory not found. Running setup...$(RESET)"; \
 	  $(MAKE) setup; \
 	fi
-	if [ "$(SKIP_BUILD)" = "1" ]; then \
+
+	@if [ "$(SKIP_BUILD)" = "1" ]; then \
 	  echo "$(CYAN)[Build] Skipping build step as SKIP_BUILD is set.$(RESET)"; \
 	else \
-	  echo "$(CYAN)[Build] Building bootloader (ARCH=$(ARCH), BUILD_TYPE=$(BUILD_TYPE), TOOLCHAIN=$(TOOLCHAIN))...$(RESET)"; \
-	  cd $(EDK2_DIR) && bash -c '. ./edksetup.sh --reconfig; export GCC5_BIN=x86_64-elf-; build -p "Bootloader_X64/MyPlatform.dsc" -a $(ARCH) -t $(TOOLCHAIN) -b $(BUILD_TYPE)'; \
+	  echo "$(CYAN)[Build] Building bootloader...$(RESET)"; \
+	  echo "$(CYAN)         ARCH      = $(ARCH)$(RESET)"; \
+	  echo "$(CYAN)         BUILD_TYPE = $(BUILD_TYPE)$(RESET)"; \
+	  echo "$(CYAN)         TOOLCHAIN = $(TOOLCHAIN)$(RESET)"; \
+	  echo "$(CYAN)         PLATFORM  = $(PLATFORM)$(RESET)"; \
+	  cd "$(EDK2_DIR)" && \
+	    bash -c '. ./edksetup.sh --reconfig && \
+	      build \
+	        -p "$(PLATFORM)" \
+	        -a "$(ARCH)" \
+	        -t "$(TOOLCHAIN)" \
+	        -b "$(BUILD_TYPE)"'; \
 	fi
+
 	@echo "$(CYAN)[Build] Build step completed.$(RESET)"
-	@$(MAKE) install
+
+	@if [ "$(SKIP_INSTALL)" != "1" ]; then \
+	  $(MAKE) install; \
+	fi
 
 # --------------------------------------------
-# install - Copy the generated bootable EFI file to the build directory
+# install
 # --------------------------------------------
 install:
-	if [ "$(SKIP_INSTALL)" = "1" ]; then \
+	@if [ "$(SKIP_INSTALL)" = "1" ]; then \
 	  echo "$(CYAN)[Install] Skipping install step as SKIP_INSTALL is set.$(RESET)"; \
 	else \
 	  echo "$(CYAN)[Install] Installing output files...$(RESET)"; \
-	  cp $(EDK2_DIR)/Build/Bootloader_X64/Output/$(BUILD_TYPE)_$(TOOLCHAIN)/$(ARCH)/BOOTX64.efi $(BUILD_DIR)/BOOTX64.EFI; \
+	  mkdir -p "$(BUILD_DIR)"; \
+	  EFI_FILE="$$(find "$(EDK2_DIR)/Build" \
+	    -type f \
+	    \( -iname 'BOOTX64.EFI' -o -iname 'BOOTX64.efi' \) \
+	    -print -quit)"; \
+	  if [ -z "$$EFI_FILE" ]; then \
+	    echo "$(CYAN)[Error] BOOTX64.EFI was not found in the EDK2 Build directory.$(RESET)"; \
+	    echo "$(CYAN)[Error] Search path: $(EDK2_DIR)/Build$(RESET)"; \
+	    exit 1; \
+	  fi; \
+	  echo "$(CYAN)[Install] Found: $$EFI_FILE$(RESET)"; \
+	  cp "$$EFI_FILE" "$(BUILD_DIR)/BOOTX64.EFI"; \
 	  echo "$(CYAN)[Install] Copied BOOTX64.EFI to $(BUILD_DIR)/BOOTX64.EFI$(RESET)"; \
 	fi
 
 # --------------------------------------------
-# bootloader - Build the bootloader (sets up, copies ARCH folder, builds, and installs)
+# bootloader
 # --------------------------------------------
 bootloader: setup copy_arch build
 
 # --------------------------------------------
-# all - Run setup, build, and install sequentially
+# all
 # --------------------------------------------
-all: setup build install
+all: setup copy_arch build
 
 # --------------------------------------------
-# symlink - Create a relative symbolic link
+# symlink
 # --------------------------------------------
 symlink:
 	@if [ -z "$(SRC)" ] || [ -z "$(DEST)" ]; then \
 	  echo "Usage: make symlink SRC=<source file> DEST=<destination file>"; \
 	  exit 1; \
 	fi
-	@mkdir -p $(dir $(DEST))
-	@ln -sf $(shell realpath --relative-to=$(dir $(DEST)) $(SRC)) $(DEST)
+
+	@mkdir -p "$(dir $(DEST))"
+	@ln -sf "$$(realpath --relative-to="$$(dirname "$(DEST)")" "$(SRC)")" "$(DEST)"
 	@echo "$(CYAN)[Symlink] Created symlink: $(DEST) -> $(SRC)$(RESET)"
 
 # --------------------------------------------
-# clean - Clean up the build directory and EDK2 build artifacts
+# clean
 # --------------------------------------------
 clean:
-	@echo "$(CYAN)[Clean] Cleaning up build artifacts in $(BUILD_DIR)...$(RESET)"
-	@rm -rf $(BUILD_DIR)
-	@echo "$(CYAN)[Clean] Cleaning up EDK2 build artifacts in $(EDK2_DIR)...$(RESET)"
-	@cd $(EDK2_DIR) && . ./edksetup.sh && build -p "Bootloader_$(ARCH)/MyPlatform.dsc" -a $(ARCH) -t $(TOOLCHAIN) -b $(BUILD_TYPE) clean
+	@echo "$(CYAN)[Clean] Cleaning project build directory...$(RESET)"
+	@rm -rf "$(BUILD_DIR)"
 
+	@if [ -d "$(EDK2_DIR)" ]; then \
+	  echo "$(CYAN)[Clean] Cleaning EDK2 build artifacts...$(RESET)"; \
+	  cd "$(EDK2_DIR)" && \
+	    . ./edksetup.sh --reconfig && \
+	    build \
+	      -p "$(PLATFORM)" \
+	      -a "$(ARCH)" \
+	      -t "$(TOOLCHAIN)" \
+	      -b "$(BUILD_TYPE)" \
+	      clean || true; \
+	  rm -rf "$(EDK2_DIR)/Build"; \
+	  rm -rf "$(EDK2_DIR)/Bootloader_$(ARCH)"; \
+	fi
+
+	@echo "$(CYAN)[Clean] Done.$(RESET)"

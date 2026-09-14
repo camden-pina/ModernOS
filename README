@@ -1,0 +1,4 @@
+# How to build
+==========
+git clone --recurse-submodules https://github.com/camden-pina/test.git
+make all:

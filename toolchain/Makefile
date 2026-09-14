@@ -23,7 +23,7 @@ JOBS ?= $(shell nproc)
 # Source tarball URLs
 GCC_URL       := https://ftp.gnu.org/gnu/gcc/gcc-$(GCC_VERSION)/gcc-$(GCC_VERSION).tar.gz
 BINUTILS_URL  := https://ftp.gnu.org/gnu/binutils/binutils-$(BINUTILS_VERSION).tar.gz
-GMP_URL       := https://gmplib.org/download/gmp/gmp-$(GMP_VERSION).tar.xz
+GMP_URL       := https://ftp.gnu.org/gnu/gmp/gmp-$(GMP_VERSION).tar.xz
 MPFR_URL      := https://www.mpfr.org/mpfr-$(MPFR_VERSION)/mpfr-$(MPFR_VERSION).tar.xz
 MPC_URL       := https://ftp.gnu.org/gnu/mpc/mpc-$(MPC_VERSION).tar.gz
 
@@ -114,7 +114,8 @@ $(SRC_DIR)/gcc-$(GCC_VERSION)/.deps_done: \
 	touch $@
 
 # -----------------------
-# Build and install Binutils (stamp: $(BUILD_DIR)/binutils/.build_done)
+# Build and install Binutils (stamp: $(BUILD_DIR)/binutils/.build_done)export PATH="$HOME/opt/cross/bin:$PATH"
+
 $(BUILD_DIR)/binutils/.build_done: $(SRC_DIR)/binutils-$(BINUTILS_VERSION)/.extracted
 	@mkdir -p $(BUILD_DIR)/binutils
 	cd $(BUILD_DIR)/binutils && \
@@ -150,6 +151,8 @@ $(BUILD_DIR)/gcc/.build_done: $(PREFIX)/bin/$(TARGET)-as $(SRC_DIR)/gcc-$(GCC_VE
 
 # Final target for GCC installation
 $(PREFIX)/bin/$(TARGET)-gcc: $(BUILD_DIR)/gcc/.build_done
+# Set the path
+	@echo 'export PATH="$(PREFIX)/bin:$$PATH"'
 
 # -----------------------
 # Clean target

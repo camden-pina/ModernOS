@@ -26,10 +26,14 @@
   PciLib|MdePkg/Library/BasePciLibCf8/BasePciLibCf8.inf
   PciExpressLib|MdePkg/Library/BasePciExpressLib/BasePciExpressLib.inf
   RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
-  UefiCpuLib|UefiCpuPkg/Library/BaseUefiCpuLib/BaseUefiCpuLib.inf
   LocalApicLib|UefiCpuPkg/Library/BaseXApicX2ApicLib/BaseXApicX2ApicLib.inf
   MtrrLib|UefiCpuPkg/Library/MtrrLib/MtrrLib.inf
   #MpInitLib|UefiCpuPkg/Library/MpInitLib/PeiMpInitLib.inf
+
+  #
+  # Stack checking
+  #
+  StackCheckLib|MdePkg/Library/StackCheckLibNull/StackCheckLibNull.inf
 
   #
   # UEFI & PI
@@ -71,20 +75,14 @@
   ResetSystemLib|MdeModulePkg/Library/BaseResetSystemLibNull/BaseResetSystemLibNull.inf
   CpuExceptionHandlerLib|MdeModulePkg/Library/CpuExceptionHandlerLibNull/CpuExceptionHandlerLibNull.inf
   PciHostBridgeLib|MdeModulePkg/Library/PciHostBridgeLibNull/PciHostBridgeLibNull.inf
-  SerialIoLib|PcAtChipsetPkg/Library/SerialIoLib/SerialIoLib.inf
 
-
-  [LibraryClasses.common.UEFI_APPLICATION]
+[LibraryClasses.common.UEFI_APPLICATION]
     MemoryAllocationLib|MdePkg/Library/UefiMemoryAllocationLib/UefiMemoryAllocationLib.inf
     FileHandleLib|MdePkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
 
 [Components]
   Bootloader_X64/Bootloader_X64.inf
 
-[Packages]
-  MdePkg/MdePkg.dec
-
 [BuildOptions]
   *_CLANGPDB_*_CC_FLAGS = -Wno-unused-function -Wno-unused-variable
-  *_GCC5_X64_CC_FLAGS = -Wno-error -fno-stack-protector -ffreestanding
-
+  *_GCC_X64_CC_FLAGS = -Wno-error -fno-stack-protector -ffreestanding

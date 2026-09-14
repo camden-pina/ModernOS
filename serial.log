@@ -1,13 +1,22 @@
 [2J[01;01H[=3h[2J[01;01H[0m[35m[40m[0m[37m[40mBdsDxe: failed to load Boot0001 "UEFI QEMU DVD-ROM QM00003 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Master,0x0): Not Found
 BdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
 BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
-[2J[01;01H[Loader] INFO:     Boot device: PciRoot(0x0)/Pci(0x1,0x1)/Ata(0x0)/HD(1,GPT,09966B51-04BF-447B-9C81-2E4206225B93,0x800,0x187DF)
+[2J[01;01H[Loader] INFO:     Boot device: PciRoot(0x0)/Pci(0x1,0x1)/Ata(0x0)/HD(1,GPT,ABA3558C-0932-420F-AFF4-A22473B6F911)
 [Loader] INFO:     Listing directory:
   EFI
   ModernOS
   NvVars
 [Loader] INFO:     Selected graphics device: PciRoot(0x0)/Pci(0x2,0x0)/AcpiAdr(0x80010100)
-[Loader] WARN:     No config file found
+[Loader] INFO:     Loading config
+[Loader] INFO:       1 | kernel=/ModernOS/kernel.elf
+[Loader] INFO:       2 | video=2560x1440
+[Loader] INFO:       3 | fastboot=true
+[Loader] INFO:       4 | debug=true
+[Loader] INFO:     Config loaded
+[Loader] INFO:     Changing video mode
+[Loader] INFO:     Requested resolution: 2560x1440
+[2J[01;01H[Loader] INFO:     Found graphics mode with matching resolution
+[Loader] INFO:     Using graphics mode: 2560x1440
 [Loader] INFO:     Loading kernel
 [Loader] INFO:       phys addr: 0x100000
 [Loader] INFO:       image size: 260768
@@ -15,7 +24,7 @@ BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x
 [Loader] INFO:       memory size: 245760
 [Loader] INFO:     Loading executable data segment
 [Loader] INFO:       base: 0xFFFF800000100000
-[Loader] INFO:       size: 0x3BB18 (60 pages)
+[Loader] INFO:       size: 0x3BB1C (60 pages)
 [Loader] WARN:     No .load_sections section found
 [Loader] INFO:     Found .boot_data section
 [Loader] INFO:     Looking for boot info symbol
@@ -23,8 +32,8 @@ BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x
 [Loader] INFO:     Kernel loaded
 [Loader] INFO:     Done
 [Loader] INFO:     Exiting UEFI...
-Initializing PMM with memory map size: 600 bytes
-Total memory map entries: 25
+Initializing PMM with memory map size: 648 bytes
+Total memory map entries: 27
 Entry 0: Start=0, Type=3
   [0x0-0x1000] reserved (4096)
 Entry 1: Start=0x1000, Type=2
@@ -44,36 +53,40 @@ Entry 7: Start=0x1500000, Type=2
 Entry 8: Start=0x7bf36000, Type=3
   [0x7bf36000-0x7bf56000] reserved (131072)
 Entry 9: Start=0x7bf56000, Type=2
-  [0x7bf56000-0x7c3dd000] usable (4747264)
-Entry 10: Start=0x7c3dd000, Type=8
-  [0x7c3dd000-0x7e3dd000] EFI runtime data (33554432)
-Entry 11: Start=0x7e3dd000, Type=2
-  [0x7e3dd000-0x7e3ec000] usable (61440)
-Entry 12: Start=0x7e3ec000, Type=3
-  [0x7e3ec000-0x7f034000] reserved (12877824)
-Entry 13: Start=0x7f034000, Type=8
+  [0x7bf56000-0x7c405000] usable (4911104)
+Entry 10: Start=0x7c405000, Type=8
+  [0x7c405000-0x7e405000] EFI runtime data (33554432)
+Entry 11: Start=0x7e405000, Type=2
+  [0x7e405000-0x7e417000] usable (73728)
+Entry 12: Start=0x7e417000, Type=3
+  [0x7e417000-0x7e512000] reserved (1028096)
+Entry 13: Start=0x7e512000, Type=2
+  [0x7e512000-0x7e513000] usable (4096)
+Entry 14: Start=0x7e513000, Type=3
+  [0x7e513000-0x7f034000] reserved (11669504)
+Entry 15: Start=0x7f034000, Type=8
   [0x7f034000-0x7f0be000] EFI runtime data (565248)
-Entry 14: Start=0x7f0be000, Type=3
+Entry 16: Start=0x7f0be000, Type=3
   [0x7f0be000-0x7f8ef000] reserved (8589312)
-Entry 15: Start=0x7f8ef000, Type=8
+Entry 17: Start=0x7f8ef000, Type=8
   [0x7f8ef000-0x7f9ef000] EFI runtime data (1048576)
-Entry 16: Start=0x7f9ef000, Type=7
+Entry 18: Start=0x7f9ef000, Type=7
   [0x7f9ef000-0x7faef000] EFI runtime code (1048576)
-Entry 17: Start=0x7faef000, Type=3
+Entry 19: Start=0x7faef000, Type=3
   [0x7faef000-0x7fb6f000] reserved (524288)
-Entry 18: Start=0x7fb6f000, Type=4
+Entry 20: Start=0x7fb6f000, Type=4
   [0x7fb6f000-0x7fb7f000] ACPI data (65536)
-Entry 19: Start=0x7fb7f000, Type=5
+Entry 21: Start=0x7fb7f000, Type=5
   [0x7fb7f000-0x7fbff000] ACPI NVS (524288)
-Entry 20: Start=0x7fbff000, Type=3
+Entry 22: Start=0x7fbff000, Type=3
   [0x7fbff000-0x7fe00000] reserved (2101248)
-Entry 21: Start=0x7fe00000, Type=2
+Entry 23: Start=0x7fe00000, Type=2
   [0x7fe00000-0x7fe9e000] usable (647168)
-Entry 22: Start=0x7fe9e000, Type=3
+Entry 24: Start=0x7fe9e000, Type=3
   [0x7fe9e000-0x7fef4000] reserved (352256)
-Entry 23: Start=0x7fef4000, Type=8
+Entry 25: Start=0x7fef4000, Type=8
   [0x7fef4000-0x7ff78000] EFI runtime data (540672)
-Entry 24: Start=0x7ff78000, Type=5
+Entry 26: Start=0x7ff78000, Type=5
   [0x7ff78000-0x80000000] ACPI NVS (557056)
 total memory: 2047 GB
 usable memory: 1975 GB
@@ -93,7 +106,7 @@ ACPI table FACP found at index 0
 laihost_scan: ACPI table FACP found at index 0
 laihost_scan() [DSDT], [0]
 laihost_scan: DSDT found.
-[1] loaded AML table 'DSDT', total 6836 bytes of AML code.laihost_scan() [SSDT], [0]
+[1] loaded AML table 'DSDT', total 8605 bytes of AML code.laihost_scan() [SSDT], [0]
 Total Tables: 5
 Searching for ACPI table with signature SSDT at index 0
 Table signature: FACP
@@ -113,7 +126,7 @@ Table signature: WAET
 Table signature: BGRT
 ACPI table PSDT not found at index 0
 laihost_scan: Failed to find ACPI table PSDT at index 0
-[1] ACPI namespace created, total of 349 predefined objects.ACPI initialization complete.
+[1] ACPI namespace created, total of 348 predefined objects.ACPI initialization complete.
 Initializing APIC
 CPU local APID ID 0x%%x ACPI ID 0x%%x flags 0x%%x
 CPU Count: %
@@ -121,7 +134,7 @@ laihost_scan: Failed to find ACPI table PSDT at index 0
 Suprious_IRQ_Num: 100
 Initializing IDT...
 Initializing Keyboard
-Initializing MouseModernOS (C)
+Initializing MouseModernOS (C)
 
 Copyright (C) Ideal Technologies Inc.
-catdfkjweoi
+cat
