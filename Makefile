@@ -30,11 +30,12 @@ DISK_IMG  := $(BUILD_DIR)/OS.img
 
 # Final kernel output.
 TARGET_KERNEL := kernel.elf
+TARGET_TOOLCHAIN := toolchain/opt/cross/bin/x86_64-elf-gcc
 
 # Top-level targets.
 .PHONY: all clean image run mount-img umount-img
 
-all: $(TARGET_BOOT) $(TARGET_KERNEL) image
+all: $(TARGET_BOOT) $(TARGET_TOOLCHAIN) $(TARGET_KERNEL) toolchain image
 
 ################################################################################
 # Build Bootloader
@@ -54,37 +55,39 @@ $(TARGET_KERNEL):
 	@echo "==> Copying kernel binary to top-level..."
 	cp kernel/x86_64/$(TARGET_KERNEL) .
 
+toolchain: $(TARGET_TOOLCHAIN)
+
+$(TARGET_TOOLCHAIN):
+	$(MAKE) -C toolchain all
+
 ################################################################################
 # Create Disk Image with Bootloader Installed
+################################################################################
+################################################################################
+################################################################################
+# Create Disk Image with Bootloader & Kernel Installed (Container/Rootless Safe)
 ################################################################################
 image: $(TARGET_BOOT) $(TARGET_KERNEL)
 	@echo "==> Creating disk image..."
 	@mkdir -p $(BUILD_DIR)
 	dd if=/dev/zero of=$(DISK_IMG) bs=1M count=50
-	# Create a GPT partition table with one FAT32 partition.
-	parted $(DISK_IMG) --script mklabel gpt
-	parted $(DISK_IMG) --script mkpart primary fat32 1MiB 100%
-	@echo "==> Installing bootloader into disk image..."
-	@bash -c '\
-		set -e; \
-		LOOPDEV=$$(sudo losetup --find --show -P $(DISK_IMG)); \
-		sleep 1; \
-		sudo mkfs.fat -F32 "$${LOOPDEV}p1"; \
-		mkdir -p $(MNT_DIR); \
-		sudo mount -t vfat "$${LOOPDEV}p1" $(MNT_DIR); \
-		sudo mkdir -p $(MNT_DIR)/EFI/BOOT; \
-		sudo mkdir -p $(MNT_DIR)/ModernOS/fonts; \
-		sudo cp $(TARGET_BOOT) $(MNT_DIR)/EFI/BOOT/$(TARGET_BOOT); \
-		sudo cp $(TARGET_KERNEL) $(MNT_DIR)/ModernOS/$(TARGET_KERNEL); \
-		sudo cp lib/fonts/dfltfont.psf $(MNT_DIR)/ModernOS/fonts; \
-		sudo cp config.ini $(MNT_DIR)/ModernOS/config.ini; \
-		sync; \
-		sudo umount $(MNT_DIR); \
-		sudo losetup -d $$LOOPDEV; \
-		echo "Disk image creation complete."'
-	@sudo touch image  # dummy file to update timestamp (prompts for password if needed)
+	parted $(DISK_IMG) --script mklabel gpt 2>/dev/null
+	parted $(DISK_IMG) --script mkpart primary fat32 1MiB 100% 2>/dev/null
+	parted $(DISK_IMG) --script set 1 esp on 2>/dev/null
+	@echo "==> Formatting FAT32 partition..."
+	mformat -i $(DISK_IMG)@@1048576 -F ::
+	@echo "==> Installing bootloader, kernel, and configs into disk image..."
+	mmd -i $(DISK_IMG)@@1048576 ::/EFI
+	mmd -i $(DISK_IMG)@@1048576 ::/EFI/BOOT
+	mmd -i $(DISK_IMG)@@1048576 ::/ModernOS
+	mmd -i $(DISK_IMG)@@1048576 ::/ModernOS/fonts
+	mcopy -i $(DISK_IMG)@@1048576 $(TARGET_BOOT) ::/EFI/BOOT/$(TARGET_BOOT)
+	mcopy -i $(DISK_IMG)@@1048576 $(TARGET_KERNEL) ::/ModernOS/$(TARGET_KERNEL)
+	mcopy -i $(DISK_IMG)@@1048576 lib/fonts/dfltfont.psf ::/ModernOS/fonts/dfltfont.psf
+	mcopy -i $(DISK_IMG)@@1048576 config.ini ::/ModernOS/config.ini
+	@touch image
+	@echo "Disk image creation complete."
 
-################################################################################
 # Run QEMU with the Disk Image
 ################################################################################
 # Ensure an OVMF firmware file exists in build/ (you might generate or download it)
@@ -136,7 +139,10 @@ clean-kernel:
 	$(MAKE) -C kernel clean
 	rm -f $(TARGET_KERNEL) $(DISK_IMG)
 
-clean: clean-bootloader clean-kernel
+clean-toolchain:
+	$(MAKE) -C toolchain clean
+
+clean: clean-bootloader clean-kernel clean-toolchain
 	@echo "==> Cleaning up build artifacts..."
-	@rm -rf $(BUILD_DIR)
+	@rm -rf $(BUILD_DIR) serial.log
 	@echo "Cleanup complete."

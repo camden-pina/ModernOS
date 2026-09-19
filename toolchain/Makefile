@@ -27,13 +27,15 @@ GMP_URL       := https://ftp.gnu.org/gnu/gmp/gmp-$(GMP_VERSION).tar.xz
 MPFR_URL      := https://www.mpfr.org/mpfr-$(MPFR_VERSION)/mpfr-$(MPFR_VERSION).tar.xz
 MPC_URL       := https://ftp.gnu.org/gnu/mpc/mpc-$(MPC_VERSION).tar.gz
 
+TOOLCHAIN := $(PREFIX)/bin/$(TARGET)-gcc
+
 # -----------------------
 # Detect if aria2c is available
 DOWNLOAD_TOOL := $(shell command -v aria2c 2>/dev/null)
 
 # -----------------------
 # Default target: final GCC binary installed
-all: $(PREFIX)/bin/$(TARGET)-gcc
+all: $(TOOLCHAIN)
 
 # -----------------------
 # Download rules
@@ -157,6 +159,6 @@ $(PREFIX)/bin/$(TARGET)-gcc: $(BUILD_DIR)/gcc/.build_done
 # -----------------------
 # Clean target
 clean:
-	rm -rf $(BUILD_DIR) $(PREFIX)
+	rm -rf $(BUILD_DIR) $(PREFIX) opt/ src/
 
 .PHONY: all clean

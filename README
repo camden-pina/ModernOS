@@ -1,4 +1,7 @@
 # How to build
 ==========
-git clone --recurse-submodules https://github.com/camden-pina/test.git
-make all:
+	git clone --recurse-submodules https://github.com/camden-pina/test.git
+	make all:
+
+Required tools:
+	gcc nasm uuid-dev
