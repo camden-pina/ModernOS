@@ -20,6 +20,7 @@ endif
 objtree := $(abspath $(O))
 BUILD_DIR := $(objtree)
 export srctree objtree SRCARCH
+export SOURCE_MIRRORS
 
 export PATH := $(srctree)/toolchain/opt/cross/bin:$(PATH)
 CROSS_COMPILE ?= $(if $(CROSS_COMPILE_KERNEL),$(CROSS_COMPILE_KERNEL),$(if $(shell command -v x86_64-elf-gcc 2>/dev/null),x86_64-elf-,))

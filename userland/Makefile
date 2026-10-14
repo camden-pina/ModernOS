@@ -1,6 +1,7 @@
 CC ?= cc
 LD ?= ld
 .DEFAULT_GOAL := all
+export SOURCE_MIRRORS
 
 # All upstream port builders depend on bin/nano. Restore their sources before
 # running them, including direct port targets invoked from the root Makefile.

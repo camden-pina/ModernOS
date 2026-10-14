@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Download a pinned rEFInd release into the local build cache."""
 import argparse
-import hashlib
 from pathlib import Path
 import subprocess
 import sys
 import zipfile
+
+from fetch_sources import fetch
 
 RELEASES = {"0.14.2": "410c7828c4fec2f2179bd956073522415831d27c00416381b8f71153c190a311"}
 
@@ -18,16 +19,10 @@ def main():
 
     args.cache.mkdir(parents=True, exist_ok=True)
     archive = args.cache / f"refind-bin-{args.version}.zip"
-    temporary = archive.with_suffix(".zip.tmp")
     try:
-        if not archive.is_file():
-            url = f"https://downloads.sourceforge.net/project/refind/{args.version}/{archive.name}"
-            subprocess.run(["curl", "-fL", "--connect-timeout", "20",
-                           "-o", str(temporary), url], check=True)
-            temporary.replace(archive)
-
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != RELEASES[args.version]:
-            raise ValueError(f"SHA-256 mismatch for {archive}; remove it and retry")
+        fetch({"archive": archive.name,
+               "url": f"https://downloads.sourceforge.net/project/refind/{args.version}/{archive.name}",
+               "sha256": RELEASES[args.version]}, args.cache)
 
         with zipfile.ZipFile(archive) as zipped:
             for name in zipped.namelist():
@@ -38,8 +33,6 @@ def main():
     except (OSError, ValueError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
         print(f"rEFInd preparation failed: {error}", file=sys.stderr)
         return 1
-    finally:
-        temporary.unlink(missing_ok=True)
     return 0
 
 

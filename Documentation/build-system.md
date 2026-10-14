@@ -82,6 +82,35 @@ builders. `make fetch-sources` prepares the cache, and `make check-sources`
 checks it offline. Downloads require curl; a failed transfer or checksum never
 installs an incomplete archive. Keep the prepared source and bootloader caches
 for offline builds.
+Stalled downloads abort after 30 seconds below 1 KiB/s; each transfer has a
+600-second limit. When another source is available, a network/HTTP failure
+immediately advances to that URL. The final URL retains two retries within a
+120-second retry window, plus an IPv4 fallback for connection failures.
+Package mirrors are recorded in `sources.json`; every archive must match the
+same pinned SHA-256 regardless of the server. Existing corrupt cache files and
+downloaded files with a wrong checksum fail the build instead of being installed.
+
+To use your own HTTPS mirror for all source archives and browser host tools:
+
+```sh
+make iso SOURCE_MIRRORS="https://mirror.example.org/modernos"
+make fetch-sources SOURCE_MIRRORS="https://mirror-a.example.org/modernos https://mirror-b.example.org/modernos"
+python3 tools/fetch_sources.py busybox-1.37.0.tar.bz2 --mirror https://mirror.example.org/modernos
+```
+
+Each mirror uses a flat directory of the cached archive filenames, such as
+`modernos/busybox-1.37.0.tar.bz2`. Configured mirrors are tried first, followed
+by the primary URL and package mirrors. Keep the cached files byte-for-byte
+identical; repacked sources will fail verification. `SOURCE_MIRRORS` can also be
+exported in the environment; repeatable `--mirror` options override it for the
+fetcher CLI. Browser host-tool archives use the names in
+`tools/prepare_browser_host.py` (including the `modernos-` prefixes), and are
+cached separately under `build/modern-browser/downloads/`.
+The optional cross-toolchain build and rEFInd preparation use the same fetcher
+and `SOURCE_MIRRORS`; rEFInd's cached filename is `refind-bin-0.14.2.zip`.
+Some pinned snapshots have no verified public mirror. A project mirror can
+serve these exact cached bytes as well.
+
 The full browser automatically prepares its pinned CMake/Ninja/Meson/Ruby
 cache. `make iso` needs no separate browser setup step. `make browser-host`
 can prepare just those tools in advance; see [Browser build tools](browser-build-tools.md)

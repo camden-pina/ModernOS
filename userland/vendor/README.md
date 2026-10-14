@@ -3,6 +3,11 @@ These are complete, unmodified upstream source archives used by
 `tools/build_gcc.py`. The archives are downloaded into this directory and
 ignored by Git. `sources.json` preserves all 44 original filenames, upstream
 HTTPS URLs and SHA-256 hashes; the hashes match the existing builders.
+Matching package mirrors are recorded alongside the primary URLs. GNU mirror
+selection and kernel.org's CDN are used for supported archives. Public mirrors
+do not necessarily carry the exact GitHub-generated snapshots used by this build.
+`SOURCE_MIRRORS` can point the fetcher at your own flat HTTPS archive cache; see
+[`Documentation/build-system.md`](../../Documentation/build-system.md).
 Run `make fetch-sources` to populate the full cache or `make check-sources`
 to verify it offline. Kernel and userland builds also restore their required
 sources automatically. Keep this cache when building offline or preserving

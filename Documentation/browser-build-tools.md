@@ -69,8 +69,12 @@ and rerun `make iso`; successful preparation is reused.
 
 A checksum mismatch stops preparation and preserves the suspect archive.
 Move or remove the reported archive, then rerun the build to fetch it again.
-Connection failures automatically retry over IPv4. Initial downloads need
-network access; deleting the cache requires fetching or preparing it again.
+Downloads use configured mirrors first, then the primary URL and available
+package mirrors; the final source retains retries and an IPv4 connection fallback.
+`SOURCE_MIRRORS` also applies to these host tools. Serve their exact cached archive
+filenames (including the `modernos-` prefixes) from a flat HTTPS directory; see
+[mirror configuration](build-system.md#commands). Initial downloads need network
+access; deleting the cache requires fetching or preparing it again.
 
 `make clean` preserves shared port and host-tool caches. These artifacts do
 not belong in GitHub. Pins and upstream links are recorded in the helper and

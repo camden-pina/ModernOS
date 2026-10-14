@@ -20,6 +20,7 @@ PACKAGES = (
     {
         'archive': 'modernos-cmake-4.4.4.tar.gz',
         'url': 'https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-linux-x86_64.tar.gz',
+        'mirrors': ['https://cmake.org/files/v4.4/cmake-4.4.4-linux-x86_64.tar.gz'],
         'sha256': 'e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb',
         'directory': 'cmake-4.4.4-linux-x86_64',
         'ready': ('bin/cmake', 'share/cmake-4.4/Modules/CMakeDetermineSystem.cmake'),
@@ -36,6 +37,7 @@ PACKAGES = (
     {
         'archive': 'meson-1.10.2-py3-none-any.whl',
         'url': 'https://files.pythonhosted.org/packages/0b/78/7d049e63e624d51d0065191dae101a1e36d5d3a2360633772d9ad8afb2d5/meson-1.10.2-py3-none-any.whl',
+        'mirrors': ['https://mirrors.sjtug.sjtu.edu.cn/pypi-packages/0b/78/7d049e63e624d51d0065191dae101a1e36d5d3a2360633772d9ad8afb2d5/meson-1.10.2-py3-none-any.whl'],
         'sha256': '5f84ef186e6e788d9154db63620fc61b3ece69f643b94b43c8b9203c43d89b36',
         'directory': 'meson-1.10.2',
         'ready': ('mesonbuild/mesonmain.py',),

@@ -55,6 +55,21 @@ class HostArchiveTest(unittest.TestCase):
         self.assertEqual((self.cache / 'host-tools/tool-1/bin/tool').read_bytes(),
                          b'verified tool fixture')
 
+    def test_host_tools_use_the_shared_custom_mirror(self):
+        entry, archive = self.fixture('tar')
+        payload = archive.read_bytes()
+        archive.unlink()
+
+        def download(command, **kwargs):
+            self.assertEqual(command[-1], 'https://cache.invalid/tools/' + entry['archive'])
+            Path(command[command.index('--output') + 1]).write_bytes(payload)
+
+        with patch.dict(os.environ, {'SOURCE_MIRRORS': 'https://cache.invalid/tools'}), \
+                patch('fetch_sources.subprocess.run', side_effect=download):
+            prepare_archive(entry, self.cache)
+        self.assertEqual((self.cache / 'host-tools/tool-1/bin/tool').read_bytes(),
+                         b'verified tool fixture')
+
     def test_corrupt_archive_does_not_replace_previous_installation(self):
         entry, archive = self.fixture('tar')
         target = self.cache / 'host-tools/tool-1/bin/tool'

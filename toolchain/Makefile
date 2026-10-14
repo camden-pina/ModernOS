@@ -1,7 +1,7 @@
 # Makefile for building Binutils, GCC, and dependencies (GMP, MPFR, MPC) for ModernOS
 
 # -----------------------
-# Versions (modify as needed)
+# Versions (must match the pins in userland/vendor/sources.json)
 GCC_VERSION       := 14.2.0
 BINUTILS_VERSION  := 2.37
 GMP_VERSION       := 6.2.1
@@ -20,18 +20,13 @@ BUILD_DIR := $(CURDIR)/build
 JOBS ?= $(shell nproc)
 
 # -----------------------
-# Source tarball URLs
-GCC_URL       := https://ftp.gnu.org/gnu/gcc/gcc-$(GCC_VERSION)/gcc-$(GCC_VERSION).tar.gz
-BINUTILS_URL  := https://ftp.gnu.org/gnu/binutils/binutils-$(BINUTILS_VERSION).tar.gz
-GMP_URL       := https://ftp.gnu.org/gnu/gmp/gmp-$(GMP_VERSION).tar.xz
-MPFR_URL      := https://www.mpfr.org/mpfr-$(MPFR_VERSION)/mpfr-$(MPFR_VERSION).tar.xz
-MPC_URL       := https://ftp.gnu.org/gnu/mpc/mpc-$(MPC_VERSION).tar.gz
+# Use the same pinned sources, mirrors and atomic downloads as the ISO build.
+SOURCE_FETCHER := $(abspath ../tools/fetch_sources.py)
+SOURCE_ARCHIVES := gcc-$(GCC_VERSION).tar.gz binutils-$(BINUTILS_VERSION).tar.gz \
+                   gmp-$(GMP_VERSION).tar.xz mpfr-$(MPFR_VERSION).tar.xz mpc-$(MPC_VERSION).tar.gz
+export SOURCE_MIRRORS
 
 TOOLCHAIN := $(PREFIX)/bin/$(TARGET)-gcc
-
-# -----------------------
-# Detect if aria2c is available
-DOWNLOAD_TOOL := $(shell command -v aria2c 2>/dev/null)
 
 # -----------------------
 # Default target: final GCC binary installed
@@ -39,45 +34,8 @@ all: $(TOOLCHAIN)
 
 # -----------------------
 # Download rules
-$(SRC_DIR)/gcc-$(GCC_VERSION).tar.gz:
-	@mkdir -p $(SRC_DIR)
-ifeq ($(DOWNLOAD_TOOL),)
-	wget -O $@ $(GCC_URL)
-else
-	cd $(SRC_DIR) && aria2c -x 16 -s 16 -o $(notdir $@) $(GCC_URL)
-endif
-
-$(SRC_DIR)/binutils-$(BINUTILS_VERSION).tar.gz:
-	@mkdir -p $(SRC_DIR)
-ifeq ($(DOWNLOAD_TOOL),)
-	wget -O $@ $(BINUTILS_URL)
-else
-	cd $(SRC_DIR) && aria2c -x 16 -s 16 -o $(notdir $@) $(BINUTILS_URL)
-endif
-
-$(SRC_DIR)/gmp-$(GMP_VERSION).tar.xz:
-	@mkdir -p $(SRC_DIR)
-ifeq ($(DOWNLOAD_TOOL),)
-	wget -O $@ $(GMP_URL)
-else
-	cd $(SRC_DIR) && aria2c -x 16 -s 16 -o $(notdir $@) $(GMP_URL)
-endif
-
-$(SRC_DIR)/mpfr-$(MPFR_VERSION).tar.xz:
-	@mkdir -p $(SRC_DIR)
-ifeq ($(DOWNLOAD_TOOL),)
-	wget -O $@ $(MPFR_URL)
-else
-	cd $(SRC_DIR) && aria2c -x 16 -s 16 -o $(notdir $@) $(MPFR_URL)
-endif
-
-$(SRC_DIR)/mpc-$(MPC_VERSION).tar.gz:
-	@mkdir -p $(SRC_DIR)
-ifeq ($(DOWNLOAD_TOOL),)
-	wget -O $@ $(MPC_URL)
-else
-	cd $(SRC_DIR) && aria2c -x 16 -s 16 -o $(notdir $@) $(MPC_URL)
-endif
+$(addprefix $(SRC_DIR)/,$(SOURCE_ARCHIVES)):
+	python3 "$(SOURCE_FETCHER)" "$(@F)" --destination "$(SRC_DIR)"
 
 # -----------------------
 # Extraction rules with stamp files

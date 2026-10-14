@@ -92,6 +92,10 @@ and prepare the browser tools with `make browser-host`; both are optional.
 Offline builds need cached host tools and the selected bootloader's
 cache or installed tools. A checksum mismatch stops the build; preserve or
 remove the reported corrupt archive, then fetch it again.
+Downloads use package mirrors where available and verify the same pinned hashes.
+For your own archive mirror, use
+`make iso SOURCE_MIRRORS="https://mirror.example.org/modernos"`; see the
+[download and mirror configuration](Documentation/build-system.md#commands).
 
 ## Choose a bootloader
 
