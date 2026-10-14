@@ -43,7 +43,7 @@ def run(directory, log, *args, env=None):
         raise SystemExit(f'Failed ({result.returncode}); see {BUILD / log}')
 
 
-def stage(name, configure, targets, env, jobs):
+def stage(name, configure, targets, env, jobs, outputs=()):
     directory = BUILD / name
     directory.mkdir(parents=True, exist_ok=True)
     stamp = directory / '.modernos-stage'
@@ -52,11 +52,13 @@ def stage(name, configure, targets, env, jobs):
                                      {k: env.get(k) for k in (
                                          'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS')},
                                      PACKAGES], sort_keys=True).encode()).hexdigest()
-    if stamp.exists() and stamp.read_text() == key:
+    if stamp.exists() and stamp.read_text() == key and all(path.is_file() for path in outputs):
         print(f'{name}: cached', flush=True)
         return
+    stamp.unlink(missing_ok=True)
     configured = directory / '.modernos-configured'
-    if not configured.exists() or configured.read_text() != key:
+    if (not configured.exists() or configured.read_text() != key
+            or not (directory / 'Makefile').is_file()):
         run(directory, name + '-configure.log', *configure, env=env)
         configured.write_text(key)
 
@@ -74,6 +76,9 @@ def stage(name, configure, targets, env, jobs):
 
     run(directory, name + '-build.log', 'make', f'-j{jobs}', *targets, env=env)
     run(directory, name + '-install.log', 'make', 'install', env=env)
+    missing = [str(path) for path in outputs if not path.is_file()]
+    if missing:
+        raise SystemExit(f'{name}: missing build outputs: ' + ', '.join(missing))
     stamp.write_text(key)
 
 
@@ -119,6 +124,7 @@ def main():
     if not 1 <= args.jobs <= 32:
         parser.error('--jobs must be 1..32')
     BUILD.mkdir(parents=True, exist_ok=True)
+    (ROOT / 'userland/bin').mkdir(parents=True, exist_ok=True)
     host_tools = prepare_host_tools(jobs=args.jobs)
 
     for filename, digest in PACKAGES.items():
@@ -166,7 +172,9 @@ def main():
                               f'--with-gxx-include-dir={PREFIX / "include/c++/14.2.0"}', '--disable-multilib',
                               '--disable-shared', '--enable-static', '--disable-nls', '--disable-symvers',
                               '--disable-libstdcxx-pch', '--disable-libstdcxx-verbose',
-                              '--disable-libstdcxx-backtrace', '--enable-clocale=generic'], [], target_env, args.jobs)
+                              '--disable-libstdcxx-backtrace', '--enable-clocale=generic'], [], target_env, args.jobs,
+          outputs=[PREFIX / 'lib64/libstdc++.a',
+                   PREFIX / 'include/c++/14.2.0/x86_64-linux-musl/bits/c++config.h'])
 
     # libstdc++ and the exception unwinder must use the same thread backend.
     # The seed's single-thread libgcc otherwise races while lazily sorting
@@ -196,11 +204,14 @@ def main():
     common = ['--disable-shared', '--enable-static', '--disable-tests',
               '--disable-samples', '--disable-extras', '--disable-dyload']
     stage('icu-host', [ICU / 'source/configure', f'--prefix={BUILD / "icu-host-prefix"}',
-                       *common], [], host_env, args.jobs)
+                       *common], [], host_env, args.jobs,
+          outputs=[BUILD / 'icu-host/bin/icupkg', BUILD / 'icu-host-prefix/lib/libicuuc.a'])
     stage('icu-musl', [ICU / 'source/configure', f'--build={machine}',
                        '--host=x86_64-linux-musl', f'--prefix={PREFIX}',
                        f'--with-cross-build={BUILD / "icu-host"}', '--with-data-packaging=static',
-                       *common], [], target_env, args.jobs)
+                       *common], [], target_env, args.jobs,
+          outputs=[PREFIX / ('lib/libicu' + name + '.a') for name in ('uc', 'i18n', 'data')]
+          + [PREFIX / 'include/unicode/utypes.h'])
     notices()
 
     if args.deps_only:

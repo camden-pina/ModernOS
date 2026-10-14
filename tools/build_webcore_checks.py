@@ -12,6 +12,8 @@ def main():
                         choices=['webcore-deps-check', 'web-soup-check', 'web-broker'])
     args = parser.parse_args()
 
+    BUILD.mkdir(parents=True, exist_ok=True)
+    (ROOT / 'userland/bin').mkdir(parents=True, exist_ok=True)
     env = environment()
     base = ['-Wall', '-Wextra', '-Werror', '-pthread', '-static', '-no-pie']
     for name, packages, extra in (

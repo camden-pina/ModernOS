@@ -1,0 +1,16 @@
+name: Build preparation checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-checkout:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check source fetching, cold builds and cache recovery
+        run: make test-source-fetch test-browser-build

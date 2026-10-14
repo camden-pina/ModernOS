@@ -14,7 +14,8 @@ import tarfile
 
 from build_threaded_libgcc import build_posix_libgcc
 
-from build_webcore_deps import ROOT, BUILD, PREFIX, WEB_DEPS, FLAGS, CROSS, environment, run, verify
+from build_webcore_deps import (ROOT, BUILD, PREFIX, WEB_DEPS, FLAGS, CROSS,
+                               environment, run, verify, restore_originals)
 
 SOURCE = BUILD / 'webcore-source/wpewebkit-2.54.0'
 PORT = ROOT / 'userland/modern-browser/port'
@@ -23,18 +24,16 @@ ARCHIVE_HASH = 'efa9bcc3cb891c2d88f50eec710d9ccee71cbdf1040420361eb98c17355eb452
 
 def write_if_changed(path, text):
     if not path.exists() or path.read_text() != text:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
 
-def patch(relative, transform):
-    path = SOURCE / relative
-    original = BUILD / 'webcore-original/upstream' / relative
-    if not original.exists():
-        original.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, original)
-    text = transform(original.read_text())
-    if path.read_text() != text:
-        path.write_text(text)
+def apply_patches(patches, archive):
+    originals = BUILD / 'webcore-original/upstream'
+    restore_originals(archive, {'wpewebkit-2.54.0/' + relative: originals / relative
+                               for relative, transform in patches})
+    for relative, transform in patches:
+        write_if_changed(SOURCE / relative, transform((originals / relative).read_text()))
 
 
 def replace(text, old, new):
@@ -56,6 +55,7 @@ def function_body(text, signature, body):
 
 def notices():
     licenses = ROOT / 'userland/vendor/licenses'
+    licenses.mkdir(parents=True, exist_ok=True)
     sections = [
         'WebCore and bundled CPU Skia/xdgmime notices, WPE WebKit 2.54.0.\n'
         'Corresponding source: userland/vendor/wpewebkit-2.54.0.tar.xz\n'
@@ -85,10 +85,15 @@ def notices():
 
 
 def prepare():
+    patches = []
+
+    def patch(relative, transform):
+        patches.append((relative, transform))
+
     archive = ROOT / 'userland/vendor/wpewebkit-2.54.0.tar.xz'
     verify(archive, ARCHIVE_HASH)
     if not SOURCE.exists():
-        SOURCE.parent.mkdir(exist_ok=True)
+        SOURCE.parent.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive) as contents:
             contents.extractall(SOURCE.parent, filter='data')
 
@@ -574,6 +579,7 @@ target_compile_definitions(xdgmime PRIVATE
                      'namespace WebCore { namespace SkiaUtilities {\n' + utilities[start:end] +
                      '\nsk_sp<SkImage> createPromiseImageIfNeeded(const sk_sp<SkImage>& image, const sk_sp<GrContextThreadSafeProxy>& context)\n'
                      '{\n    RELEASE_ASSERT(!context && !image->isTextureBacked());\n    return image;\n}\n}}\n')
+    apply_patches(patches, archive)
 
 
 def main():
@@ -634,6 +640,7 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
             '--parallel', str(args.jobs)], env)
         if args.target == 'ModernOSRenderer':
             destination = ROOT / 'userland/bin/web-renderer'
+            destination.parent.mkdir(parents=True, exist_ok=True)
             original = BUILD / 'webcore-original/userland/bin/web-renderer'
             if destination.exists() and not original.exists():
                 original.parent.mkdir(parents=True, exist_ok=True)

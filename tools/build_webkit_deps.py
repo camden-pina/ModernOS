@@ -42,21 +42,33 @@ def verify(path, digest):
         raise SystemExit(f'Missing or invalid pinned archive: {path}')
 
 
-def build_stage(name, configure, commands, env, inputs):
+def build_stage(name, configure, commands, env, inputs, outputs=()):
     directory = BUILD / name
-    directory.mkdir(exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(json.dumps([list(map(str, configure)), inputs, PACKAGES,
                                      FLAGS, {k: env.get(k) for k in ('CC', 'CXX', 'CFLAGS', 'LDFLAGS', 'PKG_CONFIG_LIBDIR')}], sort_keys=True).encode()).hexdigest()
     stamp = directory / '.modernos-stage'
-    if stamp.exists() and stamp.read_text() == key:
+    if stamp.exists() and stamp.read_text() == key and all(path.is_file() for path in outputs):
         print(f'{name}: cached', flush=True)
         return
+    stamp.unlink(missing_ok=True)
     configured = directory / '.modernos-configured'
-    if not configured.exists() or configured.read_text() != key:
-        run(directory, name + '-configure', configure, env)
+    meson = 'setup' in configure
+    configuration = directory / ('meson-private/coredata.dat' if meson else 'Makefile')
+    buildfile = directory / ('build.ninja' if meson else 'Makefile')
+    if (not configured.exists() or configured.read_text() != key
+            or not configuration.is_file() or not buildfile.is_file()):
+        command = list(configure)
+        if meson and configuration.is_file():
+            command[command.index('setup') + 1:command.index('setup') + 1] = [
+                '--reconfigure', '--clearcache']
+        run(directory, name + '-configure', command, env)
         configured.write_text(key)
     for i, command in enumerate(commands):
         run(directory, name + ('-build' if i == 0 else '-install'), command, env)
+    missing = [str(path) for path in outputs if not path.is_file()]
+    if missing:
+        raise SystemExit(f'{name}: missing build outputs: ' + ', '.join(missing))
     stamp.write_text(key)
 
 
@@ -65,6 +77,10 @@ def main():
     parser.add_argument('--jobs', type=int, default=min(os.cpu_count() or 4, 8))
     args = parser.parse_args()
 
+    if not 1 <= args.jobs <= 32:
+        parser.error('--jobs must be 1..32')
+    BUILD.mkdir(parents=True, exist_ok=True)
+    (ROOT / 'userland/bin').mkdir(parents=True, exist_ok=True)
     host_tools = prepare_host_tools(jobs=args.jobs)
 
     for archive, digest in PACKAGES.items():
@@ -86,17 +102,18 @@ def main():
     for variable in ('PKG_CONFIG_PATH', 'LD_LIBRARY_PATH', 'CMAKE_PREFIX_PATH'):
         env.pop(variable, None)
 
-    for name, options in (
-        ('libffi-3.5.2', ['--disable-docs',
+    for name, library, package, options in (
+        ('libffi-3.5.2', 'libffi.a', 'libffi.pc', ['--disable-docs',
          '--disable-multi-os-directory', '--disable-exec-static-tramp']),
-        ('pcre2-10.46', ['--disable-jit', '--enable-unicode',
+        ('pcre2-10.46', 'libpcre2-8.a', 'libpcre2-8.pc', ['--disable-jit', '--enable-unicode',
          '--disable-pcre2grep', '--disable-pcre2test']),
     ):
         configure = [BUILD / name / 'configure', '--host=x86_64-linux-musl',
                      f'--prefix={PREFIX}', '--libdir=' + str(PREFIX / 'lib'),
                      '--disable-shared', '--enable-static', *options]
         build_stage(name + '-target', configure,
-                    [['make', f'-j{args.jobs}'], ['make', 'install']], env, options)
+                    [['make', f'-j{args.jobs}'], ['make', 'install']], env, options,
+                    outputs=[PREFIX / 'lib' / library, PREFIX / 'lib/pkgconfig' / package])
 
     cross = BUILD / 'glib-musl-cross.ini'
     cross.write_text('[binaries]\n' + '\n'.join(
@@ -117,8 +134,13 @@ def main():
     command = [sys.executable, '-m', 'mesonbuild.mesonmain']
     build_stage('glib-target', [*command, 'setup', BUILD / 'glib-target', BUILD / 'glib-2.86.5',
                 '--cross-file', cross, '--prefix', PREFIX, '--libdir', 'lib', '--wrap-mode=nofallback', *options],
-                [[ninja, f'-j{args.jobs}'], [*command, 'install', '--no-rebuild']], env, cross.read_text())
+                [[ninja, f'-j{args.jobs}'], [*command, 'install', '--no-rebuild']], env, cross.read_text(),
+                outputs=[PREFIX / ('lib/lib' + name + '.a')
+                         for name in ('glib-2.0', 'gobject-2.0', 'gio-2.0', 'gthread-2.0')]
+                + [PREFIX / 'lib/pkgconfig/gio-unix-2.0.pc',
+                   PREFIX / 'lib/glib-2.0/include/glibconfig.h'])
     licenses = ROOT / 'userland/vendor/licenses'
+    licenses.mkdir(parents=True, exist_ok=True)
     for source, target in (('glib-2.86.5/COPYING', 'glib-LICENSE.txt'),
                            ('libffi-3.5.2/LICENSE', 'libffi-LICENSE.txt'),
                            ('pcre2-10.46/LICENCE.md', 'pcre2-LICENSE.txt')):

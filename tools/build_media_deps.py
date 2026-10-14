@@ -20,6 +20,7 @@ def host_assembler(jobs):
     archive = ROOT / 'userland/vendor' / NASM_ARCHIVE
     verify(archive, NASM_DIGEST)
     source = BUILD / 'host-tools/nasm-2.16.03'
+    source.parent.mkdir(parents=True, exist_ok=True)
     if not source.exists():
         with tarfile.open(archive) as contents:
             contents.extractall(source.parent, filter='data')
@@ -31,10 +32,13 @@ def host_assembler(jobs):
             (directory / subdirectory.relative_to(source)).mkdir(parents=True, exist_ok=True)
     host_env = dict(os.environ, CC='cc', CFLAGS='-O2')
     stage('host-nasm-2.16.03', [source / 'configure'],
-          [['make', f'-j{jobs}', 'nasm']], host_env, NASM_DIGEST)
+          [['make', f'-j{jobs}', 'nasm']], host_env, NASM_DIGEST,
+          outputs=[directory / 'nasm'])
     assembler = BUILD / 'host-tools/nasm'
     shutil.copy2(BUILD / 'host-nasm-2.16.03/nasm', assembler)
-    (ROOT / 'userland/vendor/licenses/nasm-NOTICES.txt').write_text(
+    notices = ROOT / 'userland/vendor/licenses/nasm-NOTICES.txt'
+    notices.parent.mkdir(parents=True, exist_ok=True)
+    notices.write_text(
         'NASM 2.16.03, host build tool only.\n'
         f'Official source: https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/{NASM_ARCHIVE}\n'
         f'Bundled source: userland/vendor/{NASM_ARCHIVE}\nSHA-256: {NASM_DIGEST}\n\n'
@@ -49,6 +53,7 @@ def main():
 
     if not 1 <= args.jobs <= 32:
         parser.error('--jobs must be 1..32')
+    BUILD.mkdir(parents=True, exist_ok=True)
     archive = ROOT / 'userland/vendor' / ARCHIVE
     verify(archive, DIGEST)
     source = BUILD / 'ffmpeg-9.0.2'
@@ -71,7 +76,10 @@ def main():
                '--enable-bsf=aac_adtstoasc,h264_mp4toannexb', f'--extra-cflags={FLAGS}',
                '--extra-ldflags=-static -no-pie']
     stage('ffmpeg-9.0.2-target', options,
-          [['make', f'-j{args.jobs}'], ['make', 'install']], env, DIGEST)
+          [['make', f'-j{args.jobs}'], ['make', 'install']], env, DIGEST,
+          outputs=[PREFIX / ('lib/lib' + name + '.a')
+                   for name in ('avcodec', 'avformat', 'avutil', 'swscale', 'swresample')]
+          + [PREFIX / 'lib/pkgconfig/libavcodec.pc'])
     notices = ROOT / 'userland/vendor/licenses/ffmpeg-NOTICES.txt'
     notices.write_text(f'FFmpeg 9.0.2 CPU demuxers/decoders (LGPL 2.1 or later).\n'
                        f'Official source: https://ffmpeg.org/releases/{ARCHIVE}\n'

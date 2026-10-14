@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/modern-browser'
@@ -64,18 +65,24 @@ def environment():
     return env
 
 
-def stage(name, configure, commands, env, inputs=''):
+def stage(name, configure, commands, env, inputs='', outputs=()):
     directory = BUILD / name
-    directory.mkdir(exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(json.dumps([list(map(str, configure)), inputs,
                                      {k: env.get(k) for k in ('CC', 'CXX', 'CPPFLAGS', 'CFLAGS', 'CXXFLAGS',
                                                               'LDFLAGS', 'PKG_CONFIG_LIBDIR')}], sort_keys=True).encode()).hexdigest()
     stamp = directory / '.modernos-stage'
-    if stamp.exists() and stamp.read_text() == key:
+    if stamp.exists() and stamp.read_text() == key and all(path.is_file() for path in outputs):
         print(f'{name}: cached', flush=True)
         return
+    stamp.unlink(missing_ok=True)
     configured = directory / '.modernos-configured'
-    if not configured.exists() or configured.read_text() != key:
+    ninja = 'setup' in configure or '-G' in configure
+    configuration = directory / ('meson-private/coredata.dat' if 'setup' in configure
+                                 else 'CMakeCache.txt' if '-G' in configure else 'Makefile')
+    buildfile = directory / ('build.ninja' if ninja else 'Makefile')
+    if (not configured.exists() or configured.read_text() != key
+            or not configuration.is_file() or not buildfile.is_file()):
         # An existing Meson directory must be reconfigured, never wiped.
         command = list(configure)
         if (directory / 'meson-private/coredata.dat').exists():
@@ -86,10 +93,13 @@ def stage(name, configure, commands, env, inputs=''):
 
     for i, command in enumerate(commands):
         run(directory, name + ('-build' if i == 0 else '-install'), command, env)
+    missing = [str(path) for path in outputs if not path.is_file()]
+    if missing:
+        raise SystemExit(f'{name}: missing build outputs: ' + ', '.join(missing))
     stamp.write_text(key)
 
 
-def meson_stage(source, options, env, jobs, targets=None, inputs=''):
+def meson_stage(source, options, env, jobs, targets=None, inputs='', outputs=()):
     command = [sys.executable, '-m', 'mesonbuild.mesonmain']
     name = source + '-target'
 
@@ -100,16 +110,76 @@ def meson_stage(source, options, env, jobs, targets=None, inputs=''):
                  '-Db_staticpic=false', '-Dprefer_static=true', *options],
           [[BUILD / 'host-tools/ninja', f'-j{jobs}', *(targets or [])],
            [*command, 'install', '--no-rebuild']], env,
-          [cross.read_text(), PACKAGES.get(source + '.tar.xz'), inputs])
+          [cross.read_text(), PACKAGES.get(source + '.tar.xz'), inputs], outputs)
 
 
-def autotools_stage(source, options, env, jobs):
+def autotools_stage(source, options, env, jobs, outputs=()):
     configure = [BUILD / source / 'configure', '--host=x86_64-linux-musl',
                  f'--prefix={PREFIX}', f'--libdir={PREFIX}/lib',
                  '--disable-shared', '--enable-static', *options]
     digest = next(value for name, value in PACKAGES.items() if name.startswith(source + '.tar.'))
     stage(source + '-target', configure,
-          [['make', f'-j{jobs}'], ['make', 'install']], env, digest)
+          [['make', f'-j{jobs}'], ['make', 'install']], env, digest, outputs)
+
+
+def restore_originals(archive, paths):
+    # Recover missing or interrupted backups from the pinned archive, never
+    # from a working source file that may already contain our modifications.
+    # Stream once so restoring many WebCore files does not repeatedly seek
+    # through and decompress the large WebKit source archive.
+    remaining = set(paths)
+    with tarfile.open(archive, 'r|*') as upstream:
+        for member in upstream:
+            if member.name not in paths:
+                continue
+            original = paths[member.name]
+            remaining.discard(member.name)
+            with upstream.extractfile(member) as contents:
+                data = contents.read()
+            if original.is_file() and original.read_bytes() == data:
+                continue
+            original.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=original.parent, prefix='.' + original.name,
+                                             delete=False) as output:
+                temporary = Path(output.name)
+                try:
+                    output.write(data)
+                    output.close()
+                    temporary.replace(original)
+                finally:
+                    temporary.unlink(missing_ok=True)
+    if remaining:
+        raise SystemExit('Pinned source archive is missing: ' + ', '.join(sorted(remaining)))
+
+
+def patch_glib_networking():
+    source = BUILD / 'glib-networking-2.80.1'
+    originals = BUILD / 'webcore-original'
+    paths = {
+        'tls/openssl/meson.build': originals / 'glib-networking-openssl-meson.build',
+        'tls/meson.build': originals / 'glib-networking-tls-meson.build',
+    }
+    archive_name = 'glib-networking-2.80.1.tar.xz'
+    archive = ROOT / 'userland/vendor' / archive_name
+    verify(archive, PACKAGES[archive_name])
+    restore_originals(archive, {'glib-networking-2.80.1/' + name: path
+                              for name, path in paths.items()})
+
+    patched = paths['tls/openssl/meson.build'].read_text().replace(
+        'module = shared_module(', 'module = static_library(')
+    patched = patched.replace('  link_args: module_ldflags,\n', '').replace(
+        '  link_depends: symbol_map,\n', '')
+    patched = patched.replace('  name_suffix: module_suffix,\n', '')
+    patched = patched.replace('  install: build_shared,', '  install: true,')
+    patched = patched[:patched.index('\nif build_static\n')] + '\npkg.generate(module)\n'
+    # TLS tests run in the owned guest test, rather than Meson's host runner.
+    tls_patched = paths['tls/meson.build'].read_text().replace("subdir('tests')", '')
+    for relative, text in (('tls/openssl/meson.build', patched), ('tls/meson.build', tls_patched)):
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.is_file() or path.read_text() != text:
+            path.write_text(text)
+    return [patched, tls_patched]
 
 
 def network_dependencies(env, jobs):
@@ -117,24 +187,34 @@ def network_dependencies(env, jobs):
     target_env['CPPFLAGS'] = f'-I{PREFIX}/include -I{WEB_DEPS}/include'
     target_env['LDFLAGS'] += f' -L{PREFIX}/lib -L{WEB_DEPS}/lib'
     autotools_stage('libgpg-error-1.61', ['--disable-nls', '--disable-doc',
-                                          '--disable-tests', '--disable-languages'], target_env, jobs)
+                                          '--disable-tests', '--disable-languages'], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libgpg-error.a', PREFIX / 'lib/pkgconfig/gpg-error.pc'])
     autotools_stage('libgcrypt-1.12.4', ['--disable-asm', '--disable-avx-support',
                                          '--disable-avx2-support', '--disable-avx512-support', '--disable-doc',
-                                         f'--with-libgpg-error-prefix={PREFIX}'], target_env, jobs)
+                                         f'--with-libgpg-error-prefix={PREFIX}'], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libgcrypt.a', PREFIX / 'lib/pkgconfig/libgcrypt.pc'])
     autotools_stage('libtasn1-4.20.0', ['--disable-doc',
-                    '--disable-valgrind-tests'], target_env, jobs)
+                    '--disable-valgrind-tests'], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libtasn1.a', PREFIX / 'lib/pkgconfig/libtasn1.pc'])
     autotools_stage('libxml2-2.14.6', ['--without-python', '--without-lzma',
-                                       '--without-zlib', '--without-iconv'], target_env, jobs)
+                                       '--without-zlib', '--without-iconv'], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libxml2.a', PREFIX / 'lib/pkgconfig/libxml-2.0.pc'])
 
     # The official amalgamation supports direct compilation. No loader or
     # file-mapping assumptions are required; upstream's real pager uses I/O.
     source = BUILD / 'sqlite-autoconf-3540000'
     directory = BUILD / 'sqlite-3.54.0-target'
-    directory.mkdir(exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True)
     sqlite_key = json.dumps([PACKAGES['sqlite-autoconf-3540000.tar.gz'], FLAGS,
                             'threadsafe-columnmetadata-nommap-noextensions-1'])
     stamp = directory / '.modernos-stage'
-    if not stamp.exists() or stamp.read_text() != sqlite_key:
+    sqlite_outputs = [PREFIX / 'lib/libsqlite3.a', PREFIX / 'include/sqlite3.h',
+                      PREFIX / 'include/sqlite3ext.h', PREFIX / 'lib/pkgconfig/sqlite3.pc']
+    if (not stamp.exists() or stamp.read_text() != sqlite_key
+            or not all(path.is_file() for path in sqlite_outputs)):
+        stamp.unlink(missing_ok=True)
+        for path in sqlite_outputs:
+            path.parent.mkdir(parents=True, exist_ok=True)
         run(directory, 'sqlite-3.54.0-build', [env['CC'], *FLAGS.split(), '-pthread',
             '-DSQLITE_THREADSAFE=1', '-DSQLITE_ENABLE_COLUMN_METADATA',
                                                '-DSQLITE_OMIT_LOAD_EXTENSION', '-DSQLITE_MAX_MMAP_SIZE=0',
@@ -157,7 +237,8 @@ def network_dependencies(env, jobs):
     # Ship the release's genuine built-in suffix list; do not fetch mutable data.
     autotools_stage('libpsl-0.21.5', ['--enable-runtime=libicu', '--disable-nls',
                                       '--disable-gtk-doc', '--disable-man', '--with-psl-file=' +
-                                      str(BUILD / 'libpsl-0.21.5/list/public_suffix_list.dat')], target_env, jobs)
+                                      str(BUILD / 'libpsl-0.21.5/list/public_suffix_list.dat')], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libpsl.a', PREFIX / 'lib/pkgconfig/libpsl.pc'])
 
     # libpsl's release metadata omits its ICU static-link dependencies.
     metadata = PREFIX / 'lib/pkgconfig/libpsl.pc'
@@ -167,33 +248,18 @@ def network_dependencies(env, jobs):
                             f'Libs.private: -L{PREFIX}/lib64 -lstdc++ -lm -pthread\n')
     target_env.pop('LIBS')
     autotools_stage('nghttp2-1.65.0', ['--enable-lib-only', '--disable-python-bindings',
-                                       '--disable-app', '--disable-examples', '--disable-hpack-tools'], target_env, jobs)
+                                       '--disable-app', '--disable-examples', '--disable-hpack-tools'], target_env, jobs,
+                    outputs=[PREFIX / 'lib/libnghttp2.a', PREFIX / 'lib/pkgconfig/libnghttp2.pc'])
 
     # Upstream always creates a shared module before extracting a static
     # archive, even for default_library=static. Build the real module sources
     # directly as an archive on this OS, which has no dynamic loader.
-    module_path = BUILD / 'glib-networking-2.80.1/tls/openssl/meson.build'
-    module_text = module_path.read_text()
-    original = BUILD / 'webcore-original/glib-networking-openssl-meson.build'
-    if not original.exists():
-        original.write_text(module_text)
-    patched = original.read_text().replace("module = shared_module(", "module = static_library(")
-    patched = patched.replace('  link_args: module_ldflags,\n', '').replace(
-        '  link_depends: symbol_map,\n', '')
-    patched = patched.replace('  name_suffix: module_suffix,\n', '')
-    patched = patched.replace('  install: build_shared,', '  install: true,')
-    patched = patched[:patched.index('\nif build_static\n')] + '\npkg.generate(module)\n'
-    module_path.write_text(patched)
-
-    # TLS tests are built/run by the owned guest test, not Meson's host runner.
-    tls_path = module_path.parents[1] / 'meson.build'
-    tls_original = BUILD / 'webcore-original/glib-networking-tls-meson.build'
-    if not tls_original.exists():
-        tls_original.write_text(tls_path.read_text())
-    tls_path.write_text(tls_original.read_text().replace("subdir('tests')", ''))
+    patched = patch_glib_networking()
     meson_stage('glib-networking-2.80.1', ['-Dgnutls=disabled', '-Dopenssl=enabled',
                                            '-Dlibproxy=disabled', '-Dgnome_proxy=disabled', '-Denvironment_proxy=disabled',
-                                           '-Dinstalled_tests=false'], env, jobs, inputs=patched)
+                                           '-Dinstalled_tests=false'], env, jobs, inputs=patched,
+                outputs=[PREFIX / 'lib/gio/modules/libgioopenssl.a',
+                         BUILD / 'glib-networking-2.80.1-target/tls/base/libtlsbase.a'])
 
     # A cross build cannot run a TLS executable on the host. The backend is
     # linked/registered explicitly and verified against certificates in guests.
@@ -201,7 +267,8 @@ def network_dependencies(env, jobs):
                                   '-Dbrotli=disabled', '-Dzstd=disabled', '-Dtls_check=false',
                                   '-Dintrospection=disabled', '-Dvapi=disabled', '-Ddocs=disabled',
                                   '-Dtests=false', '-Dautobahn=disabled', '-Dsysprof=disabled',
-                                  '-Dpkcs11_tests=disabled'], env, jobs)
+                                  '-Dpkcs11_tests=disabled'], env, jobs,
+                outputs=[PREFIX / 'lib/libsoup-3.0.a', PREFIX / 'lib/pkgconfig/libsoup-3.0.pc'])
 
 
 def main():
@@ -240,12 +307,14 @@ def main():
     meson_stage('harfbuzz-11.2.1', ['-Dglib=enabled', '-Dgobject=disabled',
                                     '-Dicu=enabled', '-Dfreetype=enabled', '-Dcairo=disabled', '-Dchafa=disabled',
                                     '-Dtests=disabled', '-Dutilities=disabled', '-Ddocs=disabled',
-                                    '-Dintrospection=disabled'], env, args.jobs)
+                                    '-Dintrospection=disabled'], env, args.jobs,
+                outputs=[PREFIX / 'lib/libharfbuzz.a', PREFIX / 'lib/pkgconfig/harfbuzz.pc'])
 
     meson_stage('fontconfig-2.16.0', ['-Dxml-backend=expat', '-Dnls=disabled',
                                       '-Dtests=disabled', '-Dtools=disabled', '-Dcache-build=disabled', '-Ddoc=disabled',
                                       '-Ddefault-fonts-dirs=/usr/share/fonts/TTF', '-Dadditional-fonts-dirs=',
-                                      f'-Dbaseconfig-dir={PREFIX}/etc/fonts', '-Dcache-dir=/tmp/fontconfig-cache'], env, args.jobs)
+                                      f'-Dbaseconfig-dir={PREFIX}/etc/fonts', '-Dcache-dir=/tmp/fontconfig-cache'], env, args.jobs,
+                outputs=[PREFIX / 'lib/libfontconfig.a', PREFIX / 'lib/pkgconfig/fontconfig.pc'])
 
     cmake = BUILD / 'host-tools/cmake-4.4.4-linux-x86_64/bin/cmake'
     source = 'libjpeg-turbo-3.2.0'
@@ -258,7 +327,8 @@ def main():
                  '-DENABLE_SHARED=OFF', '-DENABLE_STATIC=ON', '-DWITH_SIMD=OFF',
                  '-DWITH_TURBOJPEG=OFF', '-DWITH_TOOLS=OFF', '-DWITH_TESTS=OFF'],
           [[cmake, '--build', BUILD / name, '--parallel', str(args.jobs)],
-           [cmake, '--install', BUILD / name]], env, PACKAGES[source + '.tar.gz'])
+           [cmake, '--install', BUILD / name]], env, PACKAGES[source + '.tar.gz'],
+          outputs=[PREFIX / 'lib/libjpeg.a', PREFIX / 'lib/pkgconfig/libjpeg.pc'])
 
     source = 'libwebp-1.6.0'
     name = source + '-target'
@@ -275,11 +345,13 @@ def main():
                  f'-DCMAKE_C_FLAGS={FLAGS}', '-DCMAKE_BUILD_TYPE=Release',
                  f'-DCMAKE_INSTALL_PREFIX={PREFIX}', *options],
           [[cmake, '--build', BUILD / name, '--parallel', str(args.jobs)],
-           [cmake, '--install', BUILD / name]], env, PACKAGES[source + '.tar.gz'])
+           [cmake, '--install', BUILD / name]], env, PACKAGES[source + '.tar.gz'],
+          outputs=[PREFIX / 'lib/libwebp.a', PREFIX / 'lib/pkgconfig/libwebp.pc'])
 
     network_dependencies(env, args.jobs)
 
     licenses = ROOT / 'userland/vendor/licenses'
+    licenses.mkdir(parents=True, exist_ok=True)
     for name, source in (('harfbuzz', 'harfbuzz-11.2.1/COPYING'),
                          ('fontconfig', 'fontconfig-2.16.0/COPYING'),
                          ('libjpeg-turbo', 'libjpeg-turbo-3.2.0/LICENSE.md'),

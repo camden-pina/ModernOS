@@ -80,4 +80,12 @@ access; deleting the cache requires fetching or preparing it again.
 not belong in GitHub. Pins and upstream links are recorded in the helper and
 [`userland/vendor/README.md`](../userland/vendor/README.md).
 
-Run `make test-browser-build` for the host-bootstrap and Make dependency checks.
+Builders create their generated output directories automatically. The GLib TLS
+and WebCore patchers restore missing or partial source backups from verified
+pinned archives. Dependency stages check their installed libraries and metadata
+before reusing a completion stamp, and reinstall missing outputs on the next build.
+
+Run `make test-browser-build` for host bootstrap, cold builds, patch-backup
+recovery, dependency-cache recovery and parallel Make ordering checks. GitHub
+Actions runs these and the source-fetch checks on fresh checkouts for pushes
+and pull requests.
