@@ -1,0 +1,17 @@
+{{HEADER}}
+# Native Limine settings can be added directly to this template.
+timeout: {{TIMEOUT}}
+{{MENU_RESOLUTION}}
+{{WALLPAPER}}
+wallpaper_style: stretched
+
+{{BOOT_ENTRY}}
+
+/Reboot
+    protocol: reboot
+
+/Shutdown
+    protocol: poweroff
+
+/UEFI Firmware Settings
+    protocol: uefi_firmware

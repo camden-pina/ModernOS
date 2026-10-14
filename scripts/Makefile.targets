@@ -1,0 +1,171 @@
+# Userland ports, emulator launchers, and integration checks.
+OVMF ?= $(srctree)/firmware/ovmf/OVMF.fd
+SMP ?= 4
+MEMORY ?= 2G
+REBUILD_MEMORY ?= 8G
+REBUILD_CHECKPOINT ?= $(BUILD_DIR)/runtime-tests/native-rebuild.state
+QEMU_EXTRA_ARGS ?=
+# Use hardware virtualization when this host grants access; keep TCG available
+# for portable runs and explicit comparisons.
+QEMU_ACCEL ?= $(shell test -r /dev/kvm && test -w /dev/kvm && echo kvm || echo tcg)
+QEMU_CPU ?= $(if $(filter kvm,$(QEMU_ACCEL)),host,max)
+# SDL's GL frontend keeps GPU uploads and native relative pointer capture.
+# VGA refresh_rate sets EDID metadata, not the frontend refresh timer.
+QEMU_DISPLAY ?= sdl,gl=on
+QEMU_SDL_DRIVER ?= $(if $(strip $(SDL_VIDEODRIVER)),$(SDL_VIDEODRIVER),$(if $(strip $(WAYLAND_DISPLAY)),wayland,))
+QEMU_GTK_BACKEND ?= $(GDK_BACKEND)
+QEMU_DISPLAY_ENV :=
+ifneq ($(filter sdl%,$(QEMU_DISPLAY)),)
+QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(QEMU_SDL_DRIVER),)
+else ifneq ($(filter gtk%,$(QEMU_DISPLAY)),)
+QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_GTK_BACKEND)),GDK_BACKEND=$(QEMU_GTK_BACKEND),)
+endif
+QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,refresh_rate=120
+QEMU_NETWORK ?= -nic user,model=e1000e
+QEMU_AUDIO ?= -audiodev sdl,id=audio0 -device AC97,audiodev=audio0
+LINUX_DISK ?=
+FAT_DISK ?=
+SATA_DISK ?=
+# Keep QEMU's comma-separated options outside Make's $(if ...) arguments.
+QEMU_STORAGE :=
+ifneq ($(strip $(LINUX_DISK)),)
+QEMU_STORAGE += -drive "file=$(LINUX_DISK),format=raw,if=none,id=linuxdisk" -device nvme,drive=linuxdisk,serial=MODERNOS-SOURCE
+endif
+ifneq ($(strip $(FAT_DISK)),)
+QEMU_STORAGE += -drive "file=$(FAT_DISK),format=raw,if=none,id=fatdisk" -device nvme,drive=fatdisk,serial=MODERNOS-FAT
+endif
+ifneq ($(strip $(SATA_DISK)),)
+QEMU_STORAGE += -drive "file=$(SATA_DISK),format=raw,if=none,id=satadisk" -device ide-hd,drive=satadisk,bus=ide.0
+endif
+run: iso
+# Launch an existing image without rebuilding or overwriting its packaged bytes.
+.PHONY: run-image
+run run-image:
+	@echo "QEMU: accelerator=$(QEMU_ACCEL) cpu=$(QEMU_CPU) display=$(QEMU_DISPLAY) $(QEMU_DISPLAY_ENV)"
+	@if [ "$(QEMU_ACCEL)" = tcg ]; then echo "QEMU: software CPU emulation; use make run-fast on a KVM-enabled host for faster dragging."; fi
+	env $(QEMU_DISPLAY_ENV) qemu-system-x86_64 -accel $(QEMU_ACCEL) -cpu $(QEMU_CPU) -M q35 -smp $(SMP) -m $(MEMORY) -bios $(OVMF) -cdrom $(ISO_IMAGE) \
+		-chardev stdio,id=console,logfile=$(BUILD_DIR)/serial.log,signal=off -serial chardev:console \
+		-no-reboot -display $(QEMU_DISPLAY) $(QEMU_VIDEO) $(QEMU_NETWORK) $(QEMU_AUDIO) -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 $(QEMU_STORAGE) $(QEMU_EXTRA_ARGS)
+# Fail visibly if KVM is unavailable rather than silently using emulation.
+run-fast: QEMU_ACCEL=kvm
+run-fast: QEMU_CPU=host
+run-fast: run
+test: iso
+	python3 tools/test_kernel_memory.py
+	python3 tools/test_runtime.py
+	python3 tools/test_configure_shell.py --cpus 1
+	python3 tools/test_configure_shell.py --cpus 4
+	python3 tools/test_console_input.py --cpus 1
+	python3 tools/test_console_input.py --cpus 4
+test-kernel-memory:
+	python3 tools/test_kernel_memory.py
+test-pixel-blend: iso
+	python3 tools/test_pixel_blend.py --cpus 1
+	python3 tools/test_pixel_blend.py --cpus 4
+test-configure-shell: iso
+	python3 tools/test_configure_shell.py --cpus 1
+	python3 tools/test_configure_shell.py --cpus 4
+test-gcc-generators: iso
+	python3 tools/test_gcc_generators.py --cpus 4
+test-console-input: iso
+	python3 tools/test_console_input.py --cpus 1
+	python3 tools/test_console_input.py --cpus 4
+test-checkpoint: iso
+	python3 tools/test_vm_checkpoint.py
+test-desktop: iso
+	python3 tools/test_desktop.py
+test-native: iso
+	python3 tools/test_nano.py --cpus 1
+	python3 tools/test_nano.py --cpus 4 --storage --dark
+test-ports: iso
+	python3 tools/test_native_ports.py --cpus 1
+	python3 tools/test_native_ports.py --cpus 4 --storage --dark
+test-compiler: iso
+	python3 tools/test_compiler.py --cpus 1
+	python3 tools/test_compiler.py --cpus 4 --storage
+test-dark: iso
+	python3 tools/test_dark_mode.py
+test-wallpaper: iso
+	python3 tools/test_wallpaper.py
+test-drag: iso
+	python3 tools/test_gui_drag.py --cpus 1
+test-drag-native: iso
+	env $(QEMU_DISPLAY_ENV) python3 tools/test_gui_drag.py --cpus $(SMP) --accel kvm --display $(QEMU_DISPLAY) --trace-display
+test-host-mouse: iso
+	env GDK_BACKEND=x11 python3 tools/test_host_mouse.py --cpus $(SMP)
+test-mouse-live: iso
+	env $(QEMU_DISPLAY_ENV) python3 -u tools/diagnose_mouse.py --cpus $(SMP) --display $(QEMU_DISPLAY)
+test-network: iso
+	python3 -u tools/test_network.py --cpus 4
+.PHONY: javascriptcore webkit-deps webcore-deps media-deps webcore-checks webcore webcore-fixture test-webcore-render test-webcore-network test-webcore-deps test-native-browser test-browser-scheduling test-boot-files test-threads test-javascriptcore test-browser-ipc test-webkit-deps test-browser-surface
+test-browser-surface:
+	python3 tools/test_browser_surface.py
+javascriptcore:
+	$(MAKE) -C $(srctree)/userland bin/jsc
+webkit-deps: javascriptcore
+	$(MAKE) -C $(srctree)/userland webkit-deps
+webcore-deps: webkit-deps
+	$(MAKE) -C $(srctree)/userland webcore-deps
+media-deps: webcore-deps
+	$(MAKE) -C $(srctree)/userland media-deps
+webcore-checks: webcore-deps
+	python3 -u tools/build_webcore_checks.py
+webcore: media-deps
+	python3 -u tools/build_webcore.py --interpreter $(WEBCORE_INTERPRETER)
+webcore-fixture: media-deps
+	python3 -u tools/build_webcore.py --interpreter $(WEBCORE_INTERPRETER) --target ModernOSRenderer
+	python3 -u tools/build_webcore_checks.py --only web-broker
+	$(MAKE) -C $(srctree)/userland bin/webcore-render-check
+test-webcore-render: webcore-fixture
+	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-render.iso
+	python3 -u tools/test_webcore_render.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-render.iso
+test-webcore-network: webcore-fixture
+	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-network.iso
+	python3 -u tools/test_webcore_network.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-network.iso
+test-native-browser: iso
+	python3 -u tools/test_native_browser.py --cpus 1 4 --iso $(ISO_IMAGE)
+.PHONY: test-native-console
+test-native-console: iso
+	python3 -u tools/test_native_console.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
+.PHONY: test-native-fetch-metadata
+test-native-fetch-metadata: iso
+	python3 -u tools/test_native_fetch_metadata.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
+.PHONY: test-native-frame-graph test-frame-tree-protocol test-frame-tree-authority
+test-native-frame-graph: iso
+	python3 -u tools/test_native_frame_graph.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
+test-frame-tree-protocol:
+	python3 -u tools/test_frame_tree_protocol.py
+test-frame-tree-authority:
+	python3 -u tools/test_frame_tree_authority.py
+test-browser-scheduling: iso
+	python3 -u tools/test_browser_scheduling.py --cpus 1 4 --iso $(ISO_IMAGE)
+test-boot-files: iso
+	python3 -u tools/test_boot_files.py --cpus 1 4 --iso $(ISO_IMAGE)
+test-webcore-deps: webcore-checks
+	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-deps.iso
+	python3 -u tools/test_webcore_deps.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-deps.iso
+test-threads: iso
+	python3 -u tools/test_threads.py --cpus 1 4
+test-browser-ipc: webkit-deps
+	$(MAKE) iso
+	python3 -u tools/test_browser_ipc.py --cpus 1 4
+test-webkit-deps: webkit-deps
+	$(MAKE) iso
+	python3 -u tools/test_webkit_deps.py --cpus 1 4
+test-javascriptcore: javascriptcore
+	$(MAKE) iso
+	python3 -u tools/test_javascriptcore.py --cpus 1 4
+test-browser: iso
+	python3 -u tools/test_native_browser.py --cpus 1 4 --iso $(ISO_IMAGE)
+	python3 tools/test_browser_protocol.py
+	python3 tools/test_browser_render.py
+	python3 tools/test_browser_script.py
+	python3 tools/test_browser_policy.py
+	python3 -u tools/test_browser_sandbox.py --cpus 1 4
+	python3 -u tools/test_browser_guest.py --cpus 4
+test-toolchain-rebuild: iso
+	python3 -u tools/test_toolchain_rebuild.py --cpus $(SMP) --memory $(REBUILD_MEMORY)
+test-rebuilt-toolchain:
+	python3 -u tools/test_rebuilt_toolchain.py "$(REBUILD_CHECKPOINT)"
+
+.PHONY: run run-image run-fast test test-kernel-memory test-pixel-blend test-configure-shell test-gcc-generators test-console-input test-checkpoint test-desktop test-native test-ports test-compiler test-dark test-wallpaper test-drag test-drag-native test-host-mouse test-mouse-live test-network test-browser-surface javascriptcore webkit-deps webcore-deps media-deps webcore-checks webcore webcore-fixture test-webcore-render test-webcore-network test-native-browser test-native-console test-native-fetch-metadata test-native-frame-graph test-frame-tree-protocol test-frame-tree-authority test-browser-scheduling test-boot-files test-webcore-deps test-threads test-browser-ipc test-webkit-deps test-javascriptcore test-browser test-toolchain-rebuild test-rebuilt-toolchain

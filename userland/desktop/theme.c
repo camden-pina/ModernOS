@@ -1,0 +1,96 @@
+#include "desktop.h"
+
+uint32_t theme_color(uint32_t light) {
+    if (!desk.dark_mode) {
+        return light;
+    }
+    switch (light) {
+    case 0xFFFFFF:
+        return 0x19252D;
+    case 0xF9FAF9:
+        return 0x202D36;
+    case 0xF5F7F6:
+        return 0x1C2931;
+    case 0xFAFCFB:
+        return 0x17232B;
+    case 0x2D3D44:
+        return 0xE2EAEC;
+    case 0x3C4B50:
+    case 0x41525A:
+    case 0x30434A:
+    case 0x344449:
+    case 0x36474B:
+        return 0xCBD7DB;
+    case 0x617176:
+    case 0x69787E:
+        return 0xB6C6CE;
+    case 0x8E9D9F:
+    case 0x899B9C:
+    case 0x7E8C90:
+        return 0x9FB1BA;
+    case 0xA3ADAF:
+    case 0x919EA2:
+    case 0x9BA5A8:
+    case 0xA3AFB0:
+    case 0xA7B0B1:
+    case 0xA4AFB0:
+    case 0xA2ADAF:
+    case 0x9DA8AB:
+    case 0xAAB4B5:
+        return 0x8A9FA9;
+    case 0xE8ECEB:
+    case 0xDFE5E4:
+    case 0xE5E9E8:
+    case 0xE5EAE8:
+    case 0xE4E9E7:
+        return 0x32444F;
+    case 0xEDF0EF:
+    case 0xE2E8E7:
+    case 0xE9EDED:
+        return 0x2C3D46;
+    case 0xDBE3E3:
+        return 0x45616E;
+    case 0x121E2F:
+        return 0x080F17;
+    case 0xEDF1EF:
+    case 0xEAF0ED:
+    case 0xEBF0ED:
+    case 0xF0F4F1:
+    case 0xF6F8F7:
+    case 0xF1F4F2:
+        return 0x293B45;
+    case 0xF8FAF9:
+        return 0x22333C;
+    case 0xE0EDE7:
+    case 0xEAF0EF:
+    case 0xE9F2ED:
+        return 0x294339;
+    case 0xF8E7E5:
+        return 0x513436;
+    case 0xB86B65:
+        return 0xEAA29A;
+    case 0xC3CCCD:
+    case 0xABB5B7:
+    case 0xAFB8B9:
+    case 0xA9B3B4:
+        return 0x61757E;
+    case 0xC3CECA:
+        return 0x546C76;
+    case 0xB7D6C7:
+    case 0x96B5A9:
+    case 0xA3BEB4:
+        return 0x638C7F;
+    case 0xE7EFF8:
+    case 0xEAF0F6:
+        return 0x293B4D;
+    case 0xE3F0E9:
+        return 0x294238;
+    case 0xEFEDFA:
+        return 0x3B354B;
+    case 0xFBF0E0:
+    case 0xFAF0E6:
+        return 0x44382D;
+    default:
+        return light;
+    }
+}

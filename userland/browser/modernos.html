@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ModernOS Browser</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 32px;
+            color: #2d3d44;
+            background: #f5f7f6;
+            max-width: 740px
+        }
+
+        h1 {
+            font-size: 28px;
+            color: #347966
+        }
+
+        h2 {
+            font-size: 18px
+        }
+
+        a {
+            color: #286b58
+        }
+
+        section {
+            background: white;
+            border: 1px solid #dbe3e3;
+            padding: 18px;
+            margin: 16px 0
+        }
+
+        p, li {
+            line-height: 1.5
+        }
+
+        code {
+            background: #eaf0f6;
+            padding: 2px 4px
+        }
+    </style>
+</head>
+<body>
+    <h1>ModernOS Browser</h1>
+    <p>Powered by the native NetSurf 3.11 engine.</p>
+
+    <section>
+        <h2>Browse the web or your files</h2>
+        <p>Press <b>Ctrl+L</b> or use the address field to enter an HTTP/HTTPS address or a local file path.
+            HTTPS verifies the server certificate using the bundled Mozilla CA certificates.</p>
+        <p><a href="https://www.netsurf-browser.org/">NetSurf</a> &nbsp;
+            <a href="https://gcc.gnu.org/">GNU Compiler Collection</a> &nbsp;
+            <a href="https://git-scm.com/">Git</a></p>
+    </section>
+
+    <section>
+        <h2>Controls</h2>
+        <ul>
+            <li>Alt+Left / Alt+Right: back and forward. F5 / Ctrl+R: reload.</li>
+            <li>Ctrl+N: a new native browser window. Wheel / Page Up / Page Down: scroll.</li>
+            <li>Follow links, fill forms, select text and use the page's own controls.</li>
+            <li>Open HTML, SVG, PNG, JPEG, GIF and BMP files directly from Files.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>Available capabilities</h2>
+        <p>Real HTML, CSS, DOM, PNG/JPEG/GIF/BMP/SVG images, antialiased FreeType fonts,
+            and NetSurf's Duktape JavaScript support. Modern web APIs beyond this engine's support may not work.</p>
+        <p>IPv4 and DNS use the kernel's lwIP stack. The Intel e1000/e1000e driver supports the QEMU adapter;
+            other network hardware needs its own driver. <code>netinfo</code> reports the actual link and address.
+            Local documents work without an Ethernet connection.</p>
+        <p>Web pages run in a restricted browser process. Local files are available when you open them from Files
+            or the address field. Downloads are saved in your Downloads folder.</p>
+    </section>
+</body>
+</html>

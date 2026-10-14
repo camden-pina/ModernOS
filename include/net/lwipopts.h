@@ -1,0 +1,52 @@
+#ifndef MODERNOS_LWIP_OPTIONS_H
+#define MODERNOS_LWIP_OPTIONS_H
+
+/* All raw callbacks and protocol calls are serialized by network_mutex.
+ * Neither NIC polling nor lwIP is invoked from an interrupt handler. */
+#define NO_SYS 1
+#define SYS_LIGHTWEIGHT_PROT 0
+#define LWIP_SOCKET 0
+#define LWIP_NETCONN 0
+#define LWIP_IPV6 0
+#define LWIP_IPV4 1
+#define LWIP_TCP 1
+#define LWIP_UDP 1
+#define LWIP_ICMP 1
+#define LWIP_DHCP 1
+#define LWIP_ARP 1
+#define LWIP_DNS 1
+#define DNS_MAX_SERVERS 2
+#define LWIP_DHCP_MAX_DNS_SERVERS 2
+#define LWIP_NETIF_HOSTNAME 1
+#define LWIP_NETIF_STATUS_CALLBACK 1
+#define LWIP_NETIF_LINK_CALLBACK 1
+#define LWIP_NETIF_LOOPBACK 1
+#define LWIP_HAVE_LOOPIF 1
+#define LWIP_NETIF_LOOPBACK_MULTITHREADING 0
+#define SO_REUSE 1
+#define LWIP_TCP_KEEPALIVE 1
+#define MEM_ALIGNMENT 8
+#define MEM_SIZE (2 * 1024 * 1024)
+#define MEMP_NUM_TCP_PCB 96
+#define MEMP_NUM_TCP_PCB_LISTEN 16
+#define MEMP_NUM_TCP_SEG 512
+#define MEMP_NUM_UDP_PCB 64
+#define MEMP_NUM_PBUF 512
+#define MEMP_NUM_SYS_TIMEOUT 32
+#define PBUF_POOL_SIZE 256
+#define PBUF_POOL_BUFSIZE 1700
+#define TCP_MSS 1460
+#define TCP_WND 65535
+#define TCP_SND_BUF 65535
+#define TCP_SND_QUEUELEN 192
+#define TCP_LISTEN_BACKLOG 1
+#define TCP_QUEUE_OOSEQ 1
+#define IP_REASSEMBLY 1
+#define IP_FRAG 1
+#define LWIP_STATS 0
+#define LWIP_CHECKSUM_CTRL_PER_NETIF 0
+#define LWIP_TCP_TIMESTAMPS 1
+#define LWIP_NETIF_TX_SINGLE_PBUF 1
+#define LWIP_DHCP_CHECK_LINK_UP 1
+#define LWIP_DHCP_GET_NTP_SRV 0
+#endif

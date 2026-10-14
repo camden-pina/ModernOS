@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/webkitwpe/resources">
+    <file alias="css/wpe-theme.css">wpe-theme.css</file>
+    <file alias="images/missingImage">missingImage.png</file>
+    <file alias="images/missingImage@2x">missingImage@2x.png</file>
+    <file alias="images/missingImage@3x">missingImage@3x.png</file>
+    <file alias="images/panIcon">panIcon.png</file>
+    <file alias="images/textAreaResizeCorner">textAreaResizeCorner.png</file>
+    <file alias="images/textAreaResizeCorner@2x">textAreaResizeCorner@2x.png</file>
+  </gresource>
+</gresources>

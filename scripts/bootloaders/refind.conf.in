@@ -1,0 +1,10 @@
+{{HEADER}}
+# Native rEFInd settings can be added directly to this template.
+timeout {{TIMEOUT}}
+scanfor manual
+{{MENU_RESOLUTION}}
+{{WALLPAPER}}
+banner_scale fillscreen
+showtools reboot,shutdown,firmware
+
+{{BOOT_ENTRY}}

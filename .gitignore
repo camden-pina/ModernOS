@@ -1,5 +1,64 @@
-bootloader/edk2
 toolchain/build
 toolchain/opt
 toolchain/src
 
+# Generated kernel, userland, ISO, and integration-test artifacts.
+/build/
+# Kernel products, including optional in-tree and custom O= builds.
+*.o
+*.d
+*.cmd
+*.a
+vmlinux
+vmlinux.cmd
+os.iso
+# Images are built locally, including named test and release candidates.
+*.iso
+*.img
+*.qcow2
+*.vmdk
+*.vdi
+*.raw
+*.volume
+*.state
+*.elf
+initramfs.tar
+iso_root/
+/arch/x86/boot/efi/*.obj
+/arch/x86/boot/efi/modernos.efi
+/arch/x86/boot/efi/loader-test
+/userland/bin/
+/userland/obj/
+/userland/runtime/usr/bin/
+/userland/runtime/usr/share/vim/vim92/
+/userland/runtime/usr/include/
+/userland/runtime/usr/lib/
+/userland/runtime/usr/libexec/
+/userland/runtime/usr/src/
+/userland/runtime/usr/lib64
+/userland/runtime/lib
+/userland/runtime/etc/ssl/
+/userland/runtime/usr/share/netsurf/
+/userland/runtime/usr/share/fonts/
+/userland/runtime/usr/share/modern-browser/
+/userland/runtime/usr/share/git-core/
+/userland/runtime/usr/share/bash-completion/
+
+# Pinned upstream downloads; restore with make fetch-sources.
+/userland/vendor/*.tar.gz
+/userland/vendor/*.tar.xz
+/userland/vendor/*.tar.bz2
+/userland/vendor/*.tgz
+/userland/vendor/.*.part
+
+# Host and editor metadata, and local credentials/session configuration.
+__pycache__/
+*.py[cod]
+.DS_Store
+._*
+/.agents/
+/.aws/
+/.codex/
+.env
+.env.*
+!.env.example

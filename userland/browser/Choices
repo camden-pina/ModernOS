@@ -1,0 +1,3 @@
+enable_javascript:1
+ca_bundle:/etc/ssl/cert.pem
+do_not_track:1

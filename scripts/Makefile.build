@@ -1,0 +1,101 @@
+# Recursive kernel build. Each source directory declares its objects in obj-y.
+.SUFFIXES:
+.DELETE_ON_ERROR:
+.DEFAULT_GOAL := all
+
+obj ?= .
+obj := $(patsubst %/,%,$(obj))
+src := $(if $(filter .,$(obj)),$(srctree),$(srctree)/$(obj))
+objdir := $(if $(filter .,$(obj)),$(objtree),$(objtree)/$(obj))
+kbuild-file := $(if $(filter .,$(obj)),$(srctree)/Kbuild,$(srctree)/$(obj)/Makefile)
+
+obj-y :=
+ccflags-y :=
+asflags-y :=
+include $(kbuild-file)
+
+# lwIP keeps its unpacked sources in the shared preparation cache.
+ifeq ($(obj),net/lwip)
+src := $(LWIP_ROOT)/src
+extra-deps := $(wildcard $(srctree)/include/net/*.h \
+                         $(srctree)/include/net/arch/*.h \
+                         $(srctree)/include/net/freestanding/*.h)
+endif
+
+ifneq ($(filter-out %.o %/,$(obj-y)),)
+$(error $(kbuild-file): obj-y entries must name .o files or subdirectories ending in /)
+endif
+
+local-objs := $(addprefix $(objdir)/,$(filter %.o,$(obj-y)))
+subdir-archives := $(addprefix $(objdir)/,$(addsuffix built-in.a,$(filter %/,$(obj-y))))
+archive-members := $(addprefix $(objdir)/,$(foreach entry,$(obj-y),$(if $(filter %/,$(entry)),$(entry)built-in.a,$(entry))))
+
+# Ambiguous stems are an error; source discovery never determines obj-y.
+$(foreach object,$(filter %.o,$(obj-y)),\
+  $(if $(word 2,$(wildcard $(addprefix $(src)/,$(addsuffix .c,$(basename $(object))) $(addsuffix .s,$(basename $(object))) $(addsuffix .S,$(basename $(object))) $(addsuffix .asm,$(basename $(object)))))),\
+    $(error $(kbuild-file): multiple sources for $(object))))
+
+NASM ?= nasm
+KBUILD_NASMFLAGS ?= -f elf64 -g -F dwarf -Wall
+
+# Quote a value for the shell, including literal single quotes in flags.
+shquote = '$(subst ','"'"',$(1))'
+depfile = $(dir $@).$(notdir $@).d
+cmdfile = $(dir $@).$(notdir $@).cmd
+
+cmd_cc = $(CC) $(KBUILD_CPPFLAGS) $(KBUILD_CFLAGS) $(ccflags-y) -MMD -MP -MF $(call shquote,$(depfile)) -MT $(call shquote,$@) -c $(call shquote,$<) -o $(call shquote,$@)
+cmd_as = $(CC) $(KBUILD_CPPFLAGS) $(KBUILD_AFLAGS) $(asflags-y) -c $(call shquote,$<) -o $(call shquote,$@)
+cmd_as_cpp = $(CC) $(KBUILD_CPPFLAGS) $(KBUILD_AFLAGS) $(asflags-y) -MMD -MP -MF $(call shquote,$(depfile)) -MT $(call shquote,$@) -c $(call shquote,$<) -o $(call shquote,$@)
+cmd_nasm = $(NASM) $(KBUILD_NASMFLAGS) -MD $(call shquote,$(depfile)) -MP -MT $(call shquote,$@) $(call shquote,$<) -o $(call shquote,$@)
+cmd_ar = $(AR) rcSTP $(call shquote,$@) $(foreach member,$(archive-members),$(call shquote,$(member)))
+
+# FORCE visits commands on every invocation so compiler/flag changes are seen.
+# Only an actual dependency or command change executes the compiler.
+define compile
+@set -e; \
+if test ! -f $(call shquote,$@) || \
+   test -n $(call shquote,$(filter-out FORCE,$?)) || \
+   ! printf '%s\n' $(call shquote,$(1)) | cmp -s - $(call shquote,$(cmdfile)); then \
+    mkdir -p $(call shquote,$(dir $@)); \
+    $(if $(filter @,$(Q)),printf '  %-7s %s\n' $(call shquote,$(2)) $(call shquote,$(patsubst $(objtree)/%,%,$@)),printf '%s\n' $(call shquote,$(1))); \
+    $(1); \
+    printf '%s\n' $(call shquote,$(1)) > $(call shquote,$(cmdfile)); \
+fi
+endef
+
+.PHONY: all FORCE
+all: $(objdir)/built-in.a
+FORCE:
+
+$(subdir-archives): FORCE
+	+$(Q)$(MAKE) --no-print-directory -f $(srctree)/scripts/Makefile.build obj=$(patsubst $(objtree)/%/built-in.a,%,$@)
+
+# Child archives are thin archives; GNU ar flattens their members here.
+# Check filesystem timestamps after recursion instead of make's FORCE status.
+$(objdir)/built-in.a: $(archive-members) FORCE
+	@set -e; changed=; \
+	if test ! -f $(call shquote,$@) || ! printf '%s\n' $(call shquote,$(cmd_ar)) | cmp -s - $(call shquote,$(cmdfile)); then changed=1; fi; \
+	for member in $(foreach member,$(archive-members),$(call shquote,$(member))); do \
+	    if test "$$member" -nt $(call shquote,$@); then changed=1; fi; \
+	done; \
+	if test -n "$$changed"; then \
+	    mkdir -p $(call shquote,$(dir $@)); \
+	    $(if $(filter @,$(Q)),printf '  %-7s %s\n' 'AR' $(call shquote,$(patsubst $(objtree)/%,%,$@)),printf '%s\n' $(call shquote,$(cmd_ar))); \
+	    rm -f $(call shquote,$@); \
+	    $(cmd_ar); \
+	    printf '%s\n' $(call shquote,$(cmd_ar)) > $(call shquote,$(cmdfile)); \
+	fi
+
+$(objdir)/%.o: $(src)/%.c $(kbuild-file) $(srctree)/scripts/Makefile.build $(extra-deps) FORCE
+	$(call compile,$(cmd_cc),CC)
+
+$(objdir)/%.o: $(src)/%.s $(kbuild-file) $(srctree)/scripts/Makefile.build FORCE
+	$(call compile,$(cmd_as),AS)
+
+$(objdir)/%.o: $(src)/%.S $(kbuild-file) $(srctree)/scripts/Makefile.build FORCE
+	$(call compile,$(cmd_as_cpp),AS)
+
+$(objdir)/%.o: $(src)/%.asm $(kbuild-file) $(srctree)/scripts/Makefile.build FORCE
+	$(call compile,$(cmd_nasm),NASM)
+
+-include $(foreach object,$(local-objs),$(dir $(object)).$(notdir $(object)).d)

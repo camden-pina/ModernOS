@@ -1,0 +1,32 @@
+{{HEADER}}
+# Native GRUB commands can be added directly to this template.
+set default=0
+set timeout={{TIMEOUT}}
+insmod fat
+insmod search_label
+search --no-floppy --label MODERNOS --set=root
+{{MENU_RESOLUTION}}
+if [ -f ($memdisk)/boot/grub/fonts/unicode.pf2 ]; then
+    loadfont ($memdisk)/boot/grub/fonts/unicode.pf2
+    insmod all_video
+    insmod gfxterm
+    terminal_output gfxterm
+    insmod jpeg
+    insmod png
+    insmod gfxterm_background
+{{WALLPAPER}}
+fi
+
+{{BOOT_ENTRY}}
+
+menuentry "Reboot" {
+    reboot
+}
+
+menuentry "Shutdown" {
+    halt
+}
+
+menuentry "UEFI Firmware Settings" {
+    fwsetup
+}

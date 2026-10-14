@@ -1,0 +1,29 @@
+# Remove generated kernel files without removing shared download/build caches.
+.SUFFIXES:
+.DEFAULT_GOAL := all
+
+obj ?= .
+obj := $(patsubst %/,%,$(obj))
+src := $(if $(filter .,$(obj)),$(srctree),$(srctree)/$(obj))
+objdir := $(if $(filter .,$(obj)),$(objtree),$(objtree)/$(obj))
+kbuild-file := $(if $(filter .,$(obj)),$(srctree)/Kbuild,$(srctree)/$(obj)/Makefile)
+
+obj-y :=
+include $(kbuild-file)
+
+subdirs := $(patsubst %/,%,$(filter %/,$(obj-y)))
+local-objs := $(addprefix $(objdir)/,$(filter %.o,$(obj-y)))
+# Name only files owned by this manifest. The output tree can also contain
+# unrelated caches, including object files at its root or inside these dirs.
+clean-files := $(local-objs) \
+               $(foreach object,$(local-objs),$(dir $(object)).$(notdir $(object)).d $(dir $(object)).$(notdir $(object)).cmd) \
+               $(objdir)/built-in.a $(objdir)/.built-in.a.cmd
+shquote = '$(subst ','"'"',$(1))'
+
+.PHONY: all clean $(subdirs)
+all: clean
+clean: $(subdirs)
+	$(Q)rm -f -- $(foreach file,$(clean-files),$(call shquote,$(file)))
+
+$(subdirs):
+	+$(Q)$(MAKE) --no-print-directory -f $(srctree)/scripts/Makefile.clean obj=$(if $(filter .,$(obj)),,$(obj)/)$@
