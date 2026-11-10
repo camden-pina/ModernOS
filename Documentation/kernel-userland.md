@@ -8,19 +8,18 @@ https://github.com/camden-pina/ModernOS.git.
 
 ```sh
 make setup-host
+make menuconfig
 make iso
 make run
 ```
 
-The full image combines the kernel, native desktop/account tools, Chromium,
-Code OSS and the package/development environment. The smaller native path is
-`make iso PROFILE=native` followed by `make run PROFILE=native`. `make -j4` builds only the
+Coast combines the kernel, native desktop/account tools, Chromium, Code OSS
+and the package/development environment. `make -j4` builds only the
 kernel at `build/vmlinux`. See [source builds](source-builds.md) and
 [the build system](build-system.md) for output roots, source components and
 cross/native builds.
 
-Limine provides BIOS and x86-64 UEFI boot. GRUB and rEFInd are also available
-through the development image assembly. Boot adapters provide the kernel with
+Limine provides BIOS and x86-64 UEFI boot. Boot adapters provide the kernel with
 memory, framebuffer, ACPI and module information. SMP, interrupts, timers,
 physical memory, virtual memory, process scheduling and drivers initialize
 before the interactive console/desktop session.

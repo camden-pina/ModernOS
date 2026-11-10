@@ -365,7 +365,7 @@ def main():
     elf_checks = validate_elf_payload(payload, gui, out)
     archive = out / 'initramfs.tar'
     payload.write(archive)
-    image = out / 'Coast-desktop.iso'
+    image = out / 'Coast.iso'
     subprocess.run(list(map(str, [sys.executable, '-B', ROOT / 'tools/build_boot_iso.py',
         '--bootloader', 'limine', '--config', ROOT / 'arch/x86/boot/boot.conf',
         '--kernel', kernel_path, '--initramfs', archive, '--source-root', ROOT,

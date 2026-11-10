@@ -13,12 +13,12 @@ inputs.
 | --- | --- | --- |
 | Kernel and Chromium ABI profile | Kernel sources, Kbuild, `ports/chromium/kernel-flags.json`, pinned lwIP | Compiled and linked on Linux and inside a Coast guest from the repository source kit |
 | Native desktop | `userland/desktop/`, libc and linker script | Linux and native Coast compilation; Chromium guest integration |
-| Native desktop ISO | Kernel, desktop, BusyBox and Limine sources; `tools/build_native_iso.py` | Fresh image assembly; UEFI and BIOS kernel/shell/GUI checks |
+| Boot and base components | Kernel, desktop, BusyBox and Limine sources | Source assembly; UEFI and BIOS kernel/shell/GUI checks |
 | ISO/FAT tools | Pinned GNU xorriso 1.5.8.pl02 and mtools 4.0.49 | Static source cross-builds; native tests |
 | NASM | Pinned 2.16.03 source, host/cross builder and native PKGBUILD | Host/cross builds, native assembler linked with GCC; native source-recipe test |
 | Limine | Pinned 12.9.0 source and `tools/build_limine.py` | BIOS and x86-64 UEFI outputs compiled from source |
 | Wayland display bridge | Pinned Wayland 1.21.0/libffi, XML protocols, keyboard map and bridge C | Static source build; actual Chromium browser suite |
-| QEMU | `ports/qemu/`, exact dependency sources and builder | QEMU, seven libraries, Ninja and x86 BIOS compiled inside Coast; boots a native-built Coast ISO with ABI and desktop checks; Chromium VNC viewer passes real USB input |
+| QEMU | `ports/qemu/`, exact dependency sources and builder | QEMU, seven libraries, Ninja and x86 BIOS compiled inside Coast; nested boot, ABI and desktop checks; Chromium VNC viewer passes real USB input |
 | GNU Bison and grep | Pinned sources, port patches, native builders and offline source kits | Rebuilt inside Coast; signed package installation, parser compilation and complete pipe drainage checked |
 | POSIX C++ SDK, CMake and GN | GCC source bootstrap, pinned CMake/GN and subprocess ports | Native GCC/POSIX C++, CMake and GN builds pass; signed SDK/tool upgrades pass real C++ thread, Make/Ninja, CTest and packaging consumers |
 | Python and LLVM | CPython native-spawn patch, matching LLVM source and source-built zlib | Source cross-builds pass native execution and signed installation; 128 threaded Python children and C/C++, LLD, ThinLTO and archive workflows checked |
@@ -28,16 +28,15 @@ inputs.
 | VSCodium / Code OSS application | Pinned VSCodium/VS Code source archives, upstream patches and NPM lockfiles | Fresh compilation/packaging; rebuilt C/C++ modules and real editor usability checks in a fresh assembly |
 | Code OSS proxy resolver | Pinned Rust source, upstream Cargo lockfile, WABT source and local Rust host tools | Source-built native module linked to the matching GNU ABI; upstream embedded PAC wasm recorded separately |
 | Bash/Readline terminal | Official Bash patches, Coast foreground-PTY port, pinned ncurses and the native base's compiled musl SDK | Static source build; pipelines, substitution, file writes and real USB job-control checks |
-| Wider source desktop | Python, Coast Packages/makepkg, Qt, QEMU and noVNC source receipts | Fresh assembly passed all eleven guest suites, including actual package builds, Qt USB/clipboard and Chromium-operated nested Coast |
-| Fresh Chromium/Code OSS ISO | `tools/build_desktop.py` and explicit component receipts | Fresh source-GUI assembly passed boot, Bash, native C/C++, signed packages, addons/SQLite/proxy, browser and editor guest suites |
+| Desktop integrations | Python, Coast Packages/makepkg, Qt, QEMU and noVNC source receipts | Fresh assembly passed all eleven guest suites, including actual package builds, Qt USB/clipboard and Chromium-operated nested Coast |
+| Coast ISO | `tools/build_desktop.py` and explicit component receipts | Fresh source-GUI assembly passed boot, Bash, native C/C++, signed packages, addons/SQLite/proxy, browser and editor guest suites |
 
 A kernel rebuild is a complete native compilation. The desktop pipeline
 connects the public component recipes without importing an older ISO. Plain
 `make iso` includes BusyBox commands, Bash/Readline, native GCC/G++, standalone
 pacman/GnuPG tools, Python, Coast Packages, the makepkg/fakeroot environment,
-Qt and QEMU. `PROFILE=core` omits the Python/makepkg/Qt/QEMU integrations.
-Additional development ports and full native browser build kits remain
-separate components.
+Qt and QEMU. Additional development ports and native browser build kits are
+available through the package system.
 
 `tools/build_gui_sources.py` fetches the pinned Debian sources/patches for all
 76 source packages supplying the 93 GUI runtime packages. Rootless Podman
@@ -57,22 +56,24 @@ guest qualification remains separate.
 ## Full desktop build on Linux
 
 ```sh
+make menuconfig
 make iso
 make run
 ```
 
-The output is `build/desktop-source-wide/image/Coast-desktop.iso`. Host setup remains
-a prerequisite: the native-image tools below, rootless Podman, Bubblewrap,
+The output is `build/coast/image/Coast.iso`. Host setup remains
+a prerequisite: the boot toolchain below, rootless Podman, Bubblewrap,
 CMake, Ninja, pkg-config, ncurses host utilities, Autotools/Bison/Gettext tools and
 Electron's upstream Linux build dependencies. The workflow installs no host
 packages. It downloads pinned Rust host tools into its own output directory.
-Its logs live in `build/desktop-source-wide/logs/`. The
+Its logs live in `build/coast/logs/`. The
 [README](../README.md) supplies the short build sequence;
 [host setup](host-setup.md) describes `make setup-host` and its checks.
-The [command reference](build-system.md) explains all profiles and optional
-arguments. Use `make iso ISO_ARGS=--plan` to inspect the complete build plan,
-or `make iso ISO_BUILD=build/desktop-qa ISO_ARGS=--qualify` to build and qualify
-a separate image.
+The [command reference](build-system.md) explains optional arguments.
+The terminal wizard saves build and VM settings in `.config`; Make reloads them
+automatically, with command-line assignments taking precedence.
+Use `make iso ISO_ARGS=--plan` to inspect the complete build plan, or
+`make iso ISO_ARGS=--qualify` to build and qualify Coast.
 
 Rerun the same command after interruption. Completed receipts, their source
 identities and artifact hashes are checked before reuse. Changed build inputs
@@ -82,7 +83,7 @@ that workflow's `failed/` before retrying. No selected image is overwritten.
 
 The pipeline first syncs/builds Electron and Node, then builds the GNU ABI,
 GUI libraries, VSCodium application, addon SDK/modules, Rust proxy resolver, admitted kernel,
-native image, POSIX-threaded native GCC/G++ SDK, standalone package/archive/HTTPS
+boot/base components, POSIX-threaded native GCC/G++ SDK, standalone package/archive/HTTPS
 tools, Bash/Readline, Wayland bridge and pinned font/dictionary assets.
 The GIO trash helper uses the matching application SDK, so it does not require
 an old QEMU SDK. Assembly checks the exact Electron/Node kernel admission and
@@ -92,8 +93,7 @@ select `ISO_ARGS=--with-microsoft-auth` on a new build root. The default
 source image omits these binaries; the receipt records the choice and the
 remaining prebuilt application helpers.
 
-`make iso` selects `--with-integrations` and defaults to
-`build/desktop-source-wide/image/Coast-desktop.iso`. Six additional explicit
+`make iso` produces `build/coast/image/Coast.iso`. Explicit component
 receipts supply Python/jq, makepkg support, Coast Packages, Qt, QEMU and its
 source viewer. All use the source-built POSIX musl compiler; no legacy
 `build/web`, `build/compiler` or installed runtime prefix is required.
@@ -119,7 +119,7 @@ SDK and source-built x86 BIOS/VGA firmware. Its receipt separately identifies
 optional release-supplied ROMs. noVNC and the `coast-vm` launcher are source files.
 See [Qt](qt6.md) and [QEMU](qemu.md) for the supported application scope.
 
-Fresh wider images start without a repository URL or signing identity.
+Coast starts without a repository URL or signing identity.
 `coast list` and `coast repo` work immediately. Obtain the public key and full
 fingerprint from the repository operator, then configure it as the normal user:
 
@@ -133,13 +133,13 @@ coast refresh
 
 The privileged helper rechecks the fingerprint, initializes only an empty
 keyring, and preserves existing repository identities. `coast server URL`
-changes an already trusted server while retaining its key. Image owners can
-instead pass `--repository-config PATH` to the wider builder. This JSON contains
+changes an already trusted server while retaining its key. The OS builder accepts
+`--repository-config PATH` to embed an explicit public configuration. This JSON contains
 exactly `url`, `signing_fingerprint`, and `public_key` (absolute or relative to
 the JSON file); the builder embeds public trust only. Community servers remain
 an explicit `coast community URL` choice.
 
-With a wider image, `--qualify` additionally checks source recipe cloning,
+`--qualify` checks source recipe cloning,
 native makepkg/fakeroot build/install, signed frontend transactions, QEMU's
 programs/SDK and guest CPU, Qt USB/clipboard workflows and the Chromium VNC
 viewer operating a nested source-built Coast desktop. Pillow and Tesseract are
@@ -174,10 +174,10 @@ passt, GnuPG, Pillow and Tesseract are additional host prerequisites. The host
 QEMU needs its native passt backend (QEMU 10.1 or newer). Select `--qualify`
 on the initial build: it enables editor diagnostics and changes the build's
 identity. Adding it to a build made with different options requires a fresh
-output root. The aggregate qualification receipt
+output directory. The aggregate qualification receipt
 binds every report to the exact ISO hash and verifies that all owned VMs stop.
-It does not change the selected development ISO. An already assembled QA image
-can be checked with `tools/qualify_desktop.py --iso PATH --output-root PATH`.
+An existing Coast build can be checked with
+`tools/qualify_desktop.py --iso build/coast/image/Coast.iso --output-root PATH`.
 
 The package CLI stage builds pacman/libalpm, GnuPG, libarchive, libseccomp,
 curl/OpenSSL, zlib/zstd and GNU Make from pinned sources. It supplies the normal
@@ -185,19 +185,16 @@ curl/OpenSSL, zlib/zstd and GNU Make from pinned sources. It supplies the normal
 the image owner. It does not import the local development server's key or its
 private signing identity. Qualification creates a separate disposable key and
 performs real signature verification, installation and removal entirely in
-the guest's RAM filesystem. The higher-level `coast` Python frontend and full
-makepkg/fakeroot environment are not included in this stage.
+the guest's RAM filesystem. The `coast` Python frontend and makepkg/fakeroot environment are built by
+their corresponding stages in the same pipeline.
 
-Local validation on November 9 rebuilt all 76 GUI source packages, assembled
-the core fresh image and passed all seven guest suites. The wider source
-workflow then integrated Coast Packages/makepkg, Qt and QEMU and passed all
-eleven aggregate guest suites on its final image. All 668 payload ELF checks
-passed; the image contains 37 source-component package records. Its exact
-qualification results are recorded in the same passoff. That run reused independently
-verified source-built Electron/Node and GNU ABI receipts; it did not rebuild
-the entire Electron graph from an empty checkout. A separate source-only export,
-without ignored caches, rebuilt the kernel/native ISO and passed all four
-UEFI/BIOS CPU cases. Exact hashes and report paths are in
+The integrated desktop has passed all eleven guest suites, including package
+transactions, makepkg, Qt input/clipboard and nested QEMU through Chromium.
+All 668 payload ELF checks passed, with 37 source-component package records.
+That qualification reused verified source-built Electron/Node and GNU ABI
+receipts; it did not rebuild the entire Electron graph from an empty checkout.
+Independent source-export checks compile the kernel and boot components and
+exercise UEFI/BIOS at one and four CPUs. Report details are in
 [development status](AI-HANDOFF.md).
 
 ## Linux host
@@ -208,16 +205,13 @@ python3 -B tools/build_desktop_kernel.py --output-root build/my-kernel --jobs 4
 python3 -B tools/build_native_gui.py --output-root build/my-desktop
 make nasm
 make limine
-make iso PROFILE=native
 ```
 
-`make limine` compiles Limine's boot programs instead of downloading the
-upstream binary bundle. It uses Clang/LLVM and mtools, and can build a separate
-host NASM automatically. `make iso PROFILE=native` uses the GCC/binutils bootloader path
-and compiles musl/BusyBox for the native shell tools. It requires mtools and
-xorriso on Linux. This image is independent of existing ISOs and contains the
-native desktop; the full Chromium/Code OSS runtime remains separate. Host OVMF firmware is discovered from the Linux
-installation, or selected with `OVMF=/path/to/OVMF.fd`.
+These commands develop individual components. Use `make iso` for OS assembly
+and `make run` to boot Coast. Limine's boot programs are compiled from pinned
+source; its builder uses Clang/LLVM and mtools and can bootstrap host NASM.
+Host OVMF is discovered automatically for `make run FIRMWARE=uefi`, or selected
+with `OVMF=/path/to/OVMF.fd`.
 
 The `ports/linux-uapi/include/` files are C header sources from the original
 linux-api-headers 1:7.1-1 snapshot. `SOURCE.json` records all file hashes and
@@ -235,7 +229,6 @@ cd ~/Builds/coast
 tar -xJf /usr/src/coast/os/coast-source.tar.xz --strip-components=1
 python3 -B tools/build_desktop_kernel.py --jobs 4
 readelf -h build/desktop-kernel/vmlinux
-python3 -B tools/build_native_iso.py --kernel build/desktop-kernel/vmlinux --jobs 4
 ```
 
 `coast-source` contains a deterministic source archive with a SHA-256 inventory
@@ -248,7 +241,7 @@ also has `nasm-source` and `wayland-source` with their exact upstream archives.
 `coast-distfiles` installs the verified core sources under `/usr/src/coast/distfiles`;
 the fetch helper checks their hashes before copying them into a build checkout.
 Its toolchain, port and engine source packages remain below the RAMFS per-file
-limit. `coast-linux-uapi`, xorriso and mtools complete the native image prerequisites.
+limit. `coast-linux-uapi`, xorriso and mtools supply the headers and boot-assembly tools.
 Source recipes are available for NASM, xorriso, mtools and Limine.
 For a reviewed native NASM build, run `coast refresh`, `coast clone nasm`, then
 `makepkg --noconfirm` in `~/Builds/nasm`.

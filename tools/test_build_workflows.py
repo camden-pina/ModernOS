@@ -35,8 +35,8 @@ class HostSetupTests(unittest.TestCase):
         with patch.object(setup_host, 'check') as check, \
              patch.object(setup_host.subprocess, 'run') as run, \
              patch.object(setup_host.urllib.request, 'urlopen') as download:
-            self.invoke('--check', '--native')
-        check.assert_called_once_with(True)
+            self.invoke('--check')
+        check.assert_called_once_with()
         run.assert_not_called()
         download.assert_not_called()
 

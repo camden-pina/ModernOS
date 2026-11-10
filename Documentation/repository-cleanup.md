@@ -24,7 +24,7 @@ ownership and a SHA-256 inventory; its pinned lwIP source supports offline
 kernel builds. The README screenshot is a small PNG from an actual Coast VM.
 
 The GitHub workflow runs publication, source-fetch, assembly, package-trust,
-ACPICA/power, EFI and boot-config checks, then compiles the kernel/native image.
+ACPICA/power, EFI and boot-config checks, then compiles the kernel and boot components.
 See [contributing](../CONTRIBUTING.md) and [licenses](../LICENSES.md).
 
 ## Local build storage

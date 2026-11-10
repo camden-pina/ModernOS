@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real UEFI boots, SMP, graphics and reserved module backing.
 
-Build each ISO with make iso PROFILE=staged BOOTLOADER=<name> ISO_IMAGE=build/<name>.iso,
+Consume bootloader regression fixtures assembled by the internal build tools,
 then pass --limine/--grub/--refind. --bios also checks the Limine BIOS path.
 """
 import argparse

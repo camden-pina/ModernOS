@@ -85,7 +85,7 @@ repository's private signing key. No host administrator privileges are needed.
 Keep this terminal running while using the repository. In another terminal:
 
 ```sh
-make run ISO_IMAGE=build/Coast-codeoss.iso SMP=2
+make run
 ```
 
 The VM needs its usual user network (`-nic user,model=e1000e`). No disk is
@@ -382,6 +382,5 @@ no host package database, raw drive or system account is changed.
 The kernel and hostname identify as `Coast` and `coast`. Native preferences,
 account policy, SDK headers, shared files and port sources use `coast` paths.
 The base package is `coast-base`; the source helper is `coast-packages`.
-The current editor image is `build/Coast-codeoss.iso`, and its host repository
-is selected by `build/Coast-packages`. Previous qualified images and immutable
-upstream build receipts remain available for rollback and provenance.
+Build and boot Coast with `make iso` and `make run`. The host repository is
+selected by `build/Coast-packages`; component receipts record package provenance.

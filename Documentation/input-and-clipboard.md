@@ -8,13 +8,13 @@ permissions. See [accounts](accounts.md) and [desktop](desktop.md).
 
 ## Terminal and shells
 
-The wide image supplies source-built Bash/Readline. Pipelines, redirections,
+Coast supplies source-built Bash/Readline. Pipelines, redirections,
 command/process substitution and foreground/background jobs operate through
 the real PTY, process-group and signal interfaces. Ctrl+C interrupts the
 foreground job, Ctrl+Z stops a supported foreground job, and Bash provides
 `jobs`, `fg` and `bg`. Background jobs cannot take over another session's
-terminal. Console/native-only shell behavior is bounded by its implemented
-command interpreter; shell choice does not expand kernel authority.
+terminal. The console command interpreter implements its own bounded command
+set; shell choice does not expand kernel authority.
 
 Terminal supports scrollback, text selection, Ctrl+Shift+C copy and
 Ctrl+Shift+V or Shift+Insert paste. Large/multiline pastes require review of a

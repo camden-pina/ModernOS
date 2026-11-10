@@ -58,7 +58,7 @@ The existing commands are unchanged:
 
 ```sh
 make -j4
-make iso PROFILE=staged
+make iso
 make LLVM=1 O=build/clang -j4
 ```
 
@@ -135,7 +135,7 @@ that BSP preparation supports a runtime-first access without changing global
 page tables. The bus-hole fill value is not asserted. This SSDT is strictly for
 the disposable q35 test configuration, never physical hardware.
 
-`tools/test_acpica_negative.py --iso build/os.iso` separately checks that the
+`tools/test_acpica_negative.py --iso build/coast/image/Coast.iso` separately checks that the
 fixture is inert without the boot token, a missing fixture reports failure
 without losing the shell, and removing the AML mutex produces a detected lost
 update. It preserves the original fixture and source ISO; the deliberately

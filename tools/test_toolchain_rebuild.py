@@ -8,7 +8,7 @@ import shutil
 import time
 import uuid
 
-from test_runtime import VM, WORK, assert_success
+from test_runtime import VM, WORK, assert_success, default_iso
 
 
 def exercise(cpus, memory, iso=None, timeout=43200, label='rebuild',
@@ -22,9 +22,9 @@ def exercise(cpus, memory, iso=None, timeout=43200, label='rebuild',
         accel = accel or configuration.get('accel', 'tcg')
         cpu = cpu or configuration.get('cpu')
     else:
-        # Long builds must retain the exact ISO even if another test rebuilds
-        # build/os.iso. The checkpoint manifest checks its content on restore.
-        source = Path(iso or WORK.parent / 'os.iso').resolve()
+        # Long builds retain the exact ISO across later rebuilds. The
+        # checkpoint manifest checks its content on restore.
+        source = Path(iso).resolve() if iso else default_iso()
         iso = WORK / ('native-' + label + '-' + uuid.uuid4().hex[:8] + '.iso')
         shutil.copy2(source, iso)
 

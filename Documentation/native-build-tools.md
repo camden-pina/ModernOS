@@ -71,7 +71,7 @@ python3 -B tools/build_gcc.py --posix-threads \
 python3 -B tools/build_cmake.py --output-root build/cmake-threaded
 python3 -B tools/build_gn.py --output-root build/gn-threaded
 python3 -B tools/test_build_tools.py \
-  --iso build/Coast-browser.iso \
+  --iso build/coast/image/Coast.iso \
   --repository build/Coast-repository-server/repository.json \
   --gcc-build build/compiler-threaded/BUILD.json \
   --cmake-build build/cmake-threaded/BUILD.json \
@@ -133,7 +133,7 @@ real threads, futures, TLS destructors and exceptions.
 ```sh
 make glibc
 make gnu-cxx
-python3 -B tools/test_gnu_cxx.py --iso build/Coast-browser.iso \
+python3 -B tools/test_gnu_cxx.py --iso build/coast/image/Coast.iso \
   --repository build/Coast-repository-server/repository.json \
   --glibc-build build/glibc/BUILD.json --build build/gnu-cxx/BUILD.json \
   --libgcc-build build/gnu-libgcc/BUILD.json --output-root build/gnu-cxx-test

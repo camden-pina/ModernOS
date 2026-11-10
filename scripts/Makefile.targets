@@ -3,20 +3,23 @@ LOCAL_REPOSITORY_OUT ?= $(BUILD_DIR)/local-repository
 LOCAL_REPOSITORY_KEY ?= $(BUILD_DIR)/coast-signing-keys
 .PHONY: local-repository test-local-repository test-native-unix
 local-repository:
-	$(Q)python3 -B "$(srctree)/tools/build_local_repository.py" --output-root "$(LOCAL_REPOSITORY_OUT)" --signing-home "$(LOCAL_REPOSITORY_KEY)" --base-iso "$(BUILD_DIR)/Coast-base.iso" --ports "$(BUILD_DIR)/coast-receipts-r1/programs/BUILD.json" --arch-receipt "$(BUILD_DIR)/coast-receipts-r1/arch/BUILD.json" --support-receipt "$(BUILD_DIR)/coast-receipts-r1/support/BUILD.json" --qt-build "$(BUILD_DIR)/qt6/coast-r3/BUILD.json" --gcc-build "$(BUILD_DIR)/coast-gcc-r1/BUILD.json"
+	$(Q)python3 -B "$(srctree)/tools/build_local_repository.py" --output-root "$(LOCAL_REPOSITORY_OUT)" --signing-home "$(LOCAL_REPOSITORY_KEY)" --base-iso "$(ISO_IMAGE)" --ports "$(BUILD_DIR)/coast-receipts-r1/programs/BUILD.json" --arch-receipt "$(BUILD_DIR)/coast-receipts-r1/arch/BUILD.json" --support-receipt "$(BUILD_DIR)/coast-receipts-r1/support/BUILD.json" --qt-build "$(BUILD_DIR)/qt6/coast-r3/BUILD.json" --gcc-build "$(BUILD_DIR)/coast-gcc-r1/BUILD.json"
 test-local-repository:
-	$(Q)python3 -B "$(srctree)/tools/test_local_repository.py" --iso "$(BUILD_DIR)/Coast-codeoss.iso" --output-root "$(BUILD_DIR)/local-repository-test"
+	$(Q)python3 -B "$(srctree)/tools/test_local_repository.py" --iso "$(ISO_IMAGE)" --output-root "$(BUILD_DIR)/local-repository-test"
 test-native-unix:
-	$(Q)python3 -B "$(srctree)/tools/test_native_unix.py" --iso "$(BUILD_DIR)/Coast-codeoss.iso" --output-root "$(BUILD_DIR)/native-unix-test"
+	$(Q)python3 -B "$(srctree)/tools/test_native_unix.py" --iso "$(ISO_IMAGE)" --output-root "$(BUILD_DIR)/native-unix-test"
 OVMF ?= $(shell python3 "$(srctree)/tools/host_firmware.py")
 SMP ?= 4
-MEMORY ?= $(if $(filter full core,$(PROFILE)),16G,2G)
+MEMORY ?= 16G
 REBUILD_MEMORY ?= 8G
 REBUILD_CHECKPOINT ?= $(BUILD_DIR)/runtime-tests/native-rebuild.state
 QEMU_EXTRA_ARGS ?=
 # Use hardware virtualization when this host grants access; keep TCG available
 # for portable runs and explicit comparisons.
 QEMU_ACCEL ?= $(shell test -r /dev/kvm && test -w /dev/kvm && echo kvm || echo tcg)
+ifeq ($(QEMU_ACCEL),auto)
+override QEMU_ACCEL := $(shell test -r /dev/kvm && test -w /dev/kvm && echo kvm || echo tcg)
+endif
 QEMU_CPU ?= $(if $(filter kvm,$(QEMU_ACCEL)),host,max)
 # GTK without GL also works on hosts without accelerated display support.
 # VGA refresh_rate sets EDID metadata, not the frontend refresh timer.
@@ -28,14 +31,14 @@ endif
 ifneq ($(words $(FIRMWARE)),1)
 $(error FIRMWARE must select exactly one of bios or uefi)
 endif
-QEMU_FIRMWARE = $(if $(filter uefi,$(FIRMWARE)),-bios "$(OVMF)")
+QEMU_FIRMWARE = $(if $(filter uefi,$(FIRMWARE)),-bios $(call coast_quote,$(OVMF)))
 QEMU_SDL_DRIVER ?= $(if $(strip $(SDL_VIDEODRIVER)),$(SDL_VIDEODRIVER),$(if $(strip $(WAYLAND_DISPLAY)),wayland,))
 QEMU_GTK_BACKEND ?= $(GDK_BACKEND)
 QEMU_DISPLAY_ENV :=
 ifneq ($(filter sdl%,$(QEMU_DISPLAY)),)
-QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(QEMU_SDL_DRIVER),)
+QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(call coast_quote,$(QEMU_SDL_DRIVER)),)
 else ifneq ($(filter gtk%,$(QEMU_DISPLAY)),)
-QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_GTK_BACKEND)),GDK_BACKEND=$(QEMU_GTK_BACKEND),)
+QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_GTK_BACKEND)),GDK_BACKEND=$(call coast_quote,$(QEMU_GTK_BACKEND)),)
 endif
 QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,refresh_rate=120
 QEMU_NETWORK ?= -nic user,model=e1000e
@@ -46,19 +49,22 @@ SATA_DISK ?=
 # Keep QEMU's comma-separated options outside Make's $(if ...) arguments.
 QEMU_STORAGE :=
 ifneq ($(strip $(LINUX_DISK)),)
-QEMU_STORAGE += -drive "file=$(LINUX_DISK),format=raw,if=none,id=linuxdisk" -device nvme,drive=linuxdisk,serial=COAST-SOURCE
+QEMU_LINUX_DRIVE := file=$(LINUX_DISK),format=raw,if=none,id=linuxdisk
+QEMU_STORAGE += -drive $(call coast_quote,$(QEMU_LINUX_DRIVE)) -device nvme,drive=linuxdisk,serial=COAST-SOURCE
 endif
 ifneq ($(strip $(FAT_DISK)),)
-QEMU_STORAGE += -drive "file=$(FAT_DISK),format=raw,if=none,id=fatdisk" -device nvme,drive=fatdisk,serial=COAST-FAT
+QEMU_FAT_DRIVE := file=$(FAT_DISK),format=raw,if=none,id=fatdisk
+QEMU_STORAGE += -drive $(call coast_quote,$(QEMU_FAT_DRIVE)) -device nvme,drive=fatdisk,serial=COAST-FAT
 endif
 ifneq ($(strip $(SATA_DISK)),)
-QEMU_STORAGE += -drive "file=$(SATA_DISK),format=raw,if=none,id=satadisk" -device ide-hd,drive=satadisk,bus=ide.0
+QEMU_SATA_DRIVE := file=$(SATA_DISK),format=raw,if=none,id=satadisk
+QEMU_STORAGE += -drive $(call coast_quote,$(QEMU_SATA_DRIVE)) -device ide-hd,drive=satadisk,bus=ide.0
 endif
+QEMU_CONSOLE := stdio,id=console,logfile=$(BUILD_DIR)/serial.log,signal=off
 .PHONY: run test-chromium-browser
 CHROMIUM_BUILD ?= $(BUILD_DIR)/chromium-browser
-CHROMIUM_ISO ?= $(BUILD_DIR)/Coast-browser.iso
 test-chromium-browser:
-	python3 -B "$(srctree)/tools/test_chromium_browser.py" --iso "$(CHROMIUM_ISO)" --output-root "$(CHROMIUM_BUILD)-test" --accel "$(QEMU_ACCEL)" --cpus "$(SMP)"
+	python3 -B "$(srctree)/tools/test_chromium_browser.py" --iso "$(ISO_IMAGE)" --output-root "$(CHROMIUM_BUILD)-test" --accel "$(QEMU_ACCEL)" --cpus "$(SMP)"
 .PHONY: serve-packages
 REPOSITORY_BIND ?= 127.0.0.1
 REPOSITORY_PORT ?= 8765
@@ -71,22 +77,22 @@ REPOSITORY_EXPORT ?= $(BUILD_DIR)/coast-repository-server
 export-packages:
 	python3 -B "$(srctree)/tools/export_repository.py" --repository "$(BUILD_DIR)/Coast-packages/BUILD.json" --output-root "$(REPOSITORY_EXPORT)"
 run:
-	@test -f "$(ISO_IMAGE)" || { echo "ISO not found: $(ISO_IMAGE). Run make iso with the same PROFILE / ISO_BUILD / O= settings first." >&2; exit 1; }
+	@test -f $(call coast_quote,$(ISO_IMAGE)) || { printf '%s\n' $(call coast_quote,ISO not found: $(ISO_IMAGE). Run make iso first.) >&2; exit 1; }
 	@mkdir -p "$(BUILD_DIR)"
-	@echo "QEMU: accelerator=$(QEMU_ACCEL) cpu=$(QEMU_CPU) display=$(QEMU_DISPLAY) $(QEMU_DISPLAY_ENV)"
+	@printf '%s\n' $(call coast_quote,QEMU: accelerator=$(QEMU_ACCEL) cpu=$(QEMU_CPU) display=$(QEMU_DISPLAY))
 	@if [ "$(QEMU_ACCEL)" = tcg ]; then echo "QEMU: software CPU emulation; QEMU_ACCEL=kvm enables hardware virtualization on an accessible KVM host."; fi
-	env $(QEMU_DISPLAY_ENV) qemu-system-x86_64 -accel $(QEMU_ACCEL) -cpu $(QEMU_CPU) -M q35 -smp $(SMP) -m $(MEMORY) $(QEMU_FIRMWARE) -cdrom "$(ISO_IMAGE)" \
-		-chardev "stdio,id=console,logfile=$(BUILD_DIR)/serial.log,signal=off" -serial chardev:console \
-		-no-reboot -display $(QEMU_DISPLAY) $(QEMU_VIDEO) $(QEMU_NETWORK) $(QEMU_AUDIO) -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 $(QEMU_STORAGE) $(QEMU_EXTRA_ARGS)
+	env $(QEMU_DISPLAY_ENV) qemu-system-x86_64 -accel $(call coast_quote,$(QEMU_ACCEL)) -cpu $(call coast_quote,$(QEMU_CPU)) -M q35 -smp $(SMP) -m $(MEMORY) $(QEMU_FIRMWARE) -cdrom $(call coast_quote,$(ISO_IMAGE)) \
+		-chardev $(call coast_quote,$(QEMU_CONSOLE)) -serial chardev:console \
+		-no-reboot -display $(call coast_quote,$(QEMU_DISPLAY)) $(QEMU_VIDEO) $(QEMU_NETWORK) $(QEMU_AUDIO) -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 $(QEMU_STORAGE) $(QEMU_EXTRA_ARGS)
 
 # These developer checks consume the in-tree userland staging area.
-STAGED_TESTS := test test-pixel-blend test-configure-shell test-gcc-generators \
+USERLAND_TESTS := test test-pixel-blend test-configure-shell test-gcc-generators \
 	test-console-input test-checkpoint test-desktop test-native test-ports \
 	test-compiler test-dark test-wallpaper test-drag test-drag-native \
 	test-host-mouse test-mouse-live test-network test-javascriptcore test-threads \
 	test-toolchain-rebuild test-dynamic-linker test-dynamic-cpp test-doom
-$(STAGED_TESTS): override PROFILE=staged
-test: _iso-staged
+$(USERLAND_TESTS): ISO_IMAGE=$(TEST_ISO)
+test: _test-iso
 	python3 tools/test_kernel_memory.py
 	python3 tools/test_runtime.py
 	python3 tools/test_configure_shell.py --cpus 1
@@ -95,55 +101,55 @@ test: _iso-staged
 	python3 tools/test_console_input.py --cpus 4
 test-kernel-memory:
 	python3 tools/test_kernel_memory.py
-test-pixel-blend: _iso-staged
+test-pixel-blend: _test-iso
 	python3 tools/test_pixel_blend.py --cpus 1
 	python3 tools/test_pixel_blend.py --cpus 4
-test-configure-shell: _iso-staged
+test-configure-shell: _test-iso
 	python3 tools/test_configure_shell.py --cpus 1
 	python3 tools/test_configure_shell.py --cpus 4
-test-gcc-generators: _iso-staged
+test-gcc-generators: _test-iso
 	python3 tools/test_gcc_generators.py --cpus 4
-test-console-input: _iso-staged
+test-console-input: _test-iso
 	python3 tools/test_console_input.py --cpus 1
 	python3 tools/test_console_input.py --cpus 4
-test-checkpoint: _iso-staged
+test-checkpoint: _test-iso
 	python3 tools/test_vm_checkpoint.py
-test-desktop: _iso-staged
+test-desktop: _test-iso
 	python3 tools/test_desktop.py
-test-native: _iso-staged
+test-native: _test-iso
 	python3 tools/test_nano.py --cpus 1
 	python3 tools/test_nano.py --cpus 4 --storage --dark
-test-ports: _iso-staged
+test-ports: _test-iso
 	python3 tools/test_native_ports.py --cpus 1
 	python3 tools/test_native_ports.py --cpus 4 --storage --dark
-test-compiler: _iso-staged
+test-compiler: _test-iso
 	python3 tools/test_compiler.py --cpus 1
 	python3 tools/test_compiler.py --cpus 4 --storage
-test-dark: _iso-staged
+test-dark: _test-iso
 	python3 tools/test_dark_mode.py
-test-wallpaper: _iso-staged
+test-wallpaper: _test-iso
 	python3 tools/test_wallpaper.py
-test-drag: _iso-staged
+test-drag: _test-iso
 	python3 tools/test_gui_drag.py --cpus 1
-test-drag-native: _iso-staged
+test-drag-native: _test-iso
 	env $(QEMU_DISPLAY_ENV) python3 tools/test_gui_drag.py --cpus $(SMP) --accel kvm --display $(QEMU_DISPLAY) --trace-display
-test-host-mouse: _iso-staged
+test-host-mouse: _test-iso
 	env GDK_BACKEND=x11 python3 tools/test_host_mouse.py --cpus $(SMP)
-test-mouse-live: _iso-staged
+test-mouse-live: _test-iso
 	env $(QEMU_DISPLAY_ENV) python3 -u tools/diagnose_mouse.py --cpus $(SMP) --display $(QEMU_DISPLAY)
-test-network: _iso-staged
+test-network: _test-iso
 	python3 -u tools/test_network.py --cpus 4
 .PHONY: javascriptcore test-javascriptcore test-threads test-browser
 javascriptcore:
 	$(MAKE) -C $(srctree)/userland bin/jsc
 test-javascriptcore: javascriptcore
-	$(MAKE) iso PROFILE=staged
+	$(MAKE) _test-iso ISO_IMAGE="$(ISO_IMAGE)"
 	python3 -u tools/test_javascriptcore.py --cpus 1 4
-test-threads: _iso-staged
+test-threads: _test-iso
 	python3 -u tools/test_threads.py --cpus 1 4
 # Chromium is the desktop browser. Standalone JSC remains for the text-core SDK.
 test-browser: test-chromium-browser
-test-toolchain-rebuild: _iso-staged
+test-toolchain-rebuild: _test-iso
 	python3 -u tools/test_toolchain_rebuild.py --cpus $(SMP) --memory $(REBUILD_MEMORY)
 test-rebuilt-toolchain:
 	python3 -u tools/test_rebuilt_toolchain.py "$(REBUILD_CHECKPOINT)"

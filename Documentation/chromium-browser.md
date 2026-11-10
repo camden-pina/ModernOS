@@ -84,7 +84,7 @@ history, tabs, fullscreen, TLS certificate rejection, exact downloads and
 helper cleanup. Reports bind results to the selected ISO hash:
 
 ```sh
-python3 -B tools/test_chromium_browser.py --iso build/desktop-source-wide/image/Coast-desktop.iso --output-root build/browser-check
+python3 -B tools/test_chromium_browser.py --iso build/coast/image/Coast.iso --output-root build/browser-check
 ```
 
 The complete build, source provenance, library closure and qualification

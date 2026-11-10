@@ -76,7 +76,7 @@ From the checkout containing these files:
 
 ```sh
 python3 -B tools/test_power_devices_host.py
-python3 -B tools/test_power_devices.py --iso /FINAL/full.iso \
+python3 -B tools/test_power_devices.py --iso /FINAL/Coast.iso \
   --kernel /FINAL/kernel.elf --shell /FINAL/coast-sh --gui /FINAL/gui \
   --kind poweroff
 ```

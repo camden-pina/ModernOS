@@ -63,6 +63,23 @@ test-runtime-fixture:
 .DELETE_ON_ERROR:
 
 srctree := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+# Local configuration is parsed as data; generated includes contain literals.
+coast_quote = '$(subst ','"'"',$(1))'
+CONFIG ?= $(srctree)/.config
+coast_config_goals := menuconfig config defconfig
+ifneq ($(filter $(coast_config_goals),$(MAKECMDGOALS)),)
+ifneq ($(filter-out $(coast_config_goals),$(MAKECMDGOALS)),)
+$(error Run configuration and build targets as separate make commands)
+endif
+else
+coast_config_include := $(shell python3 -B $(call coast_quote,$(srctree)/tools/build_config.py) emit-make --config $(call coast_quote,$(CONFIG)))
+ifneq ($(.SHELLSTATUS),0)
+$(error Cannot load $(CONFIG); fix the configuration or run make menuconfig)
+endif
+ifneq ($(strip $(coast_config_include)),)
+include $(coast_config_include)
+endif
+endif
 ARCH ?= x86
 ifneq ($(filter $(ARCH),x86 x86_64),$(ARCH))
 $(error Unsupported ARCH=$(ARCH); this kernel supports x86-64 only (ARCH=x86))
@@ -372,19 +389,26 @@ export KBUILD_CPPFLAGS KBUILD_CFLAGS KBUILD_AFLAGS KBUILD_LDFLAGS LWIP_ROOT
 
 KERNEL_IMAGE := $(objtree)/vmlinux
 TARGET_KERNEL := $(KERNEL_IMAGE)
-# One public ISO command; smaller and development images are explicit profiles.
-PROFILE ?= full
-ifneq ($(words $(PROFILE)),1)
-$(error PROFILE must select exactly one of full, core, native, or staged)
-endif
-ifeq ($(filter full core native staged,$(PROFILE)),)
-$(error Unsupported PROFILE=$(PROFILE); choose full, core, native, or staged)
-endif
+# The release always contains the complete OS and its application integrations.
 JOBS ?= 4
-ISO_BUILD ?= $(if $(filter native,$(PROFILE)),$(BUILD_DIR)/native-image,$(if $(filter core,$(PROFILE)),$(BUILD_DIR)/desktop-source,$(BUILD_DIR)/desktop-source-wide))
-ISO_IMAGE ?= $(if $(filter staged,$(PROFILE)),$(objtree)/os.iso,$(if $(filter native,$(PROFILE)),$(ISO_BUILD)/Coast-native.iso,$(ISO_BUILD)/image/Coast-desktop.iso))
+ISO_BUILD ?= $(BUILD_DIR)/coast
+ISO_IMAGE ?= $(ISO_BUILD)/image/Coast.iso
 ISO_ARGS ?=
-REPACK ?= 0
+DIAGNOSTICS ?= 0
+QUALIFY ?= 0
+WITH_MICROSOFT_AUTH ?= 0
+ELECTRON_CHECKOUT ?=
+RUNTIME_BUILD ?=
+COMPONENTS ?=
+PACKAGE_CONFIG ?=
+COAST_BUILD_OPTIONS = $(if $(filter 1,$(DIAGNOSTICS)),--diagnostics) \
+	$(if $(filter 1,$(QUALIFY)),--qualify) \
+	$(if $(filter 1,$(WITH_MICROSOFT_AUTH)),--with-microsoft-auth) \
+	$(if $(ELECTRON_CHECKOUT),--electron-checkout $(call coast_quote,$(ELECTRON_CHECKOUT))) \
+	$(if $(RUNTIME_BUILD),--runtime-build $(call coast_quote,$(RUNTIME_BUILD))) \
+	$(if $(COMPONENTS),--components $(call coast_quote,$(COMPONENTS))) \
+	$(if $(PACKAGE_CONFIG),--repository-config $(call coast_quote,$(PACKAGE_CONFIG)))
+TEST_ISO := $(BUILD_DIR)/test-fixtures/os.iso
 ISO_ROOT := $(objtree)/iso_root
 INITRAMFS := $(objtree)/initramfs.tar
 # Guest checks without an explicit --iso must boot the selected O= image.
@@ -409,7 +433,7 @@ include $(srctree)/arch/x86/boot/efi/Makefile
 include $(srctree)/scripts/bootloaders/$(BOOTLOADER).mk
 AUDIO_FIRMWARE ?= $(wildcard /lib/firmware/aw88399_acf.bin)
 
-.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso _iso-staged _iso-image clean \
+.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso _test-iso _test-image clean \
 	userland-clean help test-boot-config FORCE
 all: vmlinux
 kernel vmlinux: $(KERNEL_IMAGE)
@@ -435,7 +459,7 @@ $(LWIP_ROOT)/.prepared: $(srctree)/tools/prepare_lwip.py $(srctree)/userland/ven
 $(srctree)/userland/vendor/lwip-2.2.1.tar.gz:
 	$(Q)python3 "$(srctree)/tools/fetch_sources.py" lwip-2.2.1.tar.gz
 
-.PHONY: fetch-sources check-sources test-source-fetch browser-host test-browser-build test-source-tree test-desktop-assembly source-check source-archive desktop-kernel nasm limine
+.PHONY: fetch-sources check-sources test-source-fetch browser-host test-browser-build test-source-tree test-desktop-assembly test-build-config source-check source-archive desktop-kernel nasm limine
 fetch-sources:
 	$(Q)python3 "$(srctree)/tools/fetch_sources.py"
 check-sources:
@@ -449,6 +473,8 @@ test-source-tree:
 	$(Q)python3 -B "$(srctree)/tools/test_source_tree.py"
 test-desktop-assembly:
 	$(Q)python3 -B "$(srctree)/tools/test_desktop_assembly.py"
+test-build-config:
+	$(Q)python3 -B "$(srctree)/tools/test_build_config.py"
 
 # Publish only sources; keep all archives and generated tools under build/.
 source-check:
@@ -461,19 +487,18 @@ nasm:
 	$(Q)python3 -B "$(srctree)/tools/build_assembler.py"
 limine:
 	$(Q)python3 -B "$(srctree)/tools/build_limine.py"
-.PHONY: setup-host image-tools
+.PHONY: setup-host image-tools menuconfig config defconfig
 HOST_ARGS ?=
+menuconfig:
+	$(Q)python3 -B $(call coast_quote,$(srctree)/tools/build_config.py) menu --config $(call coast_quote,$(CONFIG))
+config:
+	$(Q)python3 -B $(call coast_quote,$(srctree)/tools/build_config.py) text --config $(call coast_quote,$(CONFIG))
+defconfig:
+	$(Q)python3 -B $(call coast_quote,$(srctree)/tools/build_config.py) defaults --config $(call coast_quote,$(CONFIG))
 setup-host:
-	$(Q)python3 -B "$(srctree)/tools/setup_host.py" --install $(if $(filter native,$(PROFILE)),--native) $(HOST_ARGS)
-ifeq ($(PROFILE),staged)
-iso: _iso-staged
-else ifeq ($(PROFILE),native)
+	$(Q)python3 -B "$(srctree)/tools/setup_host.py" --install $(HOST_ARGS)
 iso:
-	$(Q)python3 -B "$(srctree)/tools/build_native_iso.py" --output-root "$(ISO_BUILD)" --jobs "$(JOBS)" $(ISO_ARGS)
-else
-iso:
-	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root "$(ISO_BUILD)" --jobs "$(JOBS)" $(if $(filter full,$(PROFILE)),--with-integrations) $(ISO_ARGS)
-endif
+	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root $(call coast_quote,$(ISO_BUILD)) --jobs $(call coast_quote,$(JOBS)) $(COAST_BUILD_OPTIONS) $(ISO_ARGS)
 image-tools:
 	$(Q)python3 -B "$(srctree)/tools/build_image_tools.py"
 
@@ -501,13 +526,14 @@ initramfs: userland
 		--wallpapers $(srctree)/userland/desktop/assets/wallpapers \
 		$(if $(AUDIO_FIRMWARE),--audio-firmware "$(AUDIO_FIRMWARE)")
 
-_iso-staged: override PROFILE=staged
-_iso-staged: vmlinux $(if $(filter 1,$(REPACK)),,initramfs) $(BOOTLOADER_DEPS)
-	$(Q)$(MAKE) --no-print-directory _iso-image PROFILE=staged
+_test-iso: ISO_IMAGE=$(TEST_ISO)
+_test-iso: vmlinux initramfs $(BOOTLOADER_DEPS)
+	@mkdir -p "$(dir $(ISO_IMAGE))"
+	$(Q)$(MAKE) --no-print-directory _test-image ISO_IMAGE="$(ISO_IMAGE)"
 
-# Package existing userland without rebuilding the large shared port caches.
-_iso-image: override PROFILE=staged
-_iso-image: vmlinux $(BOOTLOADER_DEPS) $(BOOT_CONFIG) $(BOOT_TEMPLATE)
+# Internal fixture assembly for in-tree kernel/userland regression checks.
+_test-image: ISO_IMAGE=$(TEST_ISO)
+_test-image: vmlinux $(BOOTLOADER_DEPS) $(BOOT_CONFIG) $(BOOT_TEMPLATE)
 	$(Q)python3 "$(srctree)/tools/build_boot_iso.py" --bootloader "$(BOOTLOADER)" \
 		--config "$(BOOT_CONFIG)" --kernel "$(KERNEL_IMAGE)" --initramfs "$(INITRAMFS)" \
 		--template "$(BOOT_TEMPLATE)" \
@@ -525,22 +551,26 @@ include $(srctree)/scripts/Makefile.targets
 
 clean: efi-clean
 	$(Q)$(MAKE) --no-print-directory -f $(srctree)/scripts/Makefile.clean obj=.
-	$(Q)rm -f $(KERNEL_IMAGE) $(KERNEL_IMAGE).cmd $(INITRAMFS) $(ISO_IMAGE)
-	$(Q)rm -rf $(ISO_ROOT)
+	$(Q)rm -f -- $(call coast_quote,$(KERNEL_IMAGE)) $(call coast_quote,$(KERNEL_IMAGE).cmd) $(call coast_quote,$(INITRAMFS)) $(call coast_quote,$(ISO_IMAGE))
+	$(Q)rm -rf -- $(call coast_quote,$(ISO_ROOT))
 userland-clean:
 	$(Q)$(MAKE) -C $(srctree)/userland clean
 
 help:
 	@printf '%s\n' \
 		'  make setup-host            Install Ubuntu/Debian host prerequisites' \
+		'  make menuconfig            Configure build and VM settings; save .config' \
 		'  make iso                   Build the complete Coast desktop and integrations' \
 		'  make run                   Boot that ISO in QEMU without rebuilding' \
 		'' \
-		'  Build options: PROFILE=full|core|native|staged JOBS=4 ISO_BUILD=path' \
-		'                 ISO_ARGS="--plan" (full/core; print the build plan)' \
+		'  Build options: JOBS=4 ISO_BUILD=path O=path ISO_ARGS="--plan"' \
+		'                 DIAGNOSTICS=0|1 QUALIFY=0|1 WITH_MICROSOFT_AUTH=0|1' \
 		'  Run options:   MEMORY=16G SMP=4 QEMU_ACCEL=kvm|tcg QEMU_DISPLAY=gtk,gl=off' \
 		'                 ISO_IMAGE=path FIRMWARE=bios|uefi QEMU_EXTRA_ARGS="..."' \
-		'  Use the same PROFILE / ISO_BUILD / O= values for iso and run.' \
+		'  Use the same ISO_BUILD / O= values for iso and run.' \
+		'  Saved .config loads automatically; CONFIG=path selects another file.' \
+		'  Command-line NAME=value settings override the saved configuration.' \
+		'  make config / defconfig    Text questionnaire / save default settings' \
 		'  make -n run                Print the QEMU command without launching' \
 		'' \
 		'  make [-jN]                 Build only the kernel (build/vmlinux)' \

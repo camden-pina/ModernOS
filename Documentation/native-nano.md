@@ -48,12 +48,11 @@ console input automatically.
 
 ## Offline build and sources
 
-Run `make iso PROFILE=staged`. The normal userland build invokes `tools/build_nano.py`, which
+For component development, `python3 -B tools/build_nano.py`
 verifies the bundled archives against pinned SHA-256 hashes, builds musl and
 ncurses, and links the upstream nano executable. A stamp caches successful
 builds and is invalidated when the script, source hashes or build root change.
-Build logs are under `build/vendor/`; output is `userland/bin/nano`, included
-as `/bin/nano` in `build/os.iso`.
+Build logs are under `build/vendor/`; output is `userland/bin/nano`.
 
 This requires a host x86-64 GCC/binutils, make, Python 3.12+, and ncurses host
 tools `tic`/`infocmp`. Those host tools build the fallback terminal descriptions;
@@ -86,7 +85,6 @@ After this build, small additional native ports can use:
 ```sh
 build/native-musl/bin/musl-gcc -O2 -static -no-pie \
   -fno-stack-protector -mno-avx -mno-avx2 program.c -o userland/bin/program
-make iso PROFILE=staged
 ```
 
 Compile static ET_EXEC images and validate every OS dependency. Nano's success

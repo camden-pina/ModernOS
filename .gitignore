@@ -58,6 +58,10 @@ CTestTestfile.cmake
 /userland/vendor/.*.part
 
 # Local build metadata and interrupted downloads.
+/.config
+/.config.old
+/*.config
+/*.config.old
 __pycache__/
 *.py[cod]
 .pytest_cache/

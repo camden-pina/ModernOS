@@ -4,86 +4,108 @@ Repository: https://github.com/camden-pina/ModernOS.git.
 See [host setup](host-setup.md) for prerequisites. After setup:
 
 ```sh
+make menuconfig
 make iso
 make run
 ```
 
-`make iso` builds the complete Coast desktop from pinned sources: kernel,
-native desktop/accounts, Chromium, Code OSS, GCC/G++, Bash, Python,
-Coast Packages/makepkg, Qt, QEMU and its Chromium VM viewer. It resumes verified
-completed stages. `make run` boots the corresponding existing ISO in QEMU;
-run `make iso` again when you want to rebuild it. Enter `gui` at the guest console.
+`make iso` builds Coast: the kernel, desktop/accounts, Chromium, Code OSS,
+GCC/G++, Bash, Python, Coast Packages/makepkg, Qt, QEMU and its Chromium VM
+viewer. Every integration is part of the build. The output is
+`build/coast/image/Coast.iso`.
+
+The build resumes verified completed stages. `make run` boots the existing ISO
+in QEMU. Run `make iso` again after source changes, then enter `gui` at the guest
+console to open the desktop.
+
+## Terminal configuration
+
+`make menuconfig` opens the terminal wizard with the saved `.config`, or defaults
+on the first run. It groups build resources, verification/features, source reuse,
+package trust, VM resources, display/firmware, networking, audio, disks and extra
+arguments. Every OS component stays included.
+
+Use arrow keys to move, Enter to edit, Space to toggle/cycle and Tab to move
+between groups. `?` shows help and `/` searches option names, labels and help.
+`S` or F2 saves, `L` or F3 loads another file, `D` restores defaults and `Q` exits.
+Text fields support Ctrl+U to clear and Esc to cancel. Exiting with unsaved
+changes offers save, discard or cancel. Save and exit before starting the build.
+
+Make automatically reads `.config` on later invocations. Reopening the wizard
+reloads it. Select a named settings file consistently with:
+
+```sh
+make menuconfig CONFIG=workstation.config
+make iso CONFIG=workstation.config
+make run CONFIG=workstation.config
+```
+
+Command-line assignments override saved settings for that invocation, such as
+`make iso JOBS=2` or `make run MEMORY=24G`. They do not modify the saved file.
+Without a saved configuration, the normal defaults apply.
+
+`make config` provides a plain terminal questionnaire: Enter keeps a value,
+`?` shows help, `-` clears a field and `q` cancels. `make defconfig` writes the
+defaults without interaction; it also accepts `CONFIG=path`. Saving changed
+settings preserves the previous file as `<filename>.old`.
+
+The file uses validated TOML, with sections matching the wizard's groups.
+Missing options receive defaults; empty optional paths select automatic values.
+Build directories use simple paths without spaces, as checked by the wizard for
+the component tools. The default `.config`, root `*.config` files and backups
+stay out of Git. Inspection without editing is available with
+`python3 -B tools/build_config.py show --config .config`.
 
 ## Build arguments
 
-Pass options as `NAME=value` after the command. These examples are alternatives:
+Pass optional settings as `NAME=value` after the command:
 
 ```sh
 make iso JOBS=2
-make iso PROFILE=native
-make iso PROFILE=core
-make iso ISO_BUILD=build/my-desktop
-make iso ISO_ARGS=--plan
 ```
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
-| `PROFILE` | `full` | `full` builds the complete desktop. `core` builds Chromium/Code OSS, native GCC/G++, Bash and package tools, omitting the Python/makepkg/Qt/QEMU integrations. `native` builds the small native desktop without Electron. `staged` packages the development userland staging area described below. |
-| `JOBS` | `4` | Parallelism for the source pipeline, including nested component builds; use 1–24 for full/core. Use this instead of `make -jN` to control pipeline workers. |
-| `ISO_BUILD` | Profile dependent; see below | Directory for the source pipeline's receipts, logs and image. Use a new directory when changing inputs or diagnostics. Applies to full/core/native. |
-| `ISO_ARGS` | Empty | Additional arguments to the selected full/core or native Python builder, listed below. |
+| `JOBS` | `4` | Component build parallelism, from 1 to 24. Use this to control pipeline workers. |
+| `ISO_BUILD` | `build/coast` | Build directory for receipts, logs and `image/Coast.iso`. Use a fresh directory when changing recorded build inputs or diagnostics. |
+| `ISO_ARGS` | Empty | Additional builder arguments, listed below. |
+| `DIAGNOSTICS` | `0` | Set to `1` to include Code OSS diagnostics. |
+| `QUALIFY` | `0` | Set to `1` to enable diagnostics and all guest qualification suites after building. |
+| `WITH_MICROSOFT_AUTH` | `0` | Set to `1` to include upstream proprietary Microsoft sign-in helpers. |
+| `ELECTRON_CHECKOUT` | Automatic | Verified source checkout to reuse read-only. |
+| `RUNTIME_BUILD` | Automatic | Matching verified Electron/Node receipt; requires `ELECTRON_CHECKOUT`. |
+| `COMPONENTS` | Empty | JSON map of verified component receipts. |
+| `PACKAGE_CONFIG` | Empty | Public package repository trust JSON to embed. |
 | `O` | `build` | Kernel output directory and parent of the default `ISO_BUILD`. Shared downloads and some toolchains still use the repository's `build/`. `KBUILD_OUTPUT` is the equivalent environment variable; `O` takes precedence. |
-| `SOURCE_MIRRORS` | Empty | Space-separated HTTPS mirrors tried before the base source manifest's upstream URLs, with the same checksum verification. Individual ports also use their own pinned manifests. |
+| `SOURCE_MIRRORS` | Empty | Space-separated HTTPS mirrors tried before the base source manifest's upstream URLs, with the same checksum checks. Individual ports also use their own pinned manifests. |
 
-| Profile | Default ISO |
-| --- | --- |
-| `full` | `build/desktop-source-wide/image/Coast-desktop.iso` |
-| `core` | `build/desktop-source/image/Coast-desktop.iso` |
-| `native` | `build/native-image/Coast-native.iso` |
-| `staged` | `build/os.iso` |
+Keep the same `ISO_BUILD` and `O` values for `make iso` and `make run`.
 
-For full/core, the image is `ISO_BUILD/image/Coast-desktop.iso`; for native it is
-`ISO_BUILD/Coast-native.iso`. Keep the same `PROFILE`, `ISO_BUILD` and `O` values
-when running the image:
-
-```sh
-make iso PROFILE=native JOBS=2
-make run PROFILE=native
-```
-
-Full/core `ISO_ARGS` options:
-
-| Option | Meaning |
+| `ISO_ARGS` option | Meaning |
 | --- | --- |
 | `--plan` | Print every planned stage as JSON without downloading or building. |
-| `--qualify` | Include editor diagnostics and run the profile's guest qualification suites after building; requires the extra host test dependencies in [host setup](host-setup.md). |
+| `--qualify` | Include editor diagnostics and run all guest qualification suites after building; requires the extra test dependencies in [host setup](host-setup.md). |
 | `--diagnostics` | Include opt-in Code OSS diagnostics without running qualification. |
 | `--electron-checkout PATH` | Reuse a verified Electron source checkout read-only. |
 | `--runtime-build PATH` | Reuse a verified, matching Electron/Node receipt; also requires `--electron-checkout`. |
 | `--components PATH` | JSON map of component names to verified source-build receipts; see [source builds](source-builds.md). |
-| `--repository-config PATH` | Explicit public package repository trust configuration; requires `PROFILE=full`. |
+| `--repository-config PATH` | Embed an explicit public package repository trust configuration. |
 | `--with-microsoft-auth` | Include upstream proprietary Microsoft sign-in helpers. |
 | `--help` | Show the builder's complete option help without building. |
 
-For example, `make iso ISO_BUILD=build/desktop-qa ISO_ARGS=--qualify` builds and
-qualifies the full image. Quote multiple options as
-`ISO_ARGS='--diagnostics --with-microsoft-auth'`. Full already enables
-`--with-integrations`; this argument is unnecessary on the default command.
-The native builder accepts `--kernel PATH` to reuse a kernel from this checkout,
-and `--help`. `ISO_ARGS=--plan` applies only to full/core; use
-`make -n iso PROFILE=native` to print the native command without executing it.
+For example, `make iso ISO_ARGS=--plan` prints the plan, and
+`make iso ISO_BUILD=build/qa ISO_ARGS=--qualify` builds Coast with qualification.
+Quote multiple arguments as `ISO_ARGS='--diagnostics --with-microsoft-auth'`.
 
 ## Run arguments
 
-The default VM uses BIOS, USB keyboard/mouse, e1000e user networking, four CPUs
-and 16 GiB RAM. Native/staged default to 2 GiB. KVM is selected when `/dev/kvm`
-is accessible; otherwise QEMU uses software emulation. An explicit `ISO_IMAGE`
-selects an existing image to boot; it does not rename full/core/native build outputs.
+The VM uses BIOS, USB keyboard/mouse, e1000e user networking, four CPUs and
+16 GiB RAM. KVM is selected when `/dev/kvm` is accessible; otherwise QEMU uses
+software emulation.
 
 ```sh
 make run MEMORY=24G SMP=4
 make run QEMU_ACCEL=kvm
-make run ISO_IMAGE=build/my-desktop/image/Coast-desktop.iso
 make run FIRMWARE=uefi OVMF=/path/to/OVMF.fd
 make -n run
 ```
@@ -92,9 +114,9 @@ make -n run
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
-| `PROFILE`, `ISO_BUILD`, `O` | Same as the build | Select the profile's image and resource defaults. |
-| `ISO_IMAGE` | Profile's ISO path | Override the image to boot. |
-| `MEMORY` | `16G` for full/core; `2G` for native/staged | Guest RAM, in QEMU size syntax. |
+| `ISO_BUILD`, `O` | Same as the build | Locate the built Coast ISO. |
+| `ISO_IMAGE` | `build/coast/image/Coast.iso` | Explicit path to the Coast ISO to boot. This launch setting does not rename the build output. |
+| `MEMORY` | `16G` | Guest RAM, in QEMU size syntax. |
 | `SMP` | `4` | Guest CPU count. |
 | `QEMU_ACCEL` | `kvm` when accessible, otherwise `tcg` | Accelerator; explicit KVM fails if unavailable. |
 | `QEMU_CPU` | `host` with KVM, otherwise `max` | QEMU CPU model. |
@@ -117,61 +139,34 @@ specified images with write access; use disposable images for testing.
 
 | Command | Optional arguments / behavior |
 | --- | --- |
-| `make setup-host` | Explicitly install Ubuntu/Debian prerequisites. `PROFILE=native` selects the smaller prerequisite set. `HOST_ARGS` forwards helper arguments; use `HOST_ARGS=--help` for its options. For inspection without installation, run `python3 -B tools/setup_host.py --print` or `--check` directly; both accept `--native`. |
+| `make setup-host` | Explicitly install Ubuntu/Debian prerequisites. `HOST_ARGS` forwards helper arguments; use `HOST_ARGS=--help` for its options. For inspection without installation, run `python3 -B tools/setup_host.py --print` or `--check` directly. |
 | `make fetch-sources` | Download and verify the base pinned source archives; accepts `SOURCE_MIRRORS`. Component builders fetch their own sources as needed. |
 | `make check-sources` | Verify cached base sources without downloading. |
 | `make source-check` | Audit publication inputs for generated binaries, downloads and secrets. |
 | `make source-archive` | Export `O/coast-source.tar.xz`, including the source inventory and lwIP for an offline kernel build. |
-| `make clean` | Clean the selected kernel output, initramfs, ISO file and staging directory. It does not remove the source pipeline's component caches. Use the same profile/output arguments as the build. |
-| `make userland-clean` | Remove shared generated `userland/bin`, `obj` and `runtime`. |
+| `make clean` | Clean the kernel output, initramfs, ISO file and staging directory. Component caches remain available. Use the same output arguments as the build. |
+| `make userland-clean` | Remove generated `userland/bin`, `obj` and `runtime`. |
 | `make help` | Show the short command reference. |
+| `make test-build-config` | Check saved settings, Make overrides and argument handling without a source build or VM. |
 
 The cache cleaner previews removals with `python3 -B tools/clean_cache.py`;
 `--apply` performs them. See [cache cleanup](repository-cleanup.md) for its
-protection rules and options. Component-specific development commands remain
-in their [source-build](source-builds.md), [Qt](qt6.md), [QEMU](qemu.md),
-[program-port](program-ports.md) and other port guides; use each tool's `--help`
+protection rules and options.
+
+## Component development
+
+`make` alone builds the kernel at `O/vmlinux` using Coast's Kbuild-style system.
+`make -j4` sets kernel compiler parallelism, `V=1` prints compiler commands,
+`CROSS_COMPILE=prefix-` chooses a GCC cross compiler and `LLVM=1` selects
+Clang/LLVM. `make desktop-kernel` builds the kernel ABI settings from
+`ports/chromium/kernel-flags.json`. The OS pipeline uses each component's
+recorded toolchain. Kernel/userland regression checks manage their own fixtures.
+
+Component-specific recipes are described in [source builds](source-builds.md),
+[Qt](qt6.md), [QEMU](qemu.md) and the other port guides. Use each tool's `--help`
 for its complete argument list.
 
-## Kernel and staged userland development
-
-`make` alone builds only the kernel at `O/vmlinux` using Coast's Kbuild-style
-system. `make -j4` sets kernel compiler parallelism, `V=1` prints compiler
-commands, `CROSS_COMPILE=prefix-` chooses a GCC cross compiler and `LLVM=1`
-selects Clang/LLVM. `make desktop-kernel` builds the Chromium ABI feature profile
-from `ports/chromium/kernel-flags.json`. These settings apply to the kernel and
-staged workflows; source-pipeline components use their own recorded toolchains.
-
-For development ports that install files into `userland/bin` and
-`userland/runtime`, package that staging area with:
-
-```sh
-make iso PROFILE=staged
-make run PROFILE=staged
-```
-
-The staged profile builds the in-tree kernel/userland and initramfs. It supports
-these additional arguments:
-
-| Argument | Meaning |
-| --- | --- |
-| `REPACK=1` | Reuse the existing initramfs instead of rebuilding userland/initramfs. |
-| `ISO_IMAGE` | Output ISO filename, default `O/os.iso`. |
-| `BOOTLOADER` | `limine` (default, BIOS/UEFI), `grub` (UEFI), or `refind` (UEFI). GRUB/rEFInd require their host tooling. |
-| `BOOT_CONFIG` | Shared TOML boot policy, default `arch/x86/boot/boot.conf`. |
-| `BOOT_TEMPLATE` | Native loader template, defaulting to the selected loader's template in `scripts/bootloaders/`. |
-| `BOOT_MODULES`, `BOOT_ASSETS` | Space-separated `GUEST_PATH=HOST_PATH` file mappings for the loader. |
-| `LIMINE_BUILD`, `LIMINE_DIR` | Limine source output root and bootloader binary directory; defaults under `build/limine-source`. |
-| `AUDIO_FIRMWARE` | Optional AW88399 firmware blob; default `/lib/firmware/aw88399_acf.bin` when present. |
-| `XORRISO`, `MFORMAT`, `MCOPY` | Host ISO/FAT tool commands. |
-
-For example, `make iso PROFILE=staged BOOTLOADER=grub ISO_IMAGE=build/coast-grub.iso`
-selects GRUB. Boot that image with `make run PROFILE=staged
-ISO_IMAGE=build/coast-grub.iso FIRMWARE=uefi`. Bootloader overrides apply to
-staged builds; full/core/native use their source-built Limine recipe.
-Existing in-tree guest test targets select staged assembly automatically.
-
 See [source builds](source-builds.md) for receipts, package coverage and remaining
-prebuilt inputs. The qualified full desktop uses verified source-built
-Electron/Node components; an empty full Electron graph build has not yet been
-verified end to end.
+prebuilt inputs. The qualified desktop uses verified source-built Electron/Node
+components; an empty full Electron graph build has not yet been verified end
+to end.

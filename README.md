@@ -16,6 +16,7 @@ Use an **x86-64 Linux host with Git and Python 3.12+**. On Ubuntu 24.04, run:
 git clone https://github.com/camden-pina/ModernOS.git coast
 cd coast
 python3 -B tools/setup_host.py --install
+make menuconfig
 make iso
 make run
 ```
@@ -26,8 +27,8 @@ user. The build fetches pinned upstream sources and uses rootless Podman and
 Bubblewrap. [Host setup](Documentation/host-setup.md) covers other distributions,
 required namespaces and inspecting the setup commands before installation.
 
-The ISO is **`build/desktop-source-wide/image/Coast-desktop.iso`**. Rerun the
-same build command to resume completed stages. Electron/Chromium is a large
+The ISO is **`build/coast/image/Coast.iso`**. Rerun `make iso` to resume
+completed stages. Electron/Chromium is a large
 source build: reserve more than 100 GB for it plus space for the other build
 trees. The desktop VM uses 16 GiB RAM. QEMU uses KVM when available and falls
 back to slower software emulation.
@@ -35,8 +36,12 @@ back to slower software emulation.
 `make iso` builds the complete desktop: the kernel, native desktop and account
 tools, Chromium, Code OSS, GCC/G++, Python, Coast Packages/makepkg, Qt Widgets,
 QEMU and the Chromium VM viewer. `make run` boots that ISO without rebuilding.
-[Optional arguments](Documentation/build-system.md) cover smaller profiles,
-build parallelism, output directories, VM settings and developer workflows.
+[Optional arguments](Documentation/build-system.md) cover build parallelism,
+output directories, VM settings and developer workflows.
+
+The terminal wizard saves build and VM choices in `.config`. Reopen it with
+`make menuconfig`; later Make commands load the saved settings automatically.
+`make iso` also works with defaults before a configuration is saved.
 
 For GitHub Download ZIP, extract it and run `git init` in the extracted folder
 before building. A Coast source archive already includes its source inventory.
@@ -51,7 +56,7 @@ in Settings → Profiles before using sudo.
 Coast uses **RAM-backed live storage**. Copy work to a supported writable mount
 before shutdown to keep files, passwords and configuration.
 
-The full image builds source recipes with makepkg/fakeroot. To download signed
+Coast builds source recipes with makepkg/fakeroot. To download signed
 packages, obtain a server URL, public key and independently verified full
 fingerprint from your repository operator, then run inside Coast:
 
@@ -76,9 +81,9 @@ make source-check test-source-tree test-source-fetch test-desktop-assembly
 python3 -B tools/test_package_configuration.py
 ```
 
-The full desktop has passed all 11 guest qualification phases, including real
+The integrated desktop has passed all 11 guest qualification phases, including real
 package transactions, Qt input/clipboard and nested QEMU through Chromium/noVNC.
-Native source-export builds pass UEFI/BIOS boot checks. Qualification reuses
+Source-export component builds pass UEFI/BIOS boot checks. Qualification reuses
 verified source-built Electron/Node components; an empty full Electron graph
 build is not yet verified end to end. [Source builds](Documentation/source-builds.md)
 records the precise coverage and remaining prebuilt inputs.

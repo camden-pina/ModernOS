@@ -1,8 +1,8 @@
 # Additional upstream programs
 
 These programs run in Terminal with the active profile's normal account
-privileges. The Code OSS desktop image includes them; source builds can opt in
-with `make more-programs` before `make iso PROFILE=staged`.
+privileges. Install available packages through Coast Packages. For port
+development, `make more-programs` builds these components and their receipts.
 
 | Programs | Version | Use |
 | --- | --- | --- |

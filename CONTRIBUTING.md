@@ -18,5 +18,9 @@ and fresh kernel/desktop compilation. Guest changes also need the relevant
 QEMU integration check. State whether a result came from a host fixture or an
 actual Coast guest.
 
+Build/VM settings are maintained by `make menuconfig` in local `.config`.
+Use `make test-build-config` for configurator changes; it covers persistence,
+Make overrides and literal arguments without running a source build or VM.
+
 See `Documentation/source-builds.md` for the native rebuild and full desktop
 bootstrap paths, and `LICENSES.md` for current licensing status.

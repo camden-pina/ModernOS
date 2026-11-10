@@ -9,7 +9,6 @@ vendored musl archive in an independent `build/dynamic-linker/` cache.
 
 ```sh
 make dynamic-linker
-make iso PROFILE=staged
 ```
 
 Inside Coast, compile a position-independent C executable or shared library:
@@ -94,7 +93,7 @@ the kernel's existing thread and signal ABI.
 
 ```sh
 make test-dynamic-linker-host
-python3 tools/test_dynamic_linker.py --cpus 1 4 --iso build/os.iso
+python3 tools/test_dynamic_linker.py --cpus 1 4 --iso build/coast/image/Coast.iso
 ```
 
 Build the shared runtime before running the host checks. A second host

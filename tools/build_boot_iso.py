@@ -60,7 +60,7 @@ def stage_payload(args, config):
     for path in [args.kernel, args.initramfs]:
         if not path.is_file():
             raise ValueError(
-                f"Missing {path}; build it first, or use 'make iso PROFILE=staged' to build the initramfs")
+                f"Missing {path}; build the required kernel/initramfs inputs first")
 
     module_sources = {}
     for mapping in args.module_file:

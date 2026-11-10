@@ -1,16 +1,15 @@
 # Coast desktop
 
 Source repository: https://github.com/camden-pina/ModernOS.git.
-Build the full desktop with `make iso`, start it with
-`make run`, and enter `gui` at the Coast console. The native-only image
-uses `make iso PROFILE=native` and `make run PROFILE=native`. See [host setup](host-setup.md).
+Build Coast with `make iso`, start it with `make run`, and enter `gui` at the
+Coast console. See [host setup](host-setup.md).
 
 ![Coast desktop and Files](images/desktop.png)
 
 ## Applications and navigation
 
 The native desktop supplies Files, Text Editor, Terminal, Settings and Disks.
-The full image adds Chromium, Code OSS, Coast Packages, Qt 6 Demo and the QEMU
+Coast includes Chromium, Code OSS, Coast Packages, Qt 6 Demo and the QEMU
 runtime/viewer. Additional applications and native build kits are installed
 from a configured signed package repository.
 
@@ -53,10 +52,9 @@ are shown as unavailable.
 
 ## Terminal and accounts
 
-The full desktop uses source-built Bash/Readline with pipes, command and
+The desktop uses source-built Bash/Readline with pipes, command and
 process substitution, redirections and foreground/background jobs. Terminal
 provides the PTY, scrollback, selection/copy, paste and profile preferences.
-The native-only image supplies its native shell and BusyBox tools.
 
 The console and Terminal start as the active ordinary account. Set the owner
 password in Settings → Profiles before using sudo or creating more accounts.

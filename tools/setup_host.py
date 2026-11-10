@@ -35,18 +35,17 @@ def checked_installer(path):
     return path
 
 
-def check(native=False):
-    missing = [name for name in BASE_TOOLS + ([] if native else DESKTOP_TOOLS)
+def check():
+    missing = [name for name in BASE_TOOLS + DESKTOP_TOOLS
                if not shutil.which(name)]
     if missing:
         raise ValueError('Missing host tools: ' + ', '.join(missing))
-    if not native:
-        result = subprocess.run(['podman', 'info', '--format', '{{.Host.Security.Rootless}}'],
-            check=True, capture_output=True, text=True)
-        if result.stdout.strip() != 'true':
-            raise ValueError('Run the build as a normal user with rootless Podman')
-        subprocess.run(['bwrap', '--unshare-all', '--ro-bind', '/', '/', '--proc', '/proc',
-                        '--dev', '/dev', '--', '/bin/true'], check=True)
+    result = subprocess.run(['podman', 'info', '--format', '{{.Host.Security.Rootless}}'],
+        check=True, capture_output=True, text=True)
+    if result.stdout.strip() != 'true':
+        raise ValueError('Run the build as a normal user with rootless Podman')
+    subprocess.run(['bwrap', '--unshare-all', '--ro-bind', '/', '/', '--proc', '/proc',
+                    '--dev', '/dev', '--', '/bin/true'], check=True)
     print('Coast host prerequisites: ready')
 
 
@@ -56,54 +55,50 @@ def main():
     actions.add_argument('--install', action='store_true', help='explicitly install host packages using sudo')
     actions.add_argument('--print', dest='print_commands', action='store_true', help='show package commands without installing')
     actions.add_argument('--check', action='store_true', help='check tools and rootless namespaces without installing')
-    parser.add_argument('--native', action='store_true', help='only prepare the smaller native image')
     args = parser.parse_args()
     if platform.system() != 'Linux' or platform.machine() not in ('x86_64', 'amd64'):
         parser.error('Use an x86-64 Linux host')
     if sys.version_info < (3, 12):
         parser.error('Python 3.12 or newer is required')
     if not args.install and not args.print_commands:
-        check(args.native)
+        check()
         return
     if platform.freedesktop_os_release().get('ID') not in ('ubuntu', 'debian'):
         parser.error('Automatic package installation supports Ubuntu/Debian; see Documentation/host-setup.md')
-    packages = BASE_PACKAGES + ([] if args.native else DESKTOP_PACKAGES)
+    packages = BASE_PACKAGES + DESKTOP_PACKAGES
     commands = [['sudo', 'apt-get', 'update'], ['sudo', 'apt-get', 'install', '-y', *packages]]
     if args.print_commands:
         for command in commands:
             print(shlex.join(command))
-        if not args.native:
-            print('Chromium prerequisites: ' + INSTALLER_URL)
-            print('Required SHA-256: ' + INSTALLER_SHA256)
+        print('Chromium prerequisites: ' + INSTALLER_URL)
+        print('Required SHA-256: ' + INSTALLER_SHA256)
         return
     if os.geteuid() == 0:
         parser.error('Run this as your normal user; sudo is used only for package installation')
-    if not args.native:
-        lock = json.loads((ROOT / 'ports/electron/sources.lock.json').read_text())
-        chromium = next(record for record in lock['repositories'] if record['path'] == 'src')
-        if chromium['commit'] != CHROMIUM_REVISION:
-            parser.error('Update the pinned prerequisite installer for the Electron source lock')
+    lock = json.loads((ROOT / 'ports/electron/sources.lock.json').read_text())
+    chromium = next(record for record in lock['repositories'] if record['path'] == 'src')
+    if chromium['commit'] != CHROMIUM_REVISION:
+        parser.error('Update the pinned prerequisite installer for the Electron source lock')
     for command in commands:
         subprocess.run(command, check=True)
-    if not args.native:
-        output = ROOT / 'build/host-setup'
-        output.mkdir(parents=True, exist_ok=True)
-        installer = output / 'install-build-deps.py'
-        if not installer.exists():
-            pending = installer.with_suffix('.part')
-            try:
-                with urllib.request.urlopen(INSTALLER_URL, timeout=60) as response:
-                    data = response.read(1024 * 1024 + 1)
-                if len(data) > 1024 * 1024:
-                    raise ValueError('Chromium prerequisite installer exceeds the size limit')
-                pending.write_bytes(data)
-                checked_installer(pending)
-                pending.replace(installer)
-            finally:
-                pending.unlink(missing_ok=True)
-        subprocess.run(['sudo', 'python3', str(checked_installer(installer)),
-                        '--no-prompt', '--no-arm', '--no-chromeos-fonts'], check=True)
-    check(args.native)
+    output = ROOT / 'build/host-setup'
+    output.mkdir(parents=True, exist_ok=True)
+    installer = output / 'install-build-deps.py'
+    if not installer.exists():
+        pending = installer.with_suffix('.part')
+        try:
+            with urllib.request.urlopen(INSTALLER_URL, timeout=60) as response:
+                data = response.read(1024 * 1024 + 1)
+            if len(data) > 1024 * 1024:
+                raise ValueError('Chromium prerequisite installer exceeds the size limit')
+            pending.write_bytes(data)
+            checked_installer(pending)
+            pending.replace(installer)
+        finally:
+            pending.unlink(missing_ok=True)
+    subprocess.run(['sudo', 'python3', str(checked_installer(installer)),
+                    '--no-prompt', '--no-arm', '--no-chromeos-fonts'], check=True)
+    check()
 
 
 if __name__ == '__main__':

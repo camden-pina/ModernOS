@@ -30,7 +30,7 @@ PASST_OPTIONS = ('passt,ipv4=on,ipv6=off,mtu=1500,address=10.0.2.15/24,'
 
 
 def default_iso():
-    return pathlib.Path(os.environ.get('COAST_ISO') or ROOT / 'build/os.iso').resolve()
+    return pathlib.Path(os.environ.get('COAST_ISO') or ROOT / 'build/coast/image/Coast.iso').resolve()
 
 
 def normalize_checkpoint_firmware(configuration):

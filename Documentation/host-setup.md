@@ -7,6 +7,7 @@ the same helper. The build itself runs as your normal user.
 
 ```sh
 python3 -B tools/setup_host.py --install
+make menuconfig
 make iso
 make run
 ```
@@ -17,28 +18,26 @@ for apt and the pinned Chromium prerequisite installer. It does not change host
 security policy, add repositories or install a global Python/Node/Rust environment.
 The build fetches its pinned Node, Rust and other upstream tools into `build/`.
 
+`make menuconfig` opens the terminal build wizard. Save and exit to write
+`.config`; `make iso` and `make run` then use those settings. Reopening the wizard
+loads the saved values. `make config` provides a plain terminal questionnaire.
+See [configuration and optional arguments](build-system.md).
+
 Inspect the package commands without installing anything:
 
 ```sh
 python3 -B tools/setup_host.py --print
 ```
 
-For the smaller native image:
-
-```sh
-python3 -B tools/setup_host.py --install --native
-make iso PROFILE=native
-make run PROFILE=native
-```
-
 ## Dependencies
 
-The native path needs GNU make, GCC/G++, binutils, Git, Python, curl, tar,
+The build needs GNU make, GCC/G++, binutils, Git, Python, curl, tar,
 patch, gzip/bzip2/xz, mtools and xorriso. The helper installs NASM; the
-Limine builder can also bootstrap a local host NASM when it is absent. Host QEMU supplies the graphical
-VM frontend; `make run PROFILE=native` uses BIOS, USB keyboard/mouse and user networking.
+Limine builder can also bootstrap a local host NASM when needed. Host QEMU
+supplies the graphical VM frontend; `make run` uses BIOS, USB keyboard/mouse
+and user networking.
 
-The full desktop additionally needs Autotools, Bison, Flex, gperf, Gettext,
+The build also uses Autotools, Bison, Flex, gperf, Gettext,
 Texinfo, CMake, Ninja, pkg-config, ncurses tools, rootless Podman, Bubblewrap and
 development headers for OpenSSL, libffi, Readline, zlib, SQLite, bzip2, xz,
 gdbm, UUID, Kerberos, X11, xkbfile and libsecret. The exact apt package lists
@@ -60,7 +59,7 @@ python3 -B tools/setup_host.py --check
 ```
 
 This command checks installed tools and exercises rootless Podman/Bubblewrap.
-It installs nothing. The native-only check accepts `--native`.
+It installs nothing.
 
 ## Rootless containers and virtual machines
 
@@ -82,11 +81,10 @@ passt backend. VM settings are explicit:
 
 ```sh
 make run MEMORY=24G SMP=4
-make run ISO_IMAGE=build/my-image/image/Coast-desktop.iso
 make -n run
 ```
 
-The [command reference](build-system.md) explains profiles, build/output options,
+The [command reference](build-system.md) explains build/output options,
 firmware, disks, networking and the other optional Make arguments.
 
 The complete guest qualification suite additionally needs KVM, host OVMF,

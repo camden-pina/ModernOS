@@ -119,11 +119,11 @@ class PipelineTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Build output changed'):
                 verify_receipt(receipt)
 
-    def test_wider_plan_binds_each_integration_to_explicit_source_components(self):
+    def test_plan_binds_each_integration_to_explicit_source_components(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / 'not-created'
             result = subprocess.run([sys.executable, '-B', ROOT / 'tools/build_desktop.py',
-                '--plan', '--with-integrations', '--qualify', '--output-root', output],
+                '--plan', '--qualify', '--output-root', output],
                 capture_output=True, text=True, check=True)
             plan = json.loads(result.stdout)
             stages = {stage['name']: stage for stage in plan['stages']}

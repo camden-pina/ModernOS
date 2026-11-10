@@ -174,27 +174,23 @@ Linux and uses Bubblewrap.
    This kernel step records the newly built pair without widening admission
    to arbitrary Electron binaries.
 
-8. **Create a separate candidate ISO and test it.** The base image must be a
-   working full Chromium/Code OSS desktop image with its GNU runtime libraries.
-   After transferring your build products to the Linux checkout, you can run:
+8. **Assemble Coast with the verified runtime.** Transfer the build products
+   and their verified source checkout to the Linux build host, then use the
+   normal OS pipeline:
 
    ```sh
-   python3 -B tools/overlay_electron_iso.py \
-     --iso build/Coast-browser.iso --runtime-build build/my-electron/BUILD.json \
-     --kernel-build build/my-electron-kernel --output-root build/my-electron-image
-   python3 -B tools/test_chromium_browser.py \
-     --iso build/my-electron-image/Coast-browser.iso \
-     --output-root build/my-electron-browser-test
-   python3 -B tools/test_codeoss_desktop.py \
-     --iso build/my-electron-image/Coast-browser.iso \
-     --output-root build/my-electron-codeoss-test
+   make iso ISO_ARGS='--electron-checkout /path/to/verified/checkout --runtime-build /path/to/my-electron/BUILD.json'
+   make run
    ```
 
-   Build receipts currently store absolute paths. Keep the recorded layout
-   accessible when transferring artifacts, or record the products again on
-   Linux with their new paths, omitting `--native`, and rebuild the matching
-   kernel. The overlay preserves the base ISO and inherits its existing app
-   and library payload; a complete fresh desktop assembler remains separate.
+   The builder checks the Electron/Node pair, builds the matching kernel and
+   assembles Coast with all desktop integrations. Use `ISO_ARGS=--qualify` with
+   the same reuse arguments when guest qualification is required; see
+   [build arguments](build-system.md).
+
+   Build receipts store absolute paths. Preserve the recorded layout when
+   transferring artifacts, or record the products on Linux with their new
+   paths, omitting `--native`, before using them in the OS pipeline.
 
 The source references for these steps are the pinned Electron
 `docs/development/build-instructions-linux.md`, `build-instructions-gn.md`,

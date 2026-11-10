@@ -196,13 +196,13 @@ further porting, and `-flto` is outside this compiler profile. The optional
 
 ## Reproducible offline build
 
-`make iso PROFILE=staged` invokes `tools/build_nano.py` for musl/ncurses, then
+The development `make userland` target invokes `tools/build_nano.py` for musl/ncurses, then
 `tools/build_native_ports.py` for editors/utilities, `tools/build_gawk.py` for
 GNU awk, `tools/build_gcc.py` for
 the static compiler SDK and `tools/package_sdk.py` for corresponding sources.
 Bundled complete archives are
 verified against SHA-256 before extraction. The build caches successful outputs,
-installs binaries, copies Vim runtime and retains upstream notices in the image.
+collects binaries, Vim runtime and upstream notices in the userland staging area.
 Generated runtime directories are ignored by Git and recreated by the build.
 Host GCC/G++, binutils, GNU make, Python 3.12+, xz and ncurses host tools are needed.
 The native port build downloads nothing.
@@ -236,7 +236,7 @@ build-machine executable aliases are never copied into Coast.
 
 ## Rebuild GCC inside Coast
 
-Start QEMU with sufficient memory (`make run PROFILE=staged MEMORY=8G`) and run:
+Start QEMU with sufficient memory (`make run MEMORY=16G`) and run:
 
 ```text
 bootstrap-toolchain --help

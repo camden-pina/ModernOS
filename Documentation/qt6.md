@@ -55,7 +55,6 @@ C++ runtime available:
 
 ```sh
 make qt6
-make iso PROFILE=staged
 ```
 
 The Qt target needs CMake, Ninja and Bubblewrap. It downloads QtBase from the

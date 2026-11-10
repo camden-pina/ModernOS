@@ -8,7 +8,6 @@ processes and exclusive-test markers before the next guest was admitted.
 
 ## Tested image and program
 
-- Image: `build/continuation-20261015/coast-candidate04.iso`
 - Image SHA-256: `5b80fcce86a1681271c578e0ccf71b802466d2f332ba7bcb90b08f915423ddc0`
 - `/bin/doom` SHA-256: `6ab61b7299fb6f0a8af1772f87a878c7d701492bdd3cf1b521fcb64165ae49c6`
 - Engine: official Doomgeneric commit `e257a09527062bfb986b6e5e0780839b6cbd5b71`.

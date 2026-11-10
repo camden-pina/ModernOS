@@ -58,7 +58,7 @@ def verify_receipt(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-root', type=Path, default=ROOT / 'build/desktop-source')
+    parser.add_argument('--output-root', type=Path, default=ROOT / 'build/coast')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--electron-checkout', type=Path,
                         help='optional verified Electron checkout used read-only instead of a fresh source sync')
@@ -68,10 +68,8 @@ def main():
                         help='optional JSON map of component names to verified source-build receipt paths')
     parser.add_argument('--diagnostics', action='store_true', help='include inert, opt-in Code OSS QA diagnostics')
     parser.add_argument('--qualify', action='store_true', help='also check boot, terminal, addons, browser and editor in owned QEMU guests')
-    parser.add_argument('--with-integrations', action='store_true',
-                        help='also build Coast Packages/makepkg, Python, Qt and QEMU with its source viewer')
     parser.add_argument('--repository-config', type=Path,
-                        help='optional explicit public repository trust JSON for the wider image')
+                        help='optional explicit public repository trust JSON')
     parser.add_argument('--with-microsoft-auth', action='store_true',
                         help='include upstream proprietary Microsoft sign-in binaries (omitted by default)')
     parser.add_argument('--plan', action='store_true', help='print the build commands without running them')
@@ -81,14 +79,11 @@ def main():
         parser.error('--jobs must be 1..24')
     if args.runtime_build and not args.electron_checkout:
         parser.error('--runtime-build also requires its verified --electron-checkout')
-    if args.repository_config and not args.with_integrations:
-        parser.error('--repository-config requires --with-integrations')
     out = args.output_root.resolve()
     overrides = json.loads(args.components.read_text()) if args.components else {}
     names = {'glibc', 'libgcc', 'cxx', 'gui-sources', 'gui-runtime', 'application', 'sdk',
              'addons', 'rust', 'kernel', 'native', 'compiler', 'packages', 'cli', 'bridge', 'assets'}
-    if args.with_integrations:
-        names.update(('program', 'makepkg', 'frontend', 'qt', 'qemu', 'viewer'))
+    names.update(('program', 'makepkg', 'frontend', 'qt', 'qemu', 'viewer'))
     if not isinstance(overrides, dict) or set(overrides) - names:
         parser.error('--components must map known component names to receipt paths')
     receipts = {name: Path(overrides.get(name, out / name / (
@@ -134,33 +129,30 @@ def main():
         ('bridge', command('build_wayland_bridge.py', '--cc', receipts['native'].parent / 'musl/bin/musl-gcc',
             '--gnu-sdk', receipts['sdk'].parent, '--output-root', receipts['bridge'].parent, '--jobs', jobs), True),
         ('assets', command('prepare_desktop_assets.py', '--output-root', receipts['assets'].parent), True),
+        ('program', command('build_program_ports.py', '--compiler-build', receipts['compiler'],
+            '--dependencies-build', receipts['packages'].with_name('DEPENDENCIES.json'),
+            '--output-root', receipts['program'].parent, '--jobs', jobs), True),
+        ('makepkg', command('build_desktop_makepkg.py', '--compiler-build', receipts['compiler'],
+            '--packages-build', receipts['packages'], '--program-build', receipts['program'],
+            '--output-root', receipts['makepkg'].parent, '--jobs', jobs), True),
+        ('frontend', command('build_coast_packages.py', '--compiler-build', receipts['compiler'],
+            '--program-build', receipts['program'], '--output-root', receipts['frontend'].parent,
+            *(['--repository-config', args.repository_config.resolve()] if args.repository_config else [])), False),
+        ('qt', command('build_qt6.py', '--compiler-build', receipts['compiler'],
+            '--output-root', receipts['qt'].parent, '--jobs', jobs), True),
+        ('qemu', command('build_qemu.py', '--compiler-build', receipts['compiler'],
+            '--output-root', receipts['qemu'].parent, '--jobs', jobs), True),
+        ('viewer', command('prepare_qemu_viewer.py', '--qemu-build', receipts['qemu'],
+            '--program-build', receipts['program'], '--output-root', receipts['viewer'].parent), False),
     ]
-    if args.with_integrations:
-        stages += [
-            ('program', command('build_program_ports.py', '--compiler-build', receipts['compiler'],
-                '--dependencies-build', receipts['packages'].with_name('DEPENDENCIES.json'),
-                '--output-root', receipts['program'].parent, '--jobs', jobs), True),
-            ('makepkg', command('build_desktop_makepkg.py', '--compiler-build', receipts['compiler'],
-                '--packages-build', receipts['packages'], '--program-build', receipts['program'],
-                '--output-root', receipts['makepkg'].parent, '--jobs', jobs), True),
-            ('frontend', command('build_coast_packages.py', '--compiler-build', receipts['compiler'],
-                '--program-build', receipts['program'], '--output-root', receipts['frontend'].parent,
-                *(['--repository-config', args.repository_config.resolve()] if args.repository_config else [])), False),
-            ('qt', command('build_qt6.py', '--compiler-build', receipts['compiler'],
-                '--output-root', receipts['qt'].parent, '--jobs', jobs), True),
-            ('qemu', command('build_qemu.py', '--compiler-build', receipts['compiler'],
-                '--output-root', receipts['qemu'].parent, '--jobs', jobs), True),
-            ('viewer', command('prepare_qemu_viewer.py', '--qemu-build', receipts['qemu'],
-                '--program-build', receipts['program'], '--output-root', receipts['viewer'].parent), False),
-        ]
     assembly = command('assemble_desktop.py', '--runtime-build', runtime, '--output-root', out / 'image',
         '--native-build', receipts['native'].parent, '--kernel-build', receipts['kernel'].parent,
         '--gui-runtime', receipts['gui-runtime'], '--application-build', receipts['application'].parent,
         '--addons-build', receipts['addons'], '--rust-build', receipts['rust'], '--bridge-build', receipts['bridge'],
         '--assets-build', receipts['assets'], '--cli-build', receipts['cli'], '--compiler-build', receipts['compiler'],
         '--packages-build', receipts['packages'],
-        *([item for name in ('program', 'makepkg', 'frontend', 'qt', 'qemu', 'viewer')
-            for item in ('--' + name + '-build', receipts[name])] if args.with_integrations else []),
+        *[item for name in ('program', 'makepkg', 'frontend', 'qt', 'qemu', 'viewer')
+            for item in ('--' + name + '-build', receipts[name])],
         *(['--diagnostics'] if args.diagnostics else []),
         *(['--with-microsoft-auth'] if args.with_microsoft_auth else []))
     electron = command('build_electron_source.py', '--output-root', out / 'electron', '--jobs', jobs,
@@ -172,7 +164,7 @@ def main():
             runtime_build=None if args.runtime_build else electron,
             stages=[dict(name=name, receipt=str(receipts[name]), reused=name in overrides, argv=argv)
                     for name, argv, _ in stages], assembly=assembly,
-            qualification=command('qualify_desktop.py', '--iso', out / 'image/Coast-desktop.iso',
+            qualification=command('qualify_desktop.py', '--iso', out / 'image/Coast.iso',
                 '--output-root', out / 'qualification') if args.qualify else None), indent=2))
         return
     out.mkdir(parents=True, exist_ok=True)
@@ -186,7 +178,6 @@ def main():
         sha256=digest(receipts[name])) for name in overrides},
         external_runtime=dict(path=str(runtime), sha256=digest(runtime)) if args.runtime_build else None,
         electron_checkout=str(checkout), diagnostics=args.diagnostics, microsoft_auth=args.with_microsoft_auth,
-        wider_integrations=args.with_integrations,
         repository_config_sha256=digest(args.repository_config) if args.repository_config else None)
     stamp = out / 'PIPELINE.json'
     if stamp.exists() and json.loads(stamp.read_text()) != identity:
@@ -250,7 +241,6 @@ def main():
         manifest_sha256=digest(manifest), pipeline_sha256=digest(stamp),
         components={name: dict(path=str(path), sha256=digest(path)) for name, path in receipts.items()},
         runtime_build_sha256=digest(runtime), prebuilt_application_inputs=result['prebuilt_application_inputs'],
-        wider_integrations=args.with_integrations,
         optional_microsoft_auth_binaries=args.with_microsoft_auth)
     (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
     print('Fresh source-built desktop ISO:', result['iso'], flush=True)
