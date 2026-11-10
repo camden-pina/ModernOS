@@ -31,11 +31,11 @@ def main():
     files['usr/bin/pacman']=a.pacman
     for name in ('bsdtar','bsdcpio','bsdcat','bsdunzip'):
         files['usr/bin/'+name]=a.pacman.parent.parent/'prefix/bin'/name
-    for name in ('client.py','search.py','community.py'):files['usr/lib/coast/packages/'+name]=ROOT/'userland/packages'/name
-    pacman=(ROOT/'userland/packages/config/pacman.conf').read_text().replace('file:///var/lib/coast/repository/coast/os/$arch','http://10.0.2.2:8765/repo/$arch')
+    for name in ('client.py','search.py','community.py'):files['usr/lib/brine/'+name]=ROOT/'userland/packages'/name
+    pacman=(ROOT/'userland/packages/config/pacman.conf').read_text().replace('file:///var/lib/brine/repository/coast/os/$arch','http://10.0.2.2:8765/repo/$arch')
     (out/'pacman.conf').write_text(pacman);files['etc/pacman.conf']=out/'pacman.conf'
-    config=json.loads((ROOT/'build/local-repository-r20/generated/etc/coast/packages.json').read_text());config['community_url']='http://10.0.2.2:8770'
-    atomic_write(out/'packages.json', json.dumps(config,indent=2)+'\n');files['etc/coast/packages.json']=out/'packages.json'
+    config=json.loads((ROOT/'build/local-repository-r20/generated/etc/brine/config.json').read_text());config['community_url']='http://10.0.2.2:8770'
+    atomic_write(out/'packages.json', json.dumps(config,indent=2)+'\n');files['etc/brine/config.json']=out/'packages.json'
     if a.fixtures_only:files={name:path for name,path in files.items() if name.startswith('usr/bin/package-')}
     archive=out/'package-security-qa.tar'
     with tarfile.open(archive,'w') as tar:

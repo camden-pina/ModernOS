@@ -1,13 +1,13 @@
 [Unit]
-Description=Coast read-only package repository
+Description=Brine read-only package repository for Coast OS
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 DynamicUser=yes
-WorkingDirectory=/srv/coast-packages
-ExecStart=/usr/bin/python3 -I -B /srv/coast-packages/serve_repository.py --repository /srv/coast-packages/repository.json --config /etc/coast-packages-server.json
+WorkingDirectory=/srv/brine
+ExecStart=/usr/bin/python3 -I -B /srv/brine/serve_repository.py --repository /srv/brine/repository.json --config /etc/brine-server.json
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=yes

@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _search_path = Path(__file__).resolve().with_name('search.py')
 if not _search_path.is_file():
     _search_path = ROOT / 'userland/packages/search.py'
-_search_spec = importlib.util.spec_from_file_location('coast_package_search', _search_path)
+_search_spec = importlib.util.spec_from_file_location('brine_search', _search_path)
 _search_module = importlib.util.module_from_spec(_search_spec)
 _search_spec.loader.exec_module(_search_module)
 search = _search_module.search
@@ -144,7 +144,7 @@ class RepositoryServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'Coast-Packages/1'
+    server_version = 'Brine/1'
     sys_version = ''
     protocol_version = 'HTTP/1.0'
 
@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         repository = self.server.repository
         if route == '/health':
-            self.body(200, json.dumps(dict(name='Coast Packages', status='ready',
+            self.body(200, json.dumps(dict(name='Brine', status='ready',
                                            packages=len(repository['packages']),
                                            fingerprint=repository['fingerprint'])).encode() + b'\n')
             return
@@ -216,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             matches = search((package for package in repository['packages']
                               if kind == 'all' or package['Kind'] == kind), query.get('q', ['']))
-            self.body(200, json.dumps(dict(name='Coast Packages', fingerprint=repository['fingerprint'],
+            self.body(200, json.dumps(dict(name='Brine', fingerprint=repository['fingerprint'],
                                            resultcount=len(matches), results=matches)).encode() + b'\n')
             return
         asset = repository['assets'].get(route)
@@ -324,9 +324,9 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     origin = args.public_url or f'{"https" if context else "http"}://127.0.0.1:{server.server_port}'
-    print(f'Coast Packages ready: {origin}', flush=True)
+    print(f'Brine ready: {origin}', flush=True)
     if args.public_url:
-        print(f'Coast client: coast server {origin}', flush=True)
+        print(f'Brine client: brine server {origin}', flush=True)
     else:
         print(f'Guest repository: http://10.0.2.2:{server.server_port}/repo/x86_64', flush=True)
     try:

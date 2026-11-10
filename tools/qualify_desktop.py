@@ -18,22 +18,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def phase_plan(image, timeout_scale=2):
-    from build_components import APPS
-    apps = set(image.get('apps', APPS))
+    from build_components import APPS, app_names
+    apps = app_names(image.get('apps', APPS))
     features = apps | ({'engine'} if apps & {'chromium', 'codeoss'} else set())
     addons = image.get('components', {}).get('addons_build', {}).get('path', '')
     candidates = [
         ('boot', 'test_desktop_boot.py', [], set()),
         ('terminal', 'test_desktop_terminal.py', [], {'bash', 'engine'}),
         ('development', 'test_desktop_development.py', [], {'gcc', 'bash'}),
-        ('packages', 'test_desktop_packages.py', [], {'packages', 'makepkg'}),
+        ('packages', 'test_desktop_packages.py', [], {'brine', 'makepkg'}),
         ('addons', 'test_codeoss_addons.py', ['--addons-build', addons], {'codeoss'}),
         ('browser', 'test_chromium_browser.py', ['--network-backend', 'passt', '--timeout-scale', timeout_scale], {'chromium'}),
         ('codeoss', 'test_codeoss_desktop.py', ['--usability-check', '--timeout-scale', timeout_scale], {'codeoss'}),
-        ('integrations', 'test_desktop_integrations.py', [], {'packages', 'makepkg', 'qt', 'qemu-viewer'}),
+        ('integrations', 'test_desktop_integrations.py', [], {'brine', 'makepkg', 'qt', 'qemu-viewer'}),
         ('qt', 'test_qt6_desktop.py', [], {'qt'}),
         ('qt-clipboard', 'test_qt6_clipboard.py', [], {'qt', 'chromium'}),
-        ('qemu-viewer', 'test_qemu_viewer.py', ['--preinstalled'], {'qemu-viewer', 'packages', 'makepkg', 'qt'}),
+        ('qemu-viewer', 'test_qemu_viewer.py', ['--preinstalled'], {'qemu-viewer', 'brine', 'makepkg', 'qt'}),
     ]
     phases, skipped = [], {}
     for name, script, extra, required in candidates:

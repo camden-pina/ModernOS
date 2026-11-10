@@ -86,11 +86,11 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='8G', accel='kvm',
             iso=args.iso.resolve(), label='native-grep')
         vm.command('true')
-        check('select the signed source fixture repository', 'coast server ' + origin,
+        check('select the signed source fixture repository', 'brine server ' + origin,
             'Package downloads and source builds now use')
         check('refresh signed dependency metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
-        check('install pinned UAPI headers for native source compilation', 'coast install coast-linux-uapi --noconfirm', 'coast-linux-uapi')
+        check('install pinned UAPI headers for native source compilation', 'brine install coast-linux-uapi --noconfirm', 'coast-linux-uapi')
         check('create an isolated normal-user source workspace',
             'mkdir -p /home/user/grep/source/build/grep-native/vendor /home/user/grep/fixture && echo GREP_WORKSPACE_READY', 'GREP_WORKSPACE_READY')
         for name, directory in [('fixture.tar.gz', 'fixture'), ('source.tar.gz', 'source')]:

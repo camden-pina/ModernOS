@@ -71,11 +71,11 @@ REPOSITORY_PORT ?= 8765
 REPOSITORY_PUBLIC_URL ?=
 REPOSITORY_CONFIG ?=
 serve-packages:
-	python3 -B "$(srctree)/tools/serve_repository.py" --repository "$(BUILD_DIR)/Coast-packages/BUILD.json" --bind "$(REPOSITORY_BIND)" --port "$(REPOSITORY_PORT)" $(if $(REPOSITORY_PUBLIC_URL),--public-url "$(REPOSITORY_PUBLIC_URL)",) $(if $(REPOSITORY_CONFIG),--config "$(REPOSITORY_CONFIG)",)
-REPOSITORY_EXPORT ?= $(BUILD_DIR)/coast-repository-server
+	python3 -B "$(srctree)/tools/serve_repository.py" --repository "$(LOCAL_REPOSITORY_OUT)/BUILD.json" --bind "$(REPOSITORY_BIND)" --port "$(REPOSITORY_PORT)" $(if $(REPOSITORY_PUBLIC_URL),--public-url "$(REPOSITORY_PUBLIC_URL)",) $(if $(REPOSITORY_CONFIG),--config "$(REPOSITORY_CONFIG)",)
+REPOSITORY_EXPORT ?= $(BUILD_DIR)/brine-repository-server
 .PHONY: export-packages
 export-packages:
-	python3 -B "$(srctree)/tools/export_repository.py" --repository "$(BUILD_DIR)/Coast-packages/BUILD.json" --output-root "$(REPOSITORY_EXPORT)"
+	python3 -B "$(srctree)/tools/export_repository.py" --repository "$(LOCAL_REPOSITORY_OUT)/BUILD.json" --output-root "$(REPOSITORY_EXPORT)"
 run:
 	@test -f $(call coast_quote,$(ISO_IMAGE)) || { printf '%s\n' $(call coast_quote,ISO not found: $(ISO_IMAGE). Run make iso first.) >&2; exit 1; }
 	@mkdir -p "$(BUILD_DIR)"

@@ -65,7 +65,7 @@ class Browser:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--server', default='http://127.0.0.1:8770')
-    p.add_argument('--container', default='coast-community-r1')
+    p.add_argument('--container', default='brine-community-r1')
     p.add_argument('--data', type=Path, required=True)
     p.add_argument('--output-root', type=Path, required=True)
     args = p.parse_args()
@@ -75,7 +75,7 @@ def main():
                   upstream='aurweb ed420d423d20a69ed5b9bd77aea6b81538d16248',
                   external_email_sent=False)
     suffix = secrets.token_hex(3)
-    package = 'coast-community-check-'+suffix
+    package = 'brine-community-check-'+suffix
     publisher, observer = 'ports'+suffix, 'reader'+suffix
     passwords = {publisher: secrets.token_urlsafe(30), observer: secrets.token_urlsafe(30)}
     with (out/'credentials.json').open('x') as stream:
@@ -161,9 +161,9 @@ print(json.dumps(result))'''
         code, _, body = public.request('/')
         check('upstream community homepage is available', code == 200 and b'Packages' in body)
         code,_,body=public.request('/static/opensearch.xml')
-        check('browser search targets this Coast server instead of Arch',code==200 and args.server.encode() in body and b'aur.archlinux.org' not in body)
+        check('browser search targets this Brine server instead of Arch',code==200 and args.server.encode() in body and b'aur.archlinux.org' not in body)
         code,_,body=public.request('/rss/')
-        check('community RSS identifies Coast and uses the active server',code==200 and b'Coast Community Newest Packages' in body and args.server.encode() in body)
+        check('community RSS identifies Brine and uses the active server',code==200 and b'Brine Community Newest Packages' in body and args.server.encode() in body)
         code, _, _ = public.request('/health', headers={'Host': 'evil.invalid'})
         check('unconfigured browser Host values are rejected', code == 403)
         code, _, _ = public.request('/login', dict(user='invalid', passwd='invalid', next='/'),
@@ -190,11 +190,11 @@ print(json.dumps(result))'''
         source = '#include <stdio.h>\n#include <unistd.h>\nint main(void){printf("COAST_COMMUNITY_HELLO uid=%u\\n",getuid());return getuid()==0;}\n'
         (checkout/'hello.c').write_text(source)
         digest = hashlib.sha256(source.encode()).hexdigest()
-        (checkout/'PKGBUILD').write_text("pkgname="+package+"\npkgver=1.0\npkgrel=1\npkgdesc='Native Coast community submission example'\narch=('x86_64')\nlicense=('0BSD')\ndepends=('musl')\nmakedepends=('gcc')\nsource=('hello.c')\nsha256sums=('"+digest+"')\nbuild() { cc \"$srcdir/hello.c\" -o hello-community; }\ncheck() { ./hello-community; }\npackage() { install -Dm755 hello-community \"$pkgdir/usr/bin/hello-community\"; }\n")
-        (checkout/'.SRCINFO').write_text('pkgbase = '+package+'\n\tpkgdesc = Native Coast community submission example\n\tpkgver = 1.0\n\tpkgrel = 1\n\tarch = x86_64\n\tlicense = 0BSD\n\tdepends = musl\n\tmakedepends = gcc\n\tsource = hello.c\n\tsha256sums = '+digest+'\n\npkgname = '+package+'\n')
+        (checkout/'PKGBUILD').write_text("pkgname="+package+"\npkgver=1.0\npkgrel=1\npkgdesc='Native Brine community submission example'\narch=('x86_64')\nlicense=('0BSD')\ndepends=('musl')\nmakedepends=('gcc')\nsource=('hello.c')\nsha256sums=('"+digest+"')\nbuild() { cc \"$srcdir/hello.c\" -o hello-community; }\ncheck() { ./hello-community; }\npackage() { install -Dm755 hello-community \"$pkgdir/usr/bin/hello-community\"; }\n")
+        (checkout/'.SRCINFO').write_text('pkgbase = '+package+'\n\tpkgdesc = Native Brine community submission example\n\tpkgver = 1.0\n\tpkgrel = 1\n\tarch = x86_64\n\tlicense = 0BSD\n\tdepends = musl\n\tmakedepends = gcc\n\tsource = hello.c\n\tsha256sums = '+digest+'\n\npkgname = '+package+'\n')
         git(['init', '--initial-branch=master'], checkout)
         git(['add', '--', 'PKGBUILD', '.SRCINFO', 'hello.c'], checkout)
-        git(['-c', 'user.name=Coast community QA', '-c', 'user.email=qa@coast.invalid', 'commit', '-m', 'Reviewed community build example'], checkout)
+        git(['-c', 'user.name=Brine community QA', '-c', 'user.email=qa@coast.invalid', 'commit', '-m', 'Reviewed community build example'], checkout)
         remote = 'ssh://aur@127.0.0.1:2222/'+package+'.git'
         result = git(['push', remote, 'master'], checkout)
         (out/'git-push.txt').write_text(result.stdout)
@@ -250,7 +250,7 @@ print(json.dumps(result))'''
         for path in [checkout/'PKGBUILD',checkout/'.SRCINFO']:
             path.write_text(path.read_text().replace('pkgrel=1','pkgrel=2').replace('pkgrel = 1','pkgrel = 2'))
         git(['add','--','PKGBUILD','.SRCINFO'],checkout)
-        git(['-c','user.name=Coast community QA','-c','user.email=qa@coast.invalid','commit','-m','Test maintainer ownership'],checkout)
+        git(['-c','user.name=Brine community QA','-c','user.email=qa@coast.invalid','commit','-m','Test maintainer ownership'],checkout)
         rejected=git(['push',remote,'master'],checkout,allowed=(1,128),environment=reader_env)
         check('another authenticated SSH account cannot update a maintained package',rejected.returncode!=0 and info()['Version']=='1.0-1')
         author.request('/pkgbase/'+package+'/comaintainers',dict(users=observer))

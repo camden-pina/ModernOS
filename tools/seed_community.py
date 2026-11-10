@@ -16,7 +16,7 @@ def main():
     p.add_argument('--data',type=Path,required=True)
     p.add_argument('--repository',type=Path,required=True)
     p.add_argument('--output-root',type=Path,required=True)
-    p.add_argument('--container',default='coast-community-r1')
+    p.add_argument('--container',default='brine-community-r1')
     a=p.parse_args();out=a.output_root.resolve();out.mkdir(parents=True,exist_ok=False,mode=0o700)
     data=a.data.resolve();key=data/'MAINTAINER-SSH-KEY';credentials=data/'MAINTAINER-CREDENTIALS.txt'
     if not key.exists():subprocess.run(['ssh-keygen','-q','-t','ed25519','-N','','-f',str(key)],check=True)
@@ -24,7 +24,7 @@ def main():
     password=secrets.token_urlsafe(30)
     if not credentials.exists():
         with credentials.open('x') as stream:
-            os.chmod(credentials,0o600);stream.write('Coast community recipe maintainer\nUsername: coastports\nPassword: '+password+'\n')
+            os.chmod(credentials,0o600);stream.write('Brine community recipe maintainer\nUsername: coastports\nPassword: '+password+'\n')
     pub=' '.join(key.with_suffix('.pub').read_text().split()[:2])
     code='''import json,sys
 from aurweb import db

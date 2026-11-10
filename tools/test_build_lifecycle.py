@@ -70,8 +70,8 @@ class SelectionTests(unittest.TestCase):
         selected, _ = app_selection(without='chromium codeoss')
         self.assertNotIn('electron', components_for(selected))
         selected, reasons = app_selection(without='gcc')
-        self.assertTrue({'packages', 'makepkg'} <= reasons.keys())
-        self.assertTrue({'packages', 'makepkg', 'gcc'}.isdisjoint(selected))
+        self.assertTrue({'brine', 'makepkg'} <= reasons.keys())
+        self.assertTrue({'brine', 'makepkg', 'gcc'}.isdisjoint(selected))
 
     def test_building_one_app_does_not_build_unrelated_runtime(self):
         needed = components_for(APPS, 'qt')
@@ -84,6 +84,15 @@ class SelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unknown apps'):
             app_selection('chromun')
 
+    def test_saved_package_manager_selections_follow_the_brine_name(self):
+        selected, _ = app_selection('packages')
+        self.assertIn('brine', selected)
+        self.assertNotIn('packages', selected)
+        self.assertEqual(graph_for(['packages']), graph_for(['brine']))
+        selected, _ = app_selection(add='qt', previous=['packages'])
+        self.assertTrue({'brine', 'python', 'makepkg', 'gcc', 'bash', 'qt'} <= set(selected))
+        self.assertNotIn('brine', app_selection(without='packages')[0])
+
     def test_qualification_only_claims_applicable_suites(self):
         full, skipped = phase_plan(dict(apps=APPS))
         self.assertEqual(len(full), 11)
@@ -94,6 +103,13 @@ class SelectionTests(unittest.TestCase):
 
 
 class CleanupTests(Project):
+    def test_brine_cleanup_accepts_an_older_package_manager_selection(self):
+        self.file('build/coast/image/MANIFEST.json', json.dumps(dict(apps=['packages', 'qt'])))
+        self.file('build/coast/frontend/BUILD.json', '{}')
+        record = self.plan(components='brine')
+        self.assertEqual(record['affected_apps'], ['brine'])
+        self.assertTrue({'frontend', 'packages', 'image'} <= set(record['invalidated']))
+
     def test_component_cleanup_invalidates_reverse_dependencies_only(self):
         write_json(self.output / 'image/MANIFEST.json', dict(apps=['qt']))
         compiler = self.file('build/coast/compiler/BUILD.json', '{}')

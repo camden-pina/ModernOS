@@ -16,7 +16,7 @@ from export_repository import export
 from serve_repository import RepositoryServer, load_repository
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('coast_client', ROOT/'userland/packages/client.py')
+spec = importlib.util.spec_from_file_location('brine_client', ROOT/'userland/packages/client.py')
 client = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(client)
 
@@ -86,7 +86,7 @@ def main():
                 connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
                 connection.request('GET','/')
                 response = connection.getresponse()
-                check('standalone exported server serves its bundled catalog page', response.status==200 and b'Coast Packages' in response.read())
+                check('standalone exported server serves its bundled catalog page', response.status==200 and b'Brine' in response.read())
                 connection.close()
             finally:
                 process.terminate()
@@ -136,13 +136,13 @@ def main():
         check('valid DNS and IPv4 origins normalize', client.server_origin('https://Packages.Example:8765/')=='https://packages.example:8765' and
               client.server_origin('http://192.168.1.50:8765')=='http://192.168.1.50:8765')
         fixture = out/'settings'
-        (fixture/'etc/coast').mkdir(parents=True)
-        settings = fixture/'etc/coast/packages.json'
+        (fixture/'etc/brine').mkdir(parents=True)
+        settings = fixture/'etc/brine/config.json'
         pacman = fixture/'etc/pacman.conf'
         makepkg = fixture/'etc/makepkg.conf'
         settings.write_text(json.dumps(dict(version=1,url='http://old:8765',signing_fingerprint='A'*40)))
         pacman.write_text('[options]\nSigLevel = Required\n[coast]\nServer = http://old:8765/repo/$arch\n\n[unrelated]\nServer = https://unchanged.example/repo\n')
-        makepkg.write_text("CARCH=x86_64\nexport COAST_REPOSITORY_URL='http://old:8765'\n")
+        makepkg.write_text("CARCH=x86_64\nexport BRINE_REPOSITORY_URL='http://old:8765'\n")
         client.apply_server('https://new.example:8765', fixture, os.getuid())
         check('all three client settings switch while the trusted key and signature policy stay intact',
               json.loads(settings.read_text())['url']=='https://new.example:8765' and
@@ -150,7 +150,7 @@ def main():
               'Server = https://new.example:8765/repo/$arch' in pacman.read_text() and
               'SigLevel = Required' in pacman.read_text() and
               'Server = https://unchanged.example/repo' in pacman.read_text() and
-              "export COAST_REPOSITORY_URL='https://new.example:8765'" in makepkg.read_text())
+              "export BRINE_REPOSITORY_URL='https://new.example:8765'" in makepkg.read_text())
         before = [path.read_bytes() for path in [settings,pacman,makepkg]]
         replace = client.os.replace
         failed = False
@@ -167,8 +167,8 @@ def main():
         finally:
             client.os.replace = replace
         check('ordinary update failure restores every original settings byte and removes temporary files',
-              [path.read_bytes() for path in [settings,pacman,makepkg]]==before and not list(fixture.rglob('.coast-server-*')) and
-              not (fixture/'etc/coast/.server-update.lock').exists())
+              [path.read_bytes() for path in [settings,pacman,makepkg]]==before and not list(fixture.rglob('.brine-server-*')) and
+              not (fixture/'etc/brine/.server-update.lock').exists())
         pacman.unlink()
         pacman.symlink_to(makepkg)
         rejected('root settings helper refuses symlink destinations', lambda: client.apply_server('http://third:8765',fixture,os.getuid()))

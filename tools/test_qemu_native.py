@@ -44,7 +44,7 @@ def main():
         print('START ' + name, flush=True)
         # Package operations may invoke sudo internally. Authenticate a fixed
         # command first, never send a password in response to package output.
-        if command.startswith(('coast server ', 'coast install ')):
+        if command.startswith(('brine server ', 'brine install ')):
             vm.command('true')
         output = vm.shell_command(command, expect=expected, as_user=user, timeout=timeout)
         (out / (f'{len(report["checks"]):02d}-output.txt')).write_text(output)
@@ -60,10 +60,10 @@ def main():
                         iso=image, label='native-qemu-build')
         vm.command('true')
         check('select candidate with existing repository signing key',
-              'coast server http://10.0.2.2:' + str(server.server_port), 'Package downloads and source builds now use')
+              'brine server http://10.0.2.2:' + str(server.server_port), 'Package downloads and source builds now use')
         check('verify signed repository metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
-        check('install complete native QEMU build closure', 'coast install qemu-build --noconfirm',
+        check('install complete native QEMU build closure', 'brine install qemu-build --noconfirm',
               'installing qemu-build', timeout=600)
         check('verify Python build-tool package ownership', 'pacman -Qkk python-pip python-setuptools qemu-build', '0 altered files')
         check('native Python runs the packaged build frontend', 'python3 -m pip --version', 'pip 25.2')
@@ -76,7 +76,7 @@ def main():
         check('source-built emulator passes disk, coroutine, QMP, VNC, BIOS and SDK workflows',
               'cd /home/user/Builds/qemu && python3 -B ports/qemu/check.py --runtime build/qemu-native/runtime --sdk',
               'QEMU_ALL_PASS', timeout=600)
-        check('install complete Coast source and ISO build closure', 'coast install coast-build --noconfirm',
+        check('install complete Coast source and ISO build closure', 'brine install coast-build --noconfirm',
               'installing coast-build', timeout=600)
         check('unpack the complete OS sources as the desktop user',
               'mkdir -p /home/user/Builds/coast && cd /home/user/Builds/coast && '

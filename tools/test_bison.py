@@ -86,7 +86,7 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='8G', accel='kvm',
             iso=args.iso.resolve(), label='native-bison')
         vm.command('true')
-        check('select the signed source fixture repository', 'coast server ' + origin,
+        check('select the signed source fixture repository', 'brine server ' + origin,
             'Package downloads and source builds now use')
         check('create an isolated normal-user source workspace',
             'mkdir -p /home/user/bison/source/build/bison-native/vendor /home/user/bison/fixture && echo BISON_WORKSPACE_READY', 'BISON_WORKSPACE_READY')

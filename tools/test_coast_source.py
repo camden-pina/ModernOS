@@ -46,12 +46,12 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='16G', accel='kvm',
                         iso=args.iso, label='coast-source-build')
         vm.command('true')
-        check('select local source repository', 'coast server http://10.0.2.2:' + str(server.server_port),
+        check('select local source repository', 'brine server http://10.0.2.2:' + str(server.server_port),
               'Package downloads and source builds now use')
         check('verify signed package metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
         if args.image_tools_only:
-            check('install native image tools', 'coast install xorriso --noconfirm && coast install mtools --noconfirm',
+            check('install native image tools', 'brine install xorriso --noconfirm && brine install mtools --noconfirm',
                   'installing xorriso', timeout=120)
             check('write an actual ISO from native RAMFS inputs',
                   'mkdir -p /tmp/iso-input && echo COAST_ISO_BYTES_PASS > /tmp/iso-input/answer.txt && '
@@ -63,7 +63,7 @@ def main():
                   'COAST_ISO_BYTES_PASS')
             report['state'] = 'passed'
             return
-        check('install source kit and native build dependencies', 'coast install coast-build --noconfirm',
+        check('install source kit and native build dependencies', 'brine install coast-build --noconfirm',
               'installing coast-build', timeout=600)
         check('verify source and assembler package ownership', 'pacman -Qkk coast-source nasm', '0 altered files')
         check('native assembler and build system versions', 'nasm --version && meson --version', '1.10.2')
@@ -108,8 +108,8 @@ def main():
               'gcc -static -no-pie $(pkg-config --cflags wayland-server) ports/wayland/sdk-check.c '
               '$(pkg-config --static --libs wayland-server) -o /tmp/wayland-check && /tmp/wayland-check',
               'COAST_WAYLAND_SDK_PASS 1.21.0')
-        check('refresh the source recipe catalog', 'coast refresh', 'Updated signed source catalog')
-        check('fetch native NASM source recipe', 'coast clone nasm', 'Recipe checkout')
+        check('refresh the source recipe catalog', 'brine refresh', 'Updated signed source catalog')
+        check('fetch native NASM source recipe', 'brine clone nasm', 'Recipe checkout')
         check('build and check NASM from source with makepkg',
               'cd /home/user/Builds/nasm && makepkg --noconfirm', 'Finished making', timeout=600)
         if args.build_image:

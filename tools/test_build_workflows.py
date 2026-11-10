@@ -80,7 +80,7 @@ class CacheProtectionTests(unittest.TestCase):
 
     def test_selected_service_directory_is_protected(self):
         self.cache('service/npm-cache')
-        (self.root / 'build/Coast-repository-server').symlink_to('service')
+        (self.root / 'build/brine-repository-server').symlink_to('service')
         self.assertEqual(list(clean_cache.candidates(self.root)), [])
 
     def test_external_symlink_cannot_be_followed(self):

@@ -14,15 +14,15 @@ import tempfile
 import unicodedata
 from urllib.parse import urlsplit
 
-CATALOG = Path('/usr/share/coast/packages/catalog.json')
-CONFIG = Path('/etc/coast/packages.json')
+CATALOG = Path('/usr/share/brine/catalog.json')
+CONFIG = Path('/etc/brine/config.json')
 NAME = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9@._+-]{0,63}\Z')
 
-_search_spec = importlib.util.spec_from_file_location('coast_package_search', Path(__file__).with_name('search.py'))
+_search_spec = importlib.util.spec_from_file_location('brine_search', Path(__file__).with_name('search.py'))
 _search_module = importlib.util.module_from_spec(_search_spec)
 _search_spec.loader.exec_module(_search_module)
 search = _search_module.search
-_community_spec=importlib.util.spec_from_file_location('coast_package_community',Path(__file__).with_name('community.py'))
+_community_spec=importlib.util.spec_from_file_location('brine_community',Path(__file__).with_name('community.py'))
 _community_module=importlib.util.module_from_spec(_community_spec)
 _community_spec.loader.exec_module(_community_module)
 
@@ -59,11 +59,11 @@ def config(required=True):
     data = json.loads(CONFIG.read_text())
     if data.get('version') == 1 and data.get('url') is None and data.get('signing_fingerprint') is None:
         if required:
-            raise Error('no repository configured; use coast configure URL --key FILE --fingerprint FINGERPRINT')
+            raise Error('no repository configured; use brine configure URL --key FILE --fingerprint FINGERPRINT')
         return data
     endpoint = urlsplit(data['url'])
     if data.get('version') != 1 or endpoint.scheme not in ('file', 'http', 'https') or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment:
-        raise Error('invalid Coast Packages server configuration')
+        raise Error('invalid Brine server configuration')
     if endpoint.scheme != 'file' and (not endpoint.hostname or endpoint.path not in ('', '/')):
         raise Error('repository URL must be a server origin')
     if not re.fullmatch('[A-F0-9]{40}', data['signing_fingerprint']):
@@ -73,8 +73,8 @@ def config(required=True):
 
 def community_fetch(relative,maximum):
     endpoint=config().get('community_url')
-    if not endpoint:raise Error('no community server configured; use coast community URL')
-    with tempfile.TemporaryDirectory(prefix='coast-community-') as temporary:
+    if not endpoint:raise Error('no community server configured; use brine community URL')
+    with tempfile.TemporaryDirectory(prefix='brine-community-') as temporary:
         path=Path(temporary)/'response'
         download(relative,path,maximum,endpoint,retries=False)
         return path.read_bytes()
@@ -86,12 +86,12 @@ def community_info(names):
 
 def community_search(queries,required=False):
     if not config().get('community_url'):
-        if required:raise Error('no community server configured; use coast community URL')
+        if required:raise Error('no community server configured; use brine community URL')
         return []
     try:return _community_module.search(community_fetch,queries)
     except (Error,OSError,ValueError,KeyError) as error:
         if required:raise Error(str(error)) from error
-        print('coast: community search unavailable: '+str(error),file=sys.stderr)
+        print('brine: community search unavailable: '+str(error),file=sys.stderr)
         return []
 
 
@@ -111,7 +111,7 @@ def validate_catalog(path, signature):
     verify_signature(path, signature)
     data = json.loads(path.read_text())
     if data.get('version') != 1 or not isinstance(data.get('results'), list):
-        raise Error('invalid Coast Packages source catalog')
+        raise Error('invalid Brine source catalog')
     for package in data['results']:
         if not NAME.fullmatch(package['Name']) or not NAME.fullmatch(package['PackageBase']):
             raise Error('invalid package name in source catalog')
@@ -130,7 +130,7 @@ def validate_catalog(path, signature):
 
 
 def catalog():
-    current = home() / '.cache/coast/packages/current' if 1000 <= os.getuid() < 1032 else None
+    current = home() / '.cache/brine/current' if 1000 <= os.getuid() < 1032 else None
     path = current / 'index.json' if current and current.exists() else CATALOG
     return validate_catalog(path, path.with_name(path.name + '.sig'))
 
@@ -149,12 +149,12 @@ def download(relative, destination, maximum=4 * 1024 * 1024, server=None,retries
 
 def check_server(url):
     url = server_origin(url)
-    with tempfile.TemporaryDirectory(prefix='coast-server-check-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='brine-server-check-') as temporary:
         directory = Path(temporary)
         health = directory/'health.json'
         download('/health', health, 16384, url)
         identity = json.loads(health.read_text())
-        if identity.get('name') != 'Coast Packages' or identity.get('fingerprint') != config()['signing_fingerprint']:
+        if identity.get('name') != 'Brine' or identity.get('fingerprint') != config()['signing_fingerprint']:
             raise Error('server identity does not match the already trusted repository key')
         for route, maximum in [('recipes/index.json', 4*1024*1024), ('repo/x86_64/coast.db', 32*1024*1024)]:
             target, signature = directory/Path(route).name, directory/(Path(route).name+'.sig')
@@ -170,7 +170,7 @@ def check_server(url):
 
 def check_community(url):
     url=server_origin(url)
-    with tempfile.TemporaryDirectory(prefix='coast-community-check-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='brine-community-check-') as temporary:
         target=Path(temporary)/'info.json'
         download('/rpc/v5/info?arg[]=coast-health-check',target,16384,url,retries=False)
         data=json.loads(target.read_text())
@@ -183,7 +183,7 @@ def check_community(url):
 def apply_community(url,root=Path('/'),owner=0):
     if root==Path('/') and owner!=0:raise Error('system settings require root ownership')
     url=server_origin(url) if url!='off' else None
-    path=root/'etc/coast/packages.json'
+    path=root/'etc/brine/config.json'
     for parent in [root/'etc',path.parent]:
         info=parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid!=owner or info.st_mode&0o022:
@@ -197,7 +197,7 @@ def apply_community(url,root=Path('/'),owner=0):
     if data.get('version')!=1 or not re.fullmatch('[A-F0-9]{40}',data.get('signing_fingerprint','')):
         raise Error('invalid existing repository trust configuration')
     data['community_url']=url
-    fd,name=tempfile.mkstemp(prefix='.coast-community-',dir=path.parent)
+    fd,name=tempfile.mkstemp(prefix='.brine-community-',dir=path.parent)
     try:
         with os.fdopen(fd,'w') as stream:json.dump(data,stream,indent=2);stream.write('\n')
         os.chmod(name,0o644);os.replace(name,path)
@@ -218,11 +218,11 @@ def server_config_texts(url, current, pacman, makepkg):
         raise Error('expected exactly one coast package server')
     pacman = pacman[:section.start('body')]+body+pacman[section.end('body'):]
     pacman = pacman.replace('--proto =file', '--proto =http,https')
-    makepkg, count = re.subn(r'(?m)^export COAST_REPOSITORY_URL=.*$', 'export COAST_REPOSITORY_URL='+repr(url), makepkg)
+    makepkg, count = re.subn(r'(?m)^export BRINE_REPOSITORY_URL=.*$', 'export BRINE_REPOSITORY_URL='+repr(url), makepkg)
     if count > 1:
         raise Error('ambiguous source repository configuration')
     if not count:
-        makepkg = makepkg.rstrip()+'\nexport COAST_REPOSITORY_URL='+repr(url)+'\n'
+        makepkg = makepkg.rstrip()+'\nexport BRINE_REPOSITORY_URL='+repr(url)+'\n'
     return [json.dumps(data, indent=2)+'\n', pacman, makepkg]
 
 
@@ -234,7 +234,7 @@ def apply_server(url, root=Path('/'), owner=0):
     """
     if root == Path('/') and owner != 0:
         raise Error('system settings require root ownership')
-    paths = [root/'etc/coast/packages.json', root/'etc/pacman.conf', root/'etc/makepkg.conf']
+    paths = [root/'etc/brine/config.json', root/'etc/pacman.conf', root/'etc/makepkg.conf']
     original = []
     for path in paths:
         for parent in [path.parent, root/'etc']:
@@ -248,13 +248,13 @@ def apply_server(url, root=Path('/'), owner=0):
                 raise Error('unsafe repository configuration file')
             original.append(source.read())
     replacement = server_config_texts(url, *original)
-    lock = root/'etc/coast/.server-update.lock'
+    lock = root/'etc/brine/.server-update.lock'
     descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     os.close(descriptor)
     staged, replaced = [], []
 
     def stage(path, text):
-        fd, name = tempfile.mkstemp(prefix='.coast-server-', dir=path.parent)
+        fd, name = tempfile.mkstemp(prefix='.brine-server-', dir=path.parent)
         try:
             with os.fdopen(fd, 'w') as target:
                 target.write(text)
@@ -282,7 +282,7 @@ def apply_server(url, root=Path('/'), owner=0):
 
 def refresh():
     unprivileged()
-    cache = home() / '.cache/coast/packages'
+    cache = home() / '.cache/brine'
     cache.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.refresh-', dir=cache) as temporary:
         transaction = Path(temporary)
@@ -369,7 +369,7 @@ def provider(packages, name):
 
 def unprivileged():
     if os.getuid() == 0 or os.geteuid() == 0:
-        raise Error('run coast as your normal user; sudo authenticates package installation separately')
+        raise Error('run brine as your normal user; sudo authenticates package installation separately')
 
 
 def home():
@@ -384,7 +384,7 @@ def home():
 def git(package, arguments, cwd=None, capture=False):
     source=recipe_url(package)
     if not package.get('Community') and arguments[0] in ('clone', 'fetch'):
-        with tempfile.TemporaryDirectory(prefix='coast-network-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='brine-network-') as temporary:
             download(package['URLPath'] + '/HEAD', Path(temporary)/'HEAD', 16384)
     trust = ['-c', 'safe.directory=' + urlsplit(source).path] if source.startswith('file:') else []
     return run(['/usr/bin/git', *trust, '-c', 'core.hooksPath=/dev/null',
@@ -444,12 +444,12 @@ def checkout(package, destination=None):
 def show(package):
     if package.get('Community'):
         unprivileged()
-        with tempfile.TemporaryDirectory(prefix='coast-review-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='brine-review-') as temporary:
             directory=checkout(package,Path(temporary)/'recipe')
             print('Community commit: '+git(package,['rev-parse','HEAD'],cwd=directory,capture=True))
             for path in review_files(directory):print('\n'+path.name+':\n'+printable_recipe(path))
         return
-    with tempfile.TemporaryDirectory(prefix='coast-review-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='brine-review-') as temporary:
         for name in ['PKGBUILD', *sorted(n for n in package['Files'] if n.endswith('.install'))]:
             path = Path(temporary) / name
             download('/recipes/' + package['PackageBase'] + '/files/' + name, path)
@@ -476,7 +476,7 @@ def main():
     if len(sys.argv) == 5 and sys.argv[1] == '_configure':
         if os.getuid() != 0 or os.geteuid() != 0:
             raise Error('changing system package settings requires authenticated sudo')
-        spec = importlib.util.spec_from_file_location('coast_package_configure', Path(__file__).with_name('configure.py'))
+        spec = importlib.util.spec_from_file_location('brine_configure', Path(__file__).with_name('configure.py'))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.initialize(server_origin(sys.argv[2]), sys.argv[3], sys.argv[4], server_texts=server_config_texts)
@@ -487,8 +487,8 @@ def main():
         (apply_server if sys.argv[1]=='_set-server' else apply_community)(sys.argv[2])
         return
     if os.uname().sysname != 'Coast':
-        raise Error('this client runs inside Coast')
-    parser = argparse.ArgumentParser(prog='coast', description='Coast Packages: signed packages and reviewed source recipes.')
+        raise Error('Brine runs inside Coast OS')
+    parser = argparse.ArgumentParser(prog='brine', description='Brine: signed packages and reviewed source recipes.')
     sub = parser.add_subparsers(dest='operation', required=True)
     query = sub.add_parser('search', help='find partial names, commands and descriptions in local packages and recipes')
     query.add_argument('query', nargs='*', help='literal, case-insensitive terms; all terms must match')
@@ -541,7 +541,7 @@ def main():
     remove.add_argument('--unused', action='store_true', help='also remove dependencies no longer needed')
     remove.add_argument('--noconfirm', action='store_true')
     sub.add_parser('checkupdates', help='compare installed packages with local recipe versions')
-    rpc = sub.add_parser('rpc', help='emit Coast source-catalog search/info JSON')
+    rpc = sub.add_parser('rpc', help='emit Brine source-catalog search/info JSON')
     rpc.add_argument('--type', choices=['search', 'info'], required=True)
     rpc.add_argument('--arg', required=True)
     args = parser.parse_args()
@@ -550,12 +550,12 @@ def main():
         url = server_origin(args.url)
         fingerprint = args.fingerprint.upper()
         key = args.key.resolve(strict=True)
-        spec = importlib.util.spec_from_file_location('coast_package_configure', Path(__file__).with_name('configure.py'))
+        spec = importlib.util.spec_from_file_location('brine_configure', Path(__file__).with_name('configure.py'))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.public_key(key, fingerprint)
         run(['/bin/sudo', '/usr/bin/python3', '-I', str(Path(__file__).resolve()), '_configure', url, str(key), fingerprint])
-        print('Configured Coast Packages: ' + url + '\nSigning key: ' + fingerprint)
+        print('Configured Brine: ' + url + '\nSigning key: ' + fingerprint)
         return
     if getattr(args,'community',False) and (getattr(args,'repo',False) or getattr(args,'source',False)):
         parser.error('--community cannot be combined with --repo or --source')
@@ -572,7 +572,7 @@ def main():
     if args.operation == 'server':
         if not args.url and not args.check:
             data = config(required=False)
-            print('Coast Packages\nServer: '+str(data['url'] or 'not configured')+'\nSigning key: '+str(data['signing_fingerprint'] or 'not configured'))
+            print('Brine\nServer: '+str(data['url'] or 'not configured')+'\nSigning key: '+str(data['signing_fingerprint'] or 'not configured'))
             return
         unprivileged()
         url = check_server(args.url or config()['url'])
@@ -585,7 +585,7 @@ def main():
         return
     if args.operation == 'repo':
         data = config(required=False)
-        print('Coast Packages\nServer: ' + str(data['url'] or 'not configured') + '\nSigning key: ' + str(data['signing_fingerprint'] or 'not configured'))
+        print('Brine\nServer: ' + str(data['url'] or 'not configured') + '\nSigning key: ' + str(data['signing_fingerprint'] or 'not configured'))
         return
     if args.operation == 'list':
         run(['/usr/bin/pacman', '-Q'])
@@ -596,7 +596,7 @@ def main():
         if args.operation == 'remove':
             installed = {line.split(' ', 1)[0] for line in run(['/usr/bin/pacman', '-Q'], capture=True).splitlines()}
             if any(not NAME.fullmatch(name) or name not in installed for name in args.names):
-                raise Error('remove requires exact installed package names; use coast list')
+                raise Error('remove requires exact installed package names; use brine list')
             run(['/bin/sudo', '/usr/bin/pacman', '-Rs' if args.unused else '-R', *flags, '--', *args.names])
         else:
             run(['/bin/sudo', '/usr/bin/pacman', '-Syu', *flags])
@@ -651,7 +651,7 @@ def main():
         available = repository_packages() if NAME.fullmatch(args.name) else []
         providers = provider(available, args.name)
         if not providers and getattr(args, 'repo', False):
-            raise Error('no exact local package: ' + args.name + '; use coast search to find its full name')
+            raise Error('no exact local package: ' + args.name + '; use brine search to find its full name')
         if providers and args.operation == 'info':
             for package in providers:
                 run(['/usr/bin/pacman', '-Si', '--', package['Repository'] + '/' + package['Name']])
@@ -662,7 +662,7 @@ def main():
             return
     if explicit_community or args.name not in packages:
         found=community_info([args.name]) if config().get('community_url') else {}
-        if args.name not in found:raise Error('no exact source recipe: '+args.name+'; use coast search to find its full name')
+        if args.name not in found:raise Error('no exact source recipe: '+args.name+'; use brine search to find its full name')
         package=found[args.name]
     else:package=packages[args.name]
     if args.operation == 'info':
@@ -689,7 +689,7 @@ def main():
         git(package, ['fetch', 'origin'], cwd=directory)
         target=git(package,['rev-parse','FETCH_HEAD'],cwd=directory,capture=True) if package.get('Community') else package['Commit']
         if not package.get('Community') and git(package, ['rev-parse', 'FETCH_HEAD'], cwd=directory, capture=True) != target:
-            raise Error('remote commit differs from the signed catalog; run coast refresh before updating')
+            raise Error('remote commit differs from the signed catalog; run brine refresh before updating')
         git(package,['log','--oneline','HEAD..'+target],cwd=directory)
         git(package,['diff','--stat','HEAD',target],cwd=directory)
         git(package, ['merge', '--ff-only', target], cwd=directory)
@@ -702,12 +702,12 @@ def main():
         command.append('--install')
     if args.noconfirm:
         command.append('--noconfirm')
-    run(command, cwd=directory, env=dict(os.environ, HOME=str(home()), COAST_REPOSITORY_URL=config()['url']))
+    run(command, cwd=directory, env=dict(os.environ, HOME=str(home()), BRINE_REPOSITORY_URL=config()['url']))
 
 
 if __name__ == '__main__':
     try:
         main()
     except (Error, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        print('coast: ' + str(error), file=sys.stderr)
+        print('brine: ' + str(error), file=sys.stderr)
         sys.exit(1)

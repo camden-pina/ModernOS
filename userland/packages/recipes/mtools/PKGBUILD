@@ -7,7 +7,7 @@ arch=('x86_64')
 license=('GPL-3.0-or-later')
 depends=('musl')
 makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/mtools-4.0.49.tar.gz")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/mtools-4.0.49.tar.gz")
 sha256sums=('10cd1111da87bf2400a380c1639a6cba8bfb937a24f9c51f5f88d393ae5f6f76')
 noextract=('mtools-4.0.49.tar.gz')
 

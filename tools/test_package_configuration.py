@@ -21,7 +21,7 @@ def module(name):
 class ConfigurationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix='coast-configure-test-')
+        cls.temporary = tempfile.TemporaryDirectory(prefix='brine-configure-test-')
         cls.work = Path(cls.temporary.name)
         cls.keys = cls.work / 'signing'
         cls.keys.mkdir(mode=0o700)
@@ -45,9 +45,9 @@ class ConfigurationTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(dir=self.work)
         self.root = Path(self.directory.name)
-        for name in ('etc/coast', 'etc/pacman.d/gnupg'):
+        for name in ('etc/brine', 'etc/pacman.d/gnupg'):
             (self.root / name).mkdir(parents=True)
-        (self.root / 'etc/coast/packages.json').write_text(json.dumps(dict(version=1, url=None, signing_fingerprint=None, community_url=None)))
+        (self.root / 'etc/brine/config.json').write_text(json.dumps(dict(version=1, url=None, signing_fingerprint=None, community_url=None)))
         for name in ('pacman.conf', 'makepkg.conf'):
             (self.root / 'etc' / name).write_bytes((ROOT / 'userland/packages/config' / name).read_bytes())
 
@@ -60,18 +60,18 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_matching_public_key_initializes_only_public_trust(self):
         self.initialize()
-        config = json.loads((self.root / 'etc/coast/packages.json').read_text())
+        config = json.loads((self.root / 'etc/brine/config.json').read_text())
         self.assertEqual(config['signing_fingerprint'], self.fingerprint)
         self.assertEqual(config['url'], 'https://packages.example.test')
         self.assertIn('Server = https://packages.example.test/repo/$arch', (self.root / 'etc/pacman.conf').read_text())
         self.assertEqual(sorted(path.name for path in (self.root / 'etc/pacman.d/gnupg').iterdir()), ['pubring.gpg', 'trustdb.gpg'])
-        self.assertFalse((self.root / 'etc/coast/.server-update.lock').exists())
+        self.assertFalse((self.root / 'etc/brine/.server-update.lock').exists())
 
     def test_mismatched_fingerprint_leaves_configuration_unchanged(self):
-        before = (self.root / 'etc/coast/packages.json').read_bytes()
+        before = (self.root / 'etc/brine/config.json').read_bytes()
         with self.assertRaisesRegex(ValueError, 'does not match'):
             self.initialize(fingerprint='0' * 40)
-        self.assertEqual(before, (self.root / 'etc/coast/packages.json').read_bytes())
+        self.assertEqual(before, (self.root / 'etc/brine/config.json').read_bytes())
         self.assertFalse(list((self.root / 'etc/pacman.d/gnupg').iterdir()))
 
     def test_private_key_is_not_accepted_as_a_public_identity(self):
@@ -86,7 +86,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(files, {str(path.relative_to(self.root)): path.read_bytes() for path in self.root.rglob('*') if path.is_file()})
 
     def test_unsafe_configuration_symlink_is_rejected(self):
-        config = self.root / 'etc/coast/packages.json'
+        config = self.root / 'etc/brine/config.json'
         original = self.root / 'original'
         config.rename(original)
         config.symlink_to(original)
@@ -97,7 +97,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_plain_server_change_keeps_the_existing_fingerprint(self):
         self.initialize()
         self.client.apply_server('https://mirror.example.test', root=self.root, owner=os.getuid())
-        current = json.loads((self.root / 'etc/coast/packages.json').read_text())
+        current = json.loads((self.root / 'etc/brine/config.json').read_text())
         self.assertEqual(current['signing_fingerprint'], self.fingerprint)
         self.assertEqual(current['url'], 'https://mirror.example.test')
 

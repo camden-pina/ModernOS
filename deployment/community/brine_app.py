@@ -7,9 +7,9 @@ from xml.sax.saxutils import escape
 import aurweb.config
 import aurweb.db
 
-_origin = ContextVar('coast_request_origin', default=None)
+_origin = ContextVar('brine_request_origin', default=None)
 _upstream_get = aurweb.config.get
-_sessions = ContextVar('coast_request_sessions', default=None)
+_sessions = ContextVar('brine_request_sessions', default=None)
 _upstream_session = aurweb.db.get_session
 
 
@@ -58,7 +58,7 @@ async def app(scope, receive, send):
         safe=escape(origin,{'"':'&quot;'})
         body=('<?xml version="1.0" encoding="UTF-8"?>'
               '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">'
-              '<ShortName>Coast Packages</ShortName><Description>Search Coast community package names and descriptions.</Description>'
+              '<ShortName>Brine</ShortName><Description>Search Brine community package names and descriptions.</Description>'
               '<InputEncoding>UTF-8</InputEncoding><Url type="text/html" template="'+safe+'/packages?K={searchTerms}"/>'
               '<Url rel="self" type="application/opensearchdescription+xml" template="'+safe+'/static/opensearch.xml"/>'
               '</OpenSearchDescription>').encode()
@@ -71,7 +71,7 @@ async def app(scope, receive, send):
         parsed = urlsplit(candidate)
         supplied = parsed.scheme+'://'+parsed.netloc
         if supplied != origin or headers.get('sec-fetch-site') == 'cross-site':
-            body = b'An operation must originate from this Coast community site.\n'
+            body = b'An operation must originate from this Brine community site.\n'
             await send(dict(type='http.response.start', status=403,
                             headers=[(b'content-type', b'text/plain; charset=utf-8'),
                                      (b'content-length', str(len(body)).encode())]))

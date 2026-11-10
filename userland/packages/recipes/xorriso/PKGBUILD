@@ -7,8 +7,8 @@ arch=('x86_64')
 license=('GPL-3.0-or-later')
 depends=('musl')
 makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-1.5.8.pl02.tar.gz"
-        "${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-private-buffer.patch")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-1.5.8.pl02.tar.gz"
+        "${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-private-buffer.patch")
 sha256sums=('b1455ecafbf0692ddafe1d71002a96f2ce2d77f4deae602678261ce033f97bc8'
             '648a3fffbfcc3ca98042b709db762546554e37ea90f8d2932736c1afd4052f67')
 noextract=('xorriso-1.5.8.pl02.tar.gz')

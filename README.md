@@ -1,6 +1,6 @@
-# Coast
+# Coast OS
 
-Coast is an experimental x86-64 operating system with its own kernel, native
+Coast OS is an experimental x86-64 operating system with its own kernel, native
 desktop, account system and Linux-compatible application ABI. It runs Chromium,
 Code OSS and native development tools inside Coast.
 
@@ -37,7 +37,7 @@ trees. The desktop VM uses 16 GiB RAM. QEMU uses KVM when available and falls
 back to slower software emulation.
 
 `make iso` defaults to the complete desktop: the kernel, native desktop and account
-tools, Chromium, Code OSS, GCC/G++, Python, Coast Packages/makepkg, Qt Widgets,
+tools, Chromium, Code OSS, GCC/G++, Python, Brine/makepkg, Qt Widgets,
 QEMU and the Chromium VM viewer. The wizard can omit optional apps and explains
 their dependencies. `make run` boots that ISO without rebuilding.
 
@@ -67,25 +67,25 @@ before building. A Coast source archive already includes its source inventory.
 ## Use Coast
 
 Enter `gui` at the Coast console. Super+B opens Chromium when installed, Super+T Terminal and
-Super+E Files. Super+Space opens Spotlight; use it to launch Code OSS, Coast
-Packages, Qt 6 Demo and the other installed applications. Set the owner password
+Super+E Files. Super+Space opens Spotlight; use it to launch Code OSS, Brine, Qt 6 Demo and the other installed applications. Set the owner password
 in Settings → Profiles before using sudo.
 
 Coast uses **RAM-backed live storage**. Copy work to a supported writable mount
 before shutdown to keep files, passwords and configuration.
 
-Coast builds source recipes with makepkg/fakeroot. To download signed
+**Brine** is Coast OS's package manager. It installs signed packages and builds
+reviewed source recipes with makepkg/fakeroot. To download signed
 packages, obtain a server URL, public key and independently verified full
 fingerprint from your repository operator, then run inside Coast:
 
 ```sh
-coast configure https://packages.example.org --key ./repository.asc --fingerprint FULL_40_CHARACTER_FINGERPRINT
-coast server --check
-coast refresh
+brine configure https://packages.example.org --key ./repository.asc --fingerprint FULL_40_CHARACTER_FINGERPRINT
+brine server --check
+brine refresh
 ```
 
 The example URL is a placeholder for your package service. Repository hosting
-and community setup are described in [Coast Packages](Documentation/local-repositories.md).
+and community setup are described in [Brine](Documentation/local-repositories.md).
 A source build requires no package server or private signing key.
 
 ## Development

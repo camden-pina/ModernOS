@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify Coast Packages, real makepkg/fakeroot and QEMU in a fresh image."""
+"""Qualify Brine, real makepkg/fakeroot and QEMU in a fresh image."""
 import argparse
 import json
 from pathlib import Path
@@ -47,8 +47,8 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, network_backend='passt', memory='16G', accel='kvm', iso=iso, label='fresh-wide-integrations')
         vm.command('true')
         (out / 'network-startup.txt').write_text(vm.command('netinfo'))
-        check('fresh image has no inherited signing identity', 'coast repo', 'not configured')
-        check('Coast lists the actual installed source components', 'coast list', 'coast-packages 1.6-1')
+        check('fresh image has no inherited signing identity', 'brine repo', 'not configured')
+        check('Coast lists the actual installed source components', 'brine list', 'brine 1.6-1')
         check('compiler, Qt and emulator have real package ownership',
               'pacman -Qo /usr/bin/gcc /usr/bin/qt6-demo /usr/bin/qemu-system-x86_64', 'qemu 10.2.4-1')
         check('initial live database records source assembly without claiming PGP installation',
@@ -63,34 +63,34 @@ def main():
         check('fetch only the disposable fixture public key',
               'curl -q --noproxy "*" --retry 20 --retry-all-errors --retry-delay 1 --connect-timeout 3 --max-time 45 -fsS ' + origin + '/keys/fixture.asc -o /home/user/fixture.asc && sha256sum /home/user/fixture.asc', digest(fixture.public / 'public.asc'))
         check('first-use trust rejects a mismatched fingerprint',
-              'coast configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + '0' * 40 + '; test $? -ne 0', 'does not match')
+              'brine configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + '0' * 40 + '; test $? -ne 0', 'does not match')
         vm.command('true')
         check('initialize only the explicitly matched disposable repository identity',
-              'coast configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + fixture.fingerprint, 'Configured Coast Packages')
+              'brine configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + fixture.fingerprint, 'Configured Brine')
         check('first-use configuration preserves its signing identity on repeat',
-              'coast configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + fixture.fingerprint + '; test $? -ne 0', 'already configured')
-        check('configured server verifies its catalog and binary database signatures', 'coast server --check', 'Verified package database and source catalog')
-        check('refresh the signed source catalog', 'coast refresh', '1 recipes')
+              'brine configure ' + origin + ' --key /home/user/fixture.asc --fingerprint ' + fixture.fingerprint + '; test $? -ne 0', 'already configured')
+        check('configured server verifies its catalog and binary database signatures', 'brine server --check', 'Verified package database and source catalog')
+        check('refresh the signed source catalog', 'brine refresh', '1 recipes')
         check('libalpm verifies the signed binary and command databases', 'pacman -Syy --noconfirm && pacman -Fyy --noconfirm', 'Synchronizing', user=False)
-        check('frontend source search uses the verified catalog', 'coast search --source hello', 'hello-coast')
-        check('frontend binary search uses signed libalpm metadata', 'coast search --repo wider', 'coast-wide-qa')
-        check('clone the actual pinned Git recipe history', 'coast clone hello-coast', 'Recipe checkout')
+        check('frontend source search uses the verified catalog', 'brine search --source hello', 'hello-coast')
+        check('frontend binary search uses signed libalpm metadata', 'brine search --repo wider', 'coast-wide-qa')
+        check('clone the actual pinned Git recipe history', 'brine clone hello-coast', 'Recipe checkout')
         check('native makepkg checks source, compiles, tests and packages as the normal user',
-              'coast build hello-coast --reviewed --noconfirm', 'Finished making', timeout=420)
+              'brine build hello-coast --reviewed --noconfirm', 'Finished making', timeout=420)
         check('fakeroot records root metadata while the builder keeps UID 1000',
               "zstd -dc /home/user/Builds/hello-coast/*.pkg.tar.zst > /home/user/hello.tar; python3 -I -c 'import os,tarfile; assert os.getuid()==1000; a=tarfile.open(\"/home/user/hello.tar\"); assert all(m.uid==0 and m.gid==0 for m in a.getmembers()); print(\"FAKEROOT_ARCHIVE_PASS\")'", 'FAKEROOT_ARCHIVE_PASS')
         check('fakeroot does not grant kernel write permission to system paths',
               "fakeroot /usr/bin/bash -c 'test $(id -u) = 0 || exit 97; echo forbidden > /etc/fakeroot-wide-escape; test $? -ne 0'", 'Permission denied')
         vm.command('true')
         check('install the reviewed native package through authenticated sudo',
-              'coast install --source hello-coast --reviewed --noconfirm', 'installing hello-coast', timeout=420)
+              'brine install --source hello-coast --reviewed --noconfirm', 'installing hello-coast', timeout=420)
         check('the locally compiled package runs without elevation', 'hello-coast', 'uid=1000')
         check('install a real signed binary fixture through the frontend',
-              'coast install --repo coast-wide-qa --noconfirm', 'installing coast-wide-qa')
+              'brine install --repo coast-wide-qa --noconfirm', 'installing coast-wide-qa')
         check('signed package bytes and database integrity match',
               'cat /usr/share/coast/wider-integration-qa.txt; pacman -Qkk coast-wide-qa', '0 altered files')
         check('frontend removes the signed package through authenticated sudo',
-              'coast remove coast-wide-qa --noconfirm', 'removing coast-wide-qa')
+              'brine remove coast-wide-qa --noconfirm', 'removing coast-wide-qa')
         check('QEMU disk workflows, QMP, VNC, BIOS CPU execution and native SDK consumers',
               'python3 /usr/share/coast/qemu/check.py --sdk', 'QEMU_ALL_PASS', timeout=420)
         check('Qt and QEMU installed file metadata matches source-built payloads',

@@ -132,9 +132,9 @@ def configure():
     if endpoint.scheme=='https':nginx=nginx.replace('X-Forwarded-Proto $scheme','X-Forwarded-Proto https')
     (RUN/'nginx.conf').write_text(nginx)
     (RUN/'nginx.conf').chmod(0o644)
-    (RUN/'cgitrc').write_text('virtual-root=/cgit\nroot-title=Coast Community Packages\n'
+    (RUN/'cgitrc').write_text('virtual-root=/cgit\nroot-title=Brine Community Packages\n'
                             'snapshots=tar.gz\ncss=/css/cgit.css\nclone-prefix=http://127.0.0.1:8770\n'
-                            'enable-git-config=1\nrepo.url=aur.git\nrepo.name=Coast recipe history\n'
+                            'enable-git-config=1\nrepo.url=aur.git\nrepo.name=Brine recipe history\n'
                             'repo.path=/data/git/aur.git\nrepo.snapshots=tar.gz\n')
     (RUN/'cgitrc').chmod(0o644)
     return values
@@ -172,7 +172,7 @@ if not db.query(User,User.Username=='coastadmin').first():
     credentials = DATA/'ADMIN-CREDENTIALS.txt'
     if not credentials.exists():
         with credentials.open('x') as stream:
-            stream.write('Coast community local administrator\nUsername: coastadmin\nPassword: '+values['admin']+'\n')
+            stream.write('Brine community local administrator\nUsername: coastadmin\nPassword: '+values['admin']+'\n')
         credentials.chmod(0o600)
 
 
@@ -215,7 +215,7 @@ def main():
         start('cgit', as_user('aur', ['uwsgi', '--socket', '/run/coast/sockets/cgit.sock',
               '--chmod-socket=666', '--plugins', 'cgi', '--cgi', '/usr/lib/cgit-aurweb/cgit.cgi',
               '--master', '--die-on-term']))
-        start('web', as_user('aur', ['uvicorn', 'coast_app:app', '--app-dir', '/opt/coast', '--host', '127.0.0.1',
+        start('web', as_user('aur', ['uvicorn', 'brine_app:app', '--app-dir', '/opt/coast', '--host', '127.0.0.1',
               '--port', '8001', '--workers', '2', '--forwarded-allow-ips', '127.0.0.1', '--no-access-log']))
         start('ssh', ['/usr/bin/sshd', '-D', '-e', '-f', '/opt/coast/sshd_config'])
         start('frontend', ['nginx', '-c', '/run/coast/nginx.conf', '-g', 'daemon off;'])

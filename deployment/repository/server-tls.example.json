@@ -3,6 +3,6 @@
   "port": 8765,
   "public_url": "https://packages.example:8765",
   "allow_clients": ["192.168.1.0/24"],
-  "tls_cert": "/run/credentials/coast-packages.service/server-chain.pem",
-  "tls_key": "/run/credentials/coast-packages.service/server-key.pem"
+  "tls_cert": "/run/credentials/brine.service/server-chain.pem",
+  "tls_key": "/run/credentials/brine.service/server-key.pem"
 }

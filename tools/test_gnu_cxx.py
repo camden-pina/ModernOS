@@ -91,7 +91,7 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='8G', accel='kvm',
             iso=args.iso.resolve(), label='gnu-cxx')
         vm.command('true')
-        vm.shell_command('coast server ' + origin, expect='Package downloads and source builds now use', as_user=True)
+        vm.shell_command('brine server ' + origin, expect='Package downloads and source builds now use', as_user=True)
         for command in ['mkdir -p /home/user/gnu-cxx/runtime',
             'curl -fsS ' + origin + '/distfiles/gnu-cxx-runtime.tar.gz -o /tmp/gnu-cxx.tar.gz',
             'tar -xzf /tmp/gnu-cxx.tar.gz -C /home/user/gnu-cxx/runtime',

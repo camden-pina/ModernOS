@@ -17,7 +17,7 @@ def public_key(path, fingerprint, gpg='/usr/bin/gpg'):
         if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 1024 * 1024:
             raise ValueError('repository public key must be a regular file of at most 1 MiB')
         data = stream.read(1024 * 1024 + 1)
-    with tempfile.TemporaryDirectory(prefix='coast-key-check-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='brine-key-check-') as temporary:
         home = Path(temporary)
         key = home / 'public.asc'
         key.write_bytes(data)
@@ -36,7 +36,7 @@ def initialize(url, key, fingerprint, *, root=Path('/'), owner=0, server_texts=N
     """Initialize only an unconfigured installation; key rotation is separate."""
     if root == Path('/') and (os.getuid() != 0 or os.geteuid() != 0 or owner != 0):
         raise ValueError('repository configuration requires authenticated sudo')
-    config = root / 'etc/coast/packages.json'
+    config = root / 'etc/brine/config.json'
     for path in (root / 'etc', config.parent, root / 'etc/pacman.d'):
         info = path.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != owner or info.st_mode & 0o022:
@@ -52,7 +52,7 @@ def initialize(url, key, fingerprint, *, root=Path('/'), owner=0, server_texts=N
             originals.append(stream.read())
     current = json.loads(originals[0])
     if current.get('version') != 1 or current.get('signing_fingerprint') or current.get('url'):
-        raise ValueError('repository already configured; use coast server to retain its signing key')
+        raise ValueError('repository already configured; use brine server to retain its signing key')
     data = public_key(key, fingerprint)
     current.update(url=url, signing_fingerprint=fingerprint)
     texts = server_texts(url, json.dumps(current), *originals[1:])
@@ -68,14 +68,14 @@ def initialize(url, key, fingerprint, *, root=Path('/'), owner=0, server_texts=N
     staged, installed, replaced = [], [], []
 
     def stage(path, content):
-        descriptor, name = tempfile.mkstemp(prefix='.coast-configure-', dir=path.parent)
+        descriptor, name = tempfile.mkstemp(prefix='.brine-configure-', dir=path.parent)
         with os.fdopen(descriptor, 'wb') as stream:
             stream.write(content)
         os.chmod(name, 0o644)
         return Path(name)
 
     try:
-        with tempfile.TemporaryDirectory(prefix='.coast-trust-', dir=keyring.parent) as temporary:
+        with tempfile.TemporaryDirectory(prefix='.brine-trust-', dir=keyring.parent) as temporary:
             home = Path(temporary)
             public = home / 'public.asc'
             public.write_bytes(data)

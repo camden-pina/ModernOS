@@ -9,7 +9,7 @@ Coast console. See [host setup](host-setup.md).
 ## Applications and navigation
 
 The native desktop supplies Files, Text Editor, Terminal, Settings and Disks.
-Coast includes Chromium, Code OSS, Coast Packages, Qt 6 Demo and the QEMU
+Coast includes Chromium, Code OSS, Brine, Qt 6 Demo and the QEMU
 runtime/viewer. Additional applications and native build kits are installed
 from a configured signed package repository.
 

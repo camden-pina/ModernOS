@@ -101,12 +101,12 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='12G', accel='kvm',
             iso=args.iso.resolve(), label='native-gnu-cxx')
         vm.command('true')
-        check('select the signed native dependency repository', 'coast server ' + origin.split('/distfiles/')[0],
+        check('select the signed native dependency repository', 'brine server ' + origin.split('/distfiles/')[0],
             'Package downloads and source builds now use')
         check('refresh signed binary metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
         check('install native GNU runtime source build dependencies',
-            'coast install coast-build --noconfirm', 'installing coast-build', timeout=600)
+            'brine install coast-build --noconfirm', 'installing coast-build', timeout=600)
         base = '/home/user/gnu-native'
         check('create an isolated normal-user GNU source workspace',
             'mkdir -p ' + base + '/source/build/glibc/runtime /home/user/Builds/toolchain/install && echo GNU_WORKSPACE_READY',

@@ -118,7 +118,7 @@ class RepositoryFixture:
             License=['0BSD'], NumVotes=0, Popularity=0.0, OutOfDate=None, FirstSubmitted=EPOCH, LastModified=EPOCH,
             Commit=commit, URLPath='/recipes/hello-coast.git', Files=files)
         catalog = self.public / 'index.json'
-        catalog.write_text(json.dumps(dict(version=1, name='Coast Packages', results=[recipe])) + '\n')
+        catalog.write_text(json.dumps(dict(version=1, name='Brine', results=[recipe])) + '\n')
         self.sign(catalog)
         self.publish(catalog, '/recipes/index.json')
         self.publish(Path(str(catalog) + '.sig'), '/recipes/index.json.sig')

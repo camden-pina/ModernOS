@@ -151,11 +151,11 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='24G', accel='kvm',
             iso=args.iso.resolve(), label='native-llvm')
         vm.command('true')
-        check('select the signed dependency repository', 'coast server ' + origin.split('/distfiles/')[0],
+        check('select the signed dependency repository', 'brine server ' + origin.split('/distfiles/')[0],
             'Package downloads and source builds now use')
         check('refresh signed binary metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
-        check('install the source UAPI dependency', 'coast install coast-linux-uapi --noconfirm', 'coast-linux-uapi')
+        check('install the source UAPI dependency', 'brine install coast-linux-uapi --noconfirm', 'coast-linux-uapi')
         check('create an isolated normal-user LLVM workspace',
             'mkdir -p /home/user/llvm/fixture /home/user/llvm/sdk /home/user/llvm/cmake /home/user/llvm/source /home/user/llvm/bin && echo LLVM_WORKSPACE_READY', 'LLVM_WORKSPACE_READY')
         for asset, directory in [('llvm.tar.gz', 'fixture'), ('gcc.tar.gz', 'sdk'), ('cmake.tar.gz', 'cmake'), ('source.tar.gz', 'source')]:

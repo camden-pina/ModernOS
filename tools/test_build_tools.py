@@ -118,7 +118,7 @@ def main():
 
     def check(name, command, expected, user=True, timeout=180):
         print('START ' + name, flush=True)
-        if command.startswith(('coast server ', 'coast install ')):
+        if command.startswith(('brine server ', 'brine install ')):
             vm.command('true')
         # The login console accepts 511-byte lines. Deliver longer build
         # scripts through the owned fixture server and execute them in Coast.
@@ -148,7 +148,7 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='24G', accel='kvm',
             iso=args.iso.resolve(), label='native-build-tools')
         vm.command('true')
-        check('select the signed native dependency repository', 'coast server ' + origin.split('/distfiles/')[0],
+        check('select the signed native dependency repository', 'brine server ' + origin.split('/distfiles/')[0],
             'Package downloads and source builds now use')
         check('verify repository signatures', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
@@ -189,15 +189,15 @@ def main():
             '--gn /home/user/build-tools/gn/usr/bin/gn --ninja /tmp/ninja', 'GN_ALL_PASS', timeout=600)
         if args.native_rebuild:
             check('install the qualified GNU grep fallback',
-                'coast install grep --noconfirm', 'grep', timeout=600)
+                'brine install grep --noconfirm', 'grep', timeout=600)
             check('install the qualified native parser generator',
-                'coast install bison --noconfirm', 'bison', timeout=600)
+                'brine install bison --noconfirm', 'bison', timeout=600)
             check('qualify the installed native GNU grep on large real pipes',
                 'python3 /home/user/build-tools/source/ports/gnu-runtime/grep_check.py', 'GREP_ALL_PASS', timeout=180)
             check('qualify the installed native Bison and m4 parser workflow',
                 'python3 /home/user/build-tools/source/ports/gnu-runtime/bison_check.py', 'BISON_ALL_PASS', timeout=180)
             check('install native build tools and original offline source closure',
-                'coast install coast-build --noconfirm', 'installing coast-build', timeout=600)
+                'brine install coast-build --noconfirm', 'installing coast-build', timeout=600)
             if args.native_toolchain_archive:
                 check('restore the compiler previously rebuilt from original sources inside Coast',
                     'mkdir -p /home/user/Builds/toolchain/install && curl -fsS ' + origin +

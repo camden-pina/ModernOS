@@ -142,7 +142,7 @@ class PackageClosureTests(unittest.TestCase):
             'assets_build': record(['usr/share/fonts/coast/font']),
             'program_build': record(['usr/bin/python3']),
             'makepkg_build': record(['usr/bin/' + name for name in ('ls', 'find', 'file', 'fakeroot', 'gawk', 'git', 'sed', 'diff', 'grep', 'ninja', 'pkgconf', 'm4', 'patch', 'xz')] + ['usr/share/coast/makepkg/environment']),
-            'frontend_build': record(['usr/bin/coast']),
+            'frontend_build': record(['usr/bin/brine']),
         }
 
     def payload(self, records):
@@ -156,7 +156,7 @@ class PackageClosureTests(unittest.TestCase):
         from desktop_package_database import create
         records = self.records()
         result = create(self.payload(records), records)
-        self.assertIn('coast-packages', result['packages'])
+        self.assertIn('brine', result['packages'])
         self.assertIn('base-devel', result['packages'])
         self.assertTrue({'qemu', 'qemu-devel', 'coast-vm', 'novnc', 'qt6-demo'}.isdisjoint(result['packages']))
         provided = set(result['packages']) | {alias.split('=')[0] for package in result['packages'].values() for alias in package['provides']}

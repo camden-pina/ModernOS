@@ -69,7 +69,7 @@ def main():
         return output
 
     def settings():
-        return vm.shell_command('sha256sum /etc/coast/packages.json /etc/pacman.conf /etc/makepkg.conf',as_user=True)
+        return vm.shell_command('sha256sum /etc/brine/config.json /etc/pacman.conf /etc/makepkg.conf',as_user=True)
 
     try:
         http = start()
@@ -79,31 +79,31 @@ def main():
                         iso=a.iso.resolve(), label='network-repo')
         check('DHCP and resolver configuration becomes available',
               'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do test -s /etc/resolv.conf && break; sleep 1; done; test -s /etc/resolv.conf')
-        check('new Coast package helper is installed', 'pacman -Q coast-packages', 'coast-packages 1.3-1')
+        check('new Coast package helper is installed', 'pacman -Q brine', 'brine 1.3-1')
         original = settings()
         check('LAN endpoint verifies the signed database and source catalog before elevation',
-              'coast server '+http+' --check', 'Verified package database and source catalog')
+              'brine server '+http+' --check', 'Verified package database and source catalog')
         assert settings()==original
         check('unprivileged callers cannot invoke the root settings operation',
-              'python3 -I /usr/lib/coast/packages/client.py _set-server '+http+'; test $? -ne 0', 'requires authenticated sudo')
+              'python3 -I /usr/lib/brine/client.py _set-server '+http+'; test $? -ne 0', 'requires authenticated sudo')
         vm.command('true')
-        check('authenticated mirror switch updates package and source settings', 'coast server '+http,
+        check('authenticated mirror switch updates package and source settings', 'brine server '+http,
               'Package downloads and source builds now use '+http)
         check('pacman and makepkg use the same LAN server',
               "grep -F '"+http+"/repo/$arch' /etc/pacman.conf; grep -F '"+http+"' /etc/makepkg.conf", http)
         check('repository settings remain root-owned and not user-writable',
-              'printf x >> /etc/coast/packages.json; test $? -ne 0', 'Permission denied')
-        check('normal users refresh the signed catalog from the LAN', 'coast refresh', '3 recipes')
+              'printf x >> /etc/brine/config.json; test $? -ne 0', 'Permission denied')
+        check('normal users refresh the signed catalog from the LAN', 'brine refresh', '3 recipes')
         check('pacman downloads and verifies the LAN repository database', 'pacman -Sy --noconfirm', 'Synchronizing',False)
         check('remove calculator and cached archives so reinstall needs network bytes',
               'pacman -R --noconfirm bc && rm -f /var/cache/pacman/pkg/bc-*', 'removing bc',False)
         vm.command('true')
-        check('install a signed binary over ordinary LAN HTTP', 'coast install bc --noconfirm','installing bc')
+        check('install a signed binary over ordinary LAN HTTP', 'brine install bc --noconfirm','installing bc')
         check('downloaded calculator computes the expected result', "printf '6*7\\n' | bc -q", '42')
 
         selected = settings()
         check('untrusted HTTPS certificate fails without changing the mirror',
-              'coast server '+https+' --check; test $? -ne 0','SSL', timeout=120)
+              'brine server '+https+' --check; test $? -ne 0','SSL', timeout=120)
         assert settings()==selected
         # The public QA certificate is trusted only inside this owned guest.
         encoded = __import__('base64').b64encode(a.tls_cert.read_bytes()).decode()
@@ -117,27 +117,27 @@ def main():
               ' https://wrong.invalid:'+port+'/health -o /tmp/wrong-host; test $? -eq 60', 'certificate')
         vm.command('true')
         check('select HTTPS after validating its certificate and pinned signatures',
-              'coast server '+https,'Package downloads and source builds now use '+https)
+              'brine server '+https,'Package downloads and source builds now use '+https)
         check('refresh both signed metadata sets over TLS',
-              'coast refresh && sudo pacman -Sy --noconfirm','Synchronizing')
+              'brine refresh && sudo pacman -Sy --noconfirm','Synchronizing')
         check('force a new TLS package transfer',
               'pacman -R --noconfirm bc && rm -f /var/cache/pacman/pkg/bc-*','removing bc',False)
         vm.command('true')
         check('install signed calculator archive over certificate-verified TLS',
-              'coast install bc --noconfirm','installing bc')
+              'brine install bc --noconfirm','installing bc')
         check('installed TLS download matches package file metadata','pacman -Qkk bc','0 altered files')
-        check('clone signed-commit recipe through actual Git HTTPS', 'coast clone bc','Recipe checkout',timeout=120)
+        check('clone signed-commit recipe through actual Git HTTPS', 'brine clone bc','Recipe checkout',timeout=120)
         check('makepkg downloads the source archive from the selected TLS server and verifies its checksum',
               'cd /home/user/Builds/bc && makepkg --verifysource', 'Passed',timeout=120)
         check('native GCC builds the real source recipe from downloaded bytes',
               'cd /home/user/Builds/bc && makepkg --noconfirm', 'Finished making',timeout=360)
         vm.command('true')
         check('authenticated installation of the reviewed source-built package',
-              'coast install --source bc --reviewed --noconfirm','upgrading bc',timeout=180)
+              'brine install --source bc --reviewed --noconfirm','upgrading bc',timeout=180)
         check('source-built calculator runs without elevation',
               "printf '2^100\\n' | bc -q",'1267650600228229401496703205376')
         check('ordinary users cannot write the root-owned repository settings',
-              'test "$(id -u)" = 1000; test ! -w /etc/coast/packages.json')
+              'test "$(id -u)" = 1000; test ! -w /etc/brine/config.json')
         check('guest remains healthy after network transactions', 'check', 'USERLAND CHECK PASS', False, native=True)
         report['state']='passed'
     except BaseException as error:

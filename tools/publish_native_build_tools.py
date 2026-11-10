@@ -129,7 +129,7 @@ def main():
         (recipe / 'PKGBUILD').write_text('pkgname=' + name + '\npkgver=' + build['version'] + '\npkgrel=1\n'
             'pkgdesc="Native ' + name.upper() + ' for Coast"\narch=(x86_64)\nlicense=(' + record['license'] + ')\n'
             'depends=(musl)\nmakedepends=(' + name + '-build)\n'
-            'source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
+            'source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
             "sha256sums=('" + digest(kit) + "')\n"
             'build() {\n  cd "$srcdir/' + prefix + '"\n  python3 -B tools/build_' + name + '.py --native --jobs 4\n}\n'
             'check() {\n  cd "$srcdir/' + prefix + '"\n  ' + check + '\n}\n'

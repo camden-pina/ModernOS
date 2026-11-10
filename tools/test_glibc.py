@@ -64,7 +64,7 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='8G', accel='kvm',
             iso=image, label='source-glibc')
         vm.command('true')
-        vm.shell_command('coast server ' + origin,
+        vm.shell_command('brine server ' + origin,
             expect='Package downloads and source builds now use', as_user=True, timeout=180)
         report['checks'].append('fixture downloads use the selected repository network policy')
         for name in ['usr/lib/x86_64-linux-gnu/libc.so.6', 'lib64/ld-linux-x86-64.so.2']:

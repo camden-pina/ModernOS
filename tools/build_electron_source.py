@@ -168,6 +168,7 @@ def prepare_sources(out, lock, environment, recover_only=False):
     verify(checkout, lock)
     for target, origin in lock['overlays'].items():
         atomic_write(checkout / target, (ROOT / origin).read_bytes())
+    verify(checkout, lock, overlays=True)
     write_json(out / 'SOURCE.json', identity)
     state['phase'] = 'complete'
     write_json(checkpoint, state)
@@ -188,7 +189,18 @@ def runtime_sidecars(directory):
 
 
 def verify(checkout, lock, overlays=False):
+    """Accept pinned patches before or after exact Coast policy replacements."""
+    verified_policies = []
+    for target, source in lock['overlays'].items():
+        path = checkout / target
+        matches = path.is_file() and sha(path) == sha(ROOT / source)
+        if overlays and not matches:
+            raise ValueError('Coast policy differs: ' + target)
+        if matches:
+            verified_policies.append(Path(target))
     for record in lock['repositories']:
+        if record.get('patch') and sha(ROOT / record['patch']) != record['patch_sha256']:
+            raise ValueError('Port patch changed: ' + record['patch'])
         repo = checkout / record['path']
         tree = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD^{tree}'], text=True).strip()
         if tree != record['patched_tree']:
@@ -198,13 +210,14 @@ def verify(checkout, lock, overlays=False):
             if base != record['commit']:
                 raise ValueError('Unexpected source revision: ' + record['path'])
             if record.get('patch'):
-                run(['git', 'apply', '--reverse', '--check', ROOT / record['patch']], repo)
-        if record.get('patch') and sha(ROOT / record['patch']) != record['patch_sha256']:
-            raise ValueError('Port patch changed: ' + record['patch'])
-    if overlays:
-        for target, source in lock['overlays'].items():
-            if sha(checkout / target) != sha(ROOT / source):
-                raise ValueError('Coast policy differs: ' + target)
+                command = ['git', 'apply', '--reverse', '--check']
+                for target in verified_policies:
+                    if target.is_relative_to(record['path']):
+                        # A full-file policy can replace patch context. Exclude
+                        # only files whose complete policy bytes matched above;
+                        # every other patch file must still pass the Git check.
+                        command.append('--exclude=' + target.relative_to(record['path']).as_posix())
+                run([*command, ROOT / record['patch']], repo)
 
 
 def main():

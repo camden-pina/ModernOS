@@ -44,30 +44,30 @@ def main():
         check('DHCP configures the owned VM',
               'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do test -s /etc/resolv.conf && break; sleep 1; done; test -s /etc/resolv.conf')
         check('default QEMU address reaches the persistent host service',
-              'curl -fsS http://10.0.2.2:8765/health', 'Coast Packages')
+              'curl -fsS http://10.0.2.2:8765/health', 'Brine')
         check('configured endpoint verifies signed package and source metadata',
-              'coast server '+args.server+' --check', 'Verified package database and source catalog')
+              'brine server '+args.server+' --check', 'Verified package database and source catalog')
         vm.command('true')
         check('real sudo authorizes the selected mirror',
-              'coast server '+args.server, 'Package downloads and source builds now use '+args.server)
-        check('partial name search discovers GCC and G++ commands', 'coast search g', 'g++')
+              'brine server '+args.server, 'Package downloads and source builds now use '+args.server)
+        check('partial name search discovers GCC and G++ commands', 'brine search g', 'g++')
         check('GCC is first and unrelated Qt metadata is absent from one-letter search',
-              "coast search --json g > /tmp/search-g.json; python3 -I -c 'import json; p=json.load(open(\"/tmp/search-g.json\"))[\"results\"]; assert p[0][\"Name\"]==\"gcc\"; assert not any(q[\"Name\"]==\"qt6-demo\" for q in p); print(\"SEARCH_ORDER_OK\")'", 'SEARCH_ORDER_OK')
-        check('literal plus signs resolve the compiler package', 'coast search g++', 'coast/gcc')
-        check('signed source catalog refreshes from the persistent service', 'coast refresh', '3 recipes')
+              "brine search --json g > /tmp/search-g.json; python3 -I -c 'import json; p=json.load(open(\"/tmp/search-g.json\"))[\"results\"]; assert p[0][\"Name\"]==\"gcc\"; assert not any(q[\"Name\"]==\"qt6-demo\" for q in p); print(\"SEARCH_ORDER_OK\")'", 'SEARCH_ORDER_OK')
+        check('literal plus signs resolve the compiler package', 'brine search g++', 'coast/gcc')
+        check('signed source catalog refreshes from the persistent service', 'brine refresh', '3 recipes')
         check('upstream pacman syncs the signed database from the persistent service',
               'pacman -Sy --noconfirm', 'Synchronizing', user=False)
         check('remove installed calculator and every cached archive',
               'pacman -R --noconfirm bc && rm -f /var/cache/pacman/pkg/bc-*', 'removing bc', user=False)
         vm.command('true')
         check('download and install the real signed calculator through the service',
-              'coast install bc --noconfirm', 'installing bc')
+              'brine install bc --noconfirm', 'installing bc')
         check('downloaded executable and ownership metadata are intact',
               "printf '6*7\\n' | bc -q; pacman -Qkk bc", '0 altered files')
         check('clone an actual recipe Git repository from the service',
-              'coast clone hello-coast', 'Recipe checkout')
+              'brine clone hello-coast', 'Recipe checkout')
         check('noninteractive confirmation cannot bypass recipe review',
-              'coast build hello-coast --noconfirm < /dev/null; test $? -ne 0', 'review this checkout first')
+              'brine build hello-coast --noconfirm < /dev/null; test $? -ne 0', 'review this checkout first')
         check('review PKGBUILD and source before invoking makepkg',
               'cd /home/user/Builds/hello-coast && cat PKGBUILD hello.c && makepkg --printsrcinfo', 'pkgbase = hello-coast')
         vm.command('true')
@@ -75,12 +75,12 @@ def main():
               'cd /home/user/Builds/hello-coast && makepkg -si --noconfirm', 'installing hello-coast', timeout=180)
         check('source-built executable runs with ordinary credentials', 'hello-coast', 'uid=1000')
         check('Git recipe update permits the signed fast-forward',
-              'coast update hello-coast', 'Review the new Git diff')
+              'brine update hello-coast', 'Review the new Git diff')
         vm.command('true')
         check('source-built package removes through authenticated upstream pacman',
-              'coast remove hello-coast --noconfirm', 'removing hello-coast')
+              'brine remove hello-coast --noconfirm', 'removing hello-coast')
         check('repository configuration remains protected from normal users',
-              'test "$(id -u)" = 1000 && test ! -w /etc/coast/packages.json')
+              'test "$(id -u)" = 1000 && test ! -w /etc/brine/config.json')
         vm.command('check', expect='USERLAND CHECK PASS', timeout=90)
         report['checks'].append('guest remains healthy after host-service transactions')
         report['state'] = 'passed'

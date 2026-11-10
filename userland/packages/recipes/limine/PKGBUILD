@@ -7,7 +7,7 @@ arch=('x86_64')
 license=('BSD-2-Clause')
 depends=('musl')
 makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi' 'nasm' 'mtools')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/limine-12.9.0.tar.xz")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/limine-12.9.0.tar.xz")
 sha256sums=('86107e8754365124b1871479f766697461f16ce9d847b3c23bb269335588c565')
 noextract=('limine-12.9.0.tar.xz')
 

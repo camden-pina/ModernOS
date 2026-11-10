@@ -163,7 +163,7 @@ def main():
         ('makepkg', command('build_desktop_makepkg.py', '--compiler-build', receipts['compiler'],
             '--packages-build', receipts['packages'], '--program-build', receipts['program'],
             '--output-root', receipts['makepkg'].parent, '--jobs', jobs), True),
-        ('frontend', command('build_coast_packages.py', '--compiler-build', receipts['compiler'],
+        ('frontend', command('build_brine.py', '--compiler-build', receipts['compiler'],
             '--program-build', receipts['program'], '--output-root', receipts['frontend'].parent,
             *(['--repository-config', args.repository_config.resolve()] if args.repository_config else [])), False),
         ('qt', command('build_qt6.py', '--compiler-build', receipts['compiler'],

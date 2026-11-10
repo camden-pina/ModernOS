@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a restored Coast community instance behind a loopback TLS proxy."""
+"""Verify a restored Brine community instance behind a loopback TLS proxy."""
 import argparse
 import http.client
 import http.server
@@ -44,7 +44,7 @@ def main():
     a=p.parse_args();out=a.output_root.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
     report=dict(state='failed',checks=[],listeners='127.0.0.1 only',host_trust_store_modified=False,external_email_sent=False)
     original=a.config.read_bytes();config=json.loads(original);Proxy.backend_port=config['web_port']
-    assert config['bind']=='127.0.0.1' and config['name'].startswith('coast-community-restore-')
+    assert config['bind']=='127.0.0.1' and config['name'].startswith('brine-community-restore-')
     manage=['python3','-B',str(a.bundle/'manage.py'),'--config',str(a.config)]
     proxy=thread=None
     def service(action):subprocess.run([*manage,action],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -72,7 +72,7 @@ def main():
         browser.opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),
             urllib.request.HTTPCookieProcessor(browser.jar),urllib.request.HTTPSHandler(context=context),NoRedirect())
         code,_,body=browser.request('/')
-        check('community renders through a certificate-verified TLS reverse proxy',code==200 and b'Coast' in body)
+        check('community renders through a certificate-verified TLS reverse proxy',code==200 and b'Brine' in body)
         credentials=(a.state/'ADMIN-CREDENTIALS.txt').read_text()
         browser.login('coastadmin',re.search(r'^Password: (.+)$',credentials,re.M)[1])
         check('HTTPS administrator login sets a secure, HttpOnly cookie',any(c.name=='AURSID' and c.secure and 'HttpOnly' in c._rest for c in browser.jar))

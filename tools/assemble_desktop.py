@@ -206,7 +206,7 @@ def main():
     installed = {'assets_build'}
     for app, keys in {
         'bash': ('cli_build',), 'gcc': ('compiler_build',), 'python': ('program_build',),
-        'packages': ('packages_build', 'frontend_build'), 'makepkg': ('packages_build', 'makepkg_build'),
+        'brine': ('packages_build', 'frontend_build'), 'makepkg': ('packages_build', 'makepkg_build'),
         'qt': ('qt_build',), 'qemu': ('qemu_build',), 'qemu-viewer': ('viewer_build',),
         'chromium': ('runtime_build', 'gui_runtime', 'bridge_build'),
         'codeoss': ('runtime_build', 'gui_runtime', 'bridge_build', 'application_build', 'addons_build', 'rust_build'),
@@ -404,7 +404,7 @@ def main():
         gui_runtime_sha256=before.get('gui_runtime'), gui_libraries_compiled_from_source=bool(gui.get('gui_libraries_compiled_from_source')),
         inherited_application_javascript=False, prebuilt_application_inputs=prebuilt, excluded_application_files=excluded,
         optional_microsoft_auth_binaries=args.with_microsoft_auth and 'codeoss' in apps,
-        wider_integrations=all(app in apps for app in ('packages', 'makepkg', 'qt', 'qemu-viewer')),
+        wider_integrations=all(app in apps for app in ('brine', 'makepkg', 'qt', 'qemu-viewer')),
         package_database=package_database, files=payload.hashes(), elf_checks=elf_checks,
         diagnostics_qa_only=args.diagnostics, target_execution_on_linux=False,
         source_sha256={str(p.relative_to(ROOT)): digest(p) for p in source_inputs})

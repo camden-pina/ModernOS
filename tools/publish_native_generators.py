@@ -109,7 +109,7 @@ def main():
             'pkgdesc="Native GNU ' + name + ' for Coast"\narch=(x86_64)\nlicense=(GPL-3.0-or-later)\n'
             'depends=(musl' + (' m4' if name == 'bison' else '') + ')\n'
             'makedepends=(' + name + '-build)\n'
-            'source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
+            'source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
             "sha256sums=('" + digest(kit) + "')\n"
             'build() {\n  cd "$srcdir/' + kit_root + '"\n  python3 -B tools/build_' + name + '.py --native --jobs 4\n}\n'
             'check() {\n  cd "$srcdir/' + kit_root + '"\n  python3 ports/gnu-runtime/' + name + '_check.py --runtime build/' + name + '-native/runtime\n}\n'

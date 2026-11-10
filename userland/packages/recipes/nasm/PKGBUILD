@@ -8,7 +8,7 @@ url='https://www.nasm.us/'
 license=('BSD-2-Clause')
 depends=('musl')
 makedepends=('gcc' 'make' 'xz')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/nasm-$pkgver.tar.xz")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/nasm-$pkgver.tar.xz")
 sha256sums=('1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148')
 noextract=("nasm-$pkgver.tar.xz")
 

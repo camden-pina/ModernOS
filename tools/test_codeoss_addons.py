@@ -75,7 +75,7 @@ def main():
         vm.command('true')
         if args.repository:
             check('select the live fixture repository and initialize guest networking',
-                'coast server ' + origin.split('/distfiles/')[0], 'Package downloads and source builds now use')
+                'brine server ' + origin.split('/distfiles/')[0], 'Package downloads and source builds now use')
         check('source-built modules run inside the Coast kernel', 'uname -s', 'Coast')
         for name, source in fixtures:
             target = '/tmp/addons-' + name

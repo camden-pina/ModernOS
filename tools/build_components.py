@@ -1,9 +1,9 @@
 """One dependency graph for app selection, incremental builds and cleanup."""
 from pathlib import Path
 
-APPS = ('chromium', 'codeoss', 'bash', 'gcc', 'python', 'packages', 'makepkg', 'qt', 'qemu', 'qemu-viewer')
+APPS = ('chromium', 'codeoss', 'bash', 'gcc', 'python', 'brine', 'makepkg', 'qt', 'qemu', 'qemu-viewer')
 APP_REQUIRES = {
-    'codeoss': {'bash'}, 'packages': {'python', 'makepkg'},
+    'codeoss': {'bash'}, 'brine': {'python', 'makepkg'},
     'makepkg': {'gcc', 'python', 'bash'}, 'qemu-viewer': {'qemu', 'python', 'chromium'},
 }
 # These are build dependencies, distinct from the applications installed in an ISO.
@@ -24,7 +24,7 @@ APP_COMPONENTS = {
     'chromium': {'electron', 'gui-runtime', 'bridge'},
     'codeoss': {'electron', 'gui-runtime', 'bridge', 'application', 'addons', 'rust'},
     'bash': {'cli'}, 'gcc': {'compiler'}, 'python': {'program'},
-    'packages': {'packages', 'frontend'}, 'makepkg': {'makepkg'},
+    'brine': {'packages', 'frontend'}, 'makepkg': {'makepkg'},
     'qt': {'qt'}, 'qemu': {'qemu'}, 'qemu-viewer': {'viewer'},
 }
 RECEIPTS = {name: 'BUILD.json' for name in DEPENDENCIES}
@@ -38,14 +38,19 @@ def words(value):
     return set(value.replace(',', ' ').split()) if isinstance(value, str) else set(value)
 
 
+def app_names(value):
+    """Keep saved selections usable when an application is renamed."""
+    return {'brine' if name == 'packages' else name for name in words(value)}
+
+
 def app_selection(requested='all', without='', add='', previous=None):
-    selected = set(APPS) if requested in (None, 'all') else set() if requested in ('', 'none') else words(requested)
+    selected = set(APPS) if requested in (None, 'all') else set() if requested in ('', 'none') else app_names(requested)
     if add:
-        selected = set(previous) if previous is not None else selected
-        selected |= words(add)
-    excluded = words(without)
+        selected = app_names(previous) if previous is not None else selected
+        selected |= app_names(add)
+    excluded = app_names(without)
     if add:
-        added = words(add)
+        added = app_names(add)
         while True:
             expanded = added | set().union(*(APP_REQUIRES.get(app, set()) for app in added))
             if expanded == added:
@@ -92,6 +97,7 @@ def dependents(names, graph=None):
 
 
 def graph_for(apps):
+    apps = app_names(apps)
     graph = {name: set(dependencies) for name, dependencies in DEPENDENCIES.items()}
     selected = set().union(*(APP_COMPONENTS[app] for app in apps)) if apps else set()
     if {'chromium', 'codeoss'} & set(apps):

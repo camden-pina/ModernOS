@@ -40,7 +40,7 @@ Linux and uses Bubblewrap.
    ```sh
    sudo pacman -Syy
    sudo pacman -Fyy
-   coast install coast-build --noconfirm
+   brine install coast-build --noconfirm
    ```
 
    Required build tools include Python, Git, make, Ninja, GN, m4, Bison, gperf,

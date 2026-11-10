@@ -125,7 +125,7 @@ def main():
     (recipe / 'PKGBUILD').write_text('pkgname=llvm\npkgver=' + build['version'] + '\npkgrel=1\n'
         'pkgdesc="Source-built static Clang/LLD and LLVM tools for Coast"\narch=(x86_64)\n'
         "license=('Apache-2.0 WITH LLVM-exception' Zlib)\ndepends=('gcc>=14.2.0-2' binutils musl)\nmakedepends=(llvm-build)\n"
-        'source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
+        'source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/' + kit.name + '")\n'
         "sha256sums=('" + digest(kit) + "')\n"
         'build() {\n  cd "$srcdir/' + prefix + '"\n  python3 -B tools/build_llvm.py --native --jobs 4\n}\n'
         'check() {\n  cd "$srcdir/' + prefix + '"\n  python3 ports/llvm/check.py --runtime build/llvm-native/runtime --sysroot /\n}\n'

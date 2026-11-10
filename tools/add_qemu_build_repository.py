@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repository', type=Path, default=ROOT / 'build/Coast-repository-server/repository.json')
+    parser.add_argument('--repository', type=Path, default=ROOT / 'build/brine-repository-server/repository.json')
     parser.add_argument('--output-root', type=Path, required=True)
     parser.add_argument('--source-output', type=Path, default=ROOT / 'build/qemu-native-source/coast-qemu-10.2.4.tar.gz')
     parser.add_argument('--refresh-os-source', action='store_true', help='also version and refresh the complete OS source kit and build closure')
@@ -126,7 +126,7 @@ arch=('x86_64')
 url='https://www.qemu.org/'
 license=('GPL-2.0-only')
 makedepends=('qemu-build')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/coast-qemu-10.2.4.tar.gz")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/coast-qemu-10.2.4.tar.gz")
 sha256sums=('@SHA@')
 noextract=('coast-qemu-10.2.4.tar.gz')
 

@@ -28,13 +28,13 @@ inputs.
 | VSCodium / Code OSS application | Pinned VSCodium/VS Code source archives, upstream patches and NPM lockfiles | Fresh compilation/packaging; rebuilt C/C++ modules and real editor usability checks in a fresh assembly |
 | Code OSS proxy resolver | Pinned Rust source, upstream Cargo lockfile, WABT source and local Rust host tools | Source-built native module linked to the matching GNU ABI; upstream embedded PAC wasm recorded separately |
 | Bash/Readline terminal | Official Bash patches, Coast foreground-PTY port, pinned ncurses and the native base's compiled musl SDK | Static source build; pipelines, substitution, file writes and real USB job-control checks |
-| Desktop integrations | Python, Coast Packages/makepkg, Qt, QEMU and noVNC source receipts | Fresh assembly passed all eleven guest suites, including actual package builds, Qt USB/clipboard and Chromium-operated nested Coast |
+| Desktop integrations | Python, Brine/makepkg, Qt, QEMU and noVNC source receipts | Fresh assembly passed all eleven guest suites, including actual package builds, Qt USB/clipboard and Chromium-operated nested Coast |
 | Coast ISO | `tools/build_desktop.py` and explicit component receipts | Fresh source-GUI assembly passed boot, Bash, native C/C++, signed packages, addons/SQLite/proxy, browser and editor guest suites |
 
 A kernel rebuild is a complete native compilation. The desktop pipeline
 connects the public component recipes without importing an older ISO. Plain
 `make iso` includes BusyBox commands, Bash/Readline, native GCC/G++, standalone
-pacman/GnuPG tools, Python, Coast Packages, the makepkg/fakeroot environment,
+pacman/GnuPG tools, Python, Brine, the makepkg/fakeroot environment,
 Qt and QEMU. Additional development ports and native browser build kits are
 available through the package system.
 
@@ -104,7 +104,7 @@ source image omits these binaries; the receipt records the choice and the
 remaining prebuilt application helpers.
 
 `make iso` produces `build/coast/image/Coast.iso`. Explicit component
-receipts supply Python/jq, makepkg support, Coast Packages, Qt, QEMU and its
+receipts supply Python/jq, makepkg support, Brine, Qt, QEMU and its
 source viewer. All use the source-built POSIX musl compiler; no legacy
 `build/web`, `build/compiler` or installed runtime prefix is required.
 Python builds its own pinned host interpreter when the host minor version
@@ -130,24 +130,24 @@ optional release-supplied ROMs. noVNC and the `coast-vm` launcher are source fil
 See [Qt](qt6.md) and [QEMU](qemu.md) for the supported application scope.
 
 Coast starts without a repository URL or signing identity.
-`coast list` and `coast repo` work immediately. Obtain the public key and full
+`brine list` and `brine repo` work immediately. Obtain the public key and full
 fingerprint from the repository operator, then configure it as the normal user:
 
 ```sh
-coast configure https://packages.example.org --key ./repository.asc --fingerprint FULL_40_CHARACTER_FINGERPRINT
-coast server --check
+brine configure https://packages.example.org --key ./repository.asc --fingerprint FULL_40_CHARACTER_FINGERPRINT
+brine server --check
 sudo pacman -Syy
 sudo pacman -Fyy
-coast refresh
+brine refresh
 ```
 
 The privileged helper rechecks the fingerprint, initializes only an empty
-keyring, and preserves existing repository identities. `coast server URL`
+keyring, and preserves existing repository identities. `brine server URL`
 changes an already trusted server while retaining its key. The OS builder accepts
 `--repository-config PATH` to embed an explicit public configuration. This JSON contains
 exactly `url`, `signing_fingerprint`, and `public_key` (absolute or relative to
 the JSON file); the builder embeds public trust only. Community servers remain
-an explicit `coast community URL` choice.
+an explicit `brine community URL` choice.
 
 `--qualify` checks source recipe cloning,
 native makepkg/fakeroot build/install, signed frontend transactions, QEMU's
@@ -235,7 +235,7 @@ rather than a developer's installed `/usr/include/linux`.
 ```sh
 sudo pacman -Sy
 sudo pacman -Fy
-coast install coast-build --noconfirm
+brine install coast-build --noconfirm
 mkdir -p ~/Builds/coast
 cd ~/Builds/coast
 tar -xJf /usr/src/coast/os/coast-source.tar.xz --strip-components=1
@@ -255,7 +255,7 @@ the fetch helper checks their hashes before copying them into a build checkout.
 Its toolchain, port and engine source packages remain below the RAMFS per-file
 limit. `coast-linux-uapi`, xorriso and mtools supply the headers and boot-assembly tools.
 Source recipes are available for NASM, xorriso, mtools and Limine.
-For a reviewed native NASM build, run `coast refresh`, `coast clone nasm`, then
+For a reviewed native NASM build, run `brine refresh`, `brine clone nasm`, then
 `makepkg --noconfirm` in `~/Builds/nasm`.
 
 ```sh
@@ -270,8 +270,8 @@ threaded C++/CMake/GN bootstrap.
 
 ## Build and run Coast inside its own emulator
 
-`coast install qemu-build` installs the offline QEMU build kit and its native
-build closure. `coast install coast-vm` supplies the source noVNC client and
+`brine install qemu-build` installs the offline QEMU build kit and its native
+build closure. `brine install coast-vm` supplies the source noVNC client and
 Python launcher. The [QEMU guide](qemu.md) contains the complete native QEMU,
 OS ISO and nested boot commands. The end-to-end qualification rebuilt both
 QEMU and Coast in one VM, then ran the newly compiled desktop inside that QEMU.
@@ -306,6 +306,12 @@ this sync so it cannot trigger a full-history download. No private historical JS
 compiled Electron object cache is an input to this recipe. Follow the upstream
 [Electron build prerequisites](https://www.electronjs.org/docs/latest/development/build-instructions-linux)
 and [GN instructions](https://www.electronjs.org/docs/latest/development/build-instructions-gn).
+
+Source verification checks port patches and exact Coast policy contents
+together, including policies that replace files already changed by a patch.
+A completed sync is verified and reused. An interrupted policy copy resumes
+without downloading repositories or running completed hooks again. Rerun
+`make iso` with the same build settings to continue.
 
 The selected policies compile jitless JavaScript, explicit Wasm interpreter
 bounds checks, the Coast platform adapters and the standalone Node CLI. The

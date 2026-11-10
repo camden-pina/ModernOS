@@ -16,16 +16,16 @@ those binaries and their offline source kits.
 ```sh
 sudo pacman -Sy
 sudo pacman -Fy
-coast install bison --noconfirm
-coast install grep --noconfirm
-coast install bison-build --noconfirm
-coast install grep-build --noconfirm
+brine install bison --noconfirm
+brine install grep --noconfirm
+brine install bison-build --noconfirm
+brine install grep-build --noconfirm
 ```
 
 Each source kit installs below `/usr/src/coast/NAME-build/`. Extract its archive
 into a user-owned build directory, then run its `tools/build_NAME.py --native`
 and `ports/gnu-runtime/NAME_check.py` scripts. The signed source catalog also
-provides `coast clone bison` and `coast clone grep` recipes for makepkg. Building
+provides `brine clone bison` and `brine clone grep` recipes for makepkg. Building
 a recipe executes its PKGBUILD; review it before running makepkg.
 
 GNU grep's port handles an unsupported splice operation by using upstream's
@@ -53,11 +53,11 @@ into `/usr`.
 ```sh
 sudo pacman -Syy
 sudo pacman -Fyy
-coast install gcc --noconfirm
-coast install ninja --noconfirm
-coast install cmake --noconfirm
-coast install gn --noconfirm
-coast install llvm --noconfirm
+brine install gcc --noconfirm
+brine install ninja --noconfirm
+brine install cmake --noconfirm
+brine install gn --noconfirm
+brine install llvm --noconfirm
 ```
 
 The installed Ninja port is 1.13.2-4 or newer. Older images can already contain
@@ -72,7 +72,7 @@ python3 -B tools/build_cmake.py --output-root build/cmake-threaded
 python3 -B tools/build_gn.py --output-root build/gn-threaded
 python3 -B tools/test_build_tools.py \
   --iso build/coast/image/Coast.iso \
-  --repository build/Coast-repository-server/repository.json \
+  --repository build/brine-repository-server/repository.json \
   --gcc-build build/compiler-threaded/BUILD.json \
   --cmake-build build/cmake-threaded/BUILD.json \
   --gn-build build/gn-threaded/BUILD.json \
@@ -134,7 +134,7 @@ real threads, futures, TLS destructors and exceptions.
 make glibc
 make gnu-cxx
 python3 -B tools/test_gnu_cxx.py --iso build/coast/image/Coast.iso \
-  --repository build/Coast-repository-server/repository.json \
+  --repository build/brine-repository-server/repository.json \
   --glibc-build build/glibc/BUILD.json --build build/gnu-cxx/BUILD.json \
   --libgcc-build build/gnu-libgcc/BUILD.json --output-root build/gnu-cxx-test
 ```

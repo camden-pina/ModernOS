@@ -1,7 +1,8 @@
-# Coast development handoff
+# Coast OS development handoff
 
 Repository: https://github.com/camden-pina/ModernOS.git. Work on `main`, tracking
-`origin/main`. The committed baseline before this recovery/app-selection change is `c8aced2`.
+`origin/main`. The committed baseline for the pending source-verification and
+Brine rename changes is `69e2aa8`.
 
 ## Build and run
 
@@ -13,7 +14,7 @@ make run
 ```
 
 There is one Coast OS build. Plain `make iso` includes the kernel, desktop,
-Chromium, Code OSS, compiler, Python, Coast Packages/makepkg, Qt and QEMU/viewer.
+Chromium, Code OSS, compiler, Python, Brine/makepkg, Qt and QEMU/viewer.
 The default pipeline has 22 component stages plus source/runtime preparation,
 assembly and optional qualification. `APPS` and `WITHOUT` select optional apps;
 build requirements and installed-app requirements are separate. Keep one public
@@ -39,6 +40,12 @@ The Electron source sync fetches depot_tools at depth one and uses gclient
 Git mirrors. All 170 source revisions, patches, overlays and build arguments
 remain pinned. `make test-electron-source-sync` checks real local shallow Git
 fetches, patches, hooks and rejection of unexpected revisions.
+Source verification accepts an overlaid patch file only when its complete bytes
+match the checked-in policy; all other patch files still undergo the Git reverse
+check. Verification runs after policy installation before publishing SOURCE.json.
+Completed and interrupted overlay phases reuse downloads and completed hooks,
+including a completed sync whose source receipt was invalidated by a builder
+change. Do not clean the source checkout to recover from a verifier-only fix.
 
 `make iso` shows stage progress, elapsed time, tool counters, recent log output
 and source Git bytes/rates. Unknown totals use an activity bar. Complete component
@@ -47,12 +54,15 @@ logs stay in `ISO_BUILD/logs/`. Ctrl+C stops the stage's process group;
 
 `tools/build_components.py` owns the app/build dependency graphs. Code OSS
 requires Bash and shares Electron/Chromium with the browser. The viewer requires
-QEMU/Python/Chromium; Packages requires makepkg/Python; makepkg requires
+QEMU/Python/Chromium; Brine requires makepkg/Python; makepkg requires
 GCC/Python/Bash. Omitting a prerequisite omits dependent apps with an explanation.
 An explicit `ADD` restores its app/runtime prerequisites despite saved omissions.
 `make build COMPONENT=chromium` builds the app/prerequisites without an ISO;
 `make iso ADD=chromium` adds it to the last ISO selection. `SELECTION.json`
 preserves that selection when component work invalidates `MANIFEST.json`.
+Brine is the package manager name and client command; Coast OS remains the OS
+name. The optional app selector accepts saved `packages` selections as Brine,
+while the separate `packages` build component still means the pacman backend.
 
 `tools/build_state.py` supplies durable writes and the shared lifecycle lock.
 `tools/build_session.py` verifies component/source/dependency identities, records
@@ -80,6 +90,15 @@ Source-fetch tests retain checksum/TLS behavior. Existing sanitizer-based snap,
 damage and transition checks pass. Exact command results and cleanup records
 are kept under `build/maintenance-checks/` and indexed by `READINESS.json`.
 No full Electron rebuild or new guest qualification is claimed for this change.
+Electron sync now has 13 local-Git regression cases covering policy/patch
+overlap, interrupted policy copies, changed files and invalidated receipts.
+The completed 170-repository checkout passes both managed and read-only source
+verification; sync reuse took about half a second without changing its files.
+The Brine rename passes 87 focused host checks plus 29 repository-server,
+27 repository-network and 11 search checks against a disposable publication
+fixture. The launcher's C source compiles with warnings treated as errors, and
+the default `make iso ISO_ARGS=--plan` selects Brine. These checks do not claim
+a fresh desktop ISO or community-container qualification.
 
 The integrated desktop passed all 11 guest qualification phases, including
 signed package operations, makepkg, Qt USB/clipboard and nested QEMU through

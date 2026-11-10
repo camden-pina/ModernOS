@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-from build_components import APPS, APP_COMPONENTS, DEPENDENCIES, RECEIPTS, TOOLCHAINS, dependents, graph_for, receipt_path, words
+from build_components import APPS, APP_COMPONENTS, DEPENDENCIES, RECEIPTS, TOOLCHAINS, app_names, dependents, graph_for, receipt_path, words
 from build_state import Checkpoints, _process, project_lock, read_json, write_json
 from source_tree import files
 from clean_sources import public_fixture, source_directory, source_root
@@ -225,7 +225,7 @@ def plan(root=ROOT, output=None, components='', all_generated=False, keep=None, 
     if 'toolchains' in keep:
         nodes -= TOOLCHAINS
     selection = read_json(output / 'image/MANIFEST.json') or read_json(output / 'SELECTION.json') or read_json(output / 'PIPELINE.json', {})
-    active_apps = selection.get('apps', APPS)
+    active_apps = app_names(selection.get('apps', APPS))
     invalidated = dependents(nodes, graph_for(active_apps))
     protected = protected_paths(root)
     paths = []
@@ -406,7 +406,8 @@ def apply(record, root=ROOT):
         output = Path(record['output_root'])
         selection = read_json(output / 'image/MANIFEST.json')
         if selection and 'apps' in selection and not record['all_generated']:
-            write_json(output / 'SELECTION.json', dict(apps=selection['apps']))
+            selected = app_names(selection['apps'])
+            write_json(output / 'SELECTION.json', dict(apps=[app for app in APPS if app in selected]))
         if record['containers']:
             remove_containers(record.get('output_roots', [record['output_root']]))
         protected = protected_paths(root)

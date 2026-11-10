@@ -41,11 +41,11 @@ def main():
 
     try:
         status, headers, body = request('/health')
-        check('health exposes Coast identity and every published package entry',
-              status == 200 and json.loads(body)['name'] == 'Coast Packages' and
+        check('health exposes Brine identity and every published package entry',
+              status == 200 and json.loads(body)['name'] == 'Brine' and
               json.loads(body)['packages'] == len(manifest['packages'])+len(manifest['recipes']))
         status, headers, body = request('/')
-        check('catalog has local assets and a restrictive content policy', status == 200 and b'Coast Packages' in body and "default-src 'none'" in headers['Content-Security-Policy'])
+        check('catalog has local assets and a restrictive content policy', status == 200 and b'Brine' in body and "default-src 'none'" in headers['Content-Security-Policy'])
         data = json.loads(request('/api/v1/search?q=g%2B%2B')[2])
         check('literal G++ search maps to the compiler package', [p['Name'] for p in data['results']] == ['gcc'])
         data = json.loads(request('/api/v1/search?q=g')[2])

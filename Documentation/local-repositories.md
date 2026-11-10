@@ -1,44 +1,43 @@
-# Coast Packages
+# Brine
 
-Coast Packages is the local package service for Coast. Its client command
-is `coast`. The Arch User Repository inspired the reviewed source-recipe workflow;
-this service is not named AUR and does not connect to Arch's repositories.
+Brine is the package manager for Coast OS. Its client command is `brine`.
+The Arch User Repository inspired its reviewed source-recipe workflow.
 Upstream pacman/libalpm, makepkg, repo-add, GnuPG and Git provide the actual
 package transactions, source builds, version ordering and signatures.
-The separate Coast Community service runs upstream aurweb 6.5.1, including its
+The separate Brine Community service runs upstream aurweb 6.5.1, including its
 real accounts, SSH submissions, package discussions, moderation and AUR v5 API.
 The signed binary publisher and community submission service have separate trust.
 
 ## Community service
 
-The portable community bundle is `build/Coast-community-server`. It contains a
+The portable community bundle is `build/brine-community-server`. It contains a
 rootless OCI image, the upstream GPL source, Coast's overlay, and `manage.py`.
 It requires Linux x86-64, rootless Podman and Python 3.11 or later. The default
 website is `http://127.0.0.1:8770`; the VM reaches it at `http://10.0.2.2:8770`.
 SSH Git submissions use port 2222. All current host listeners remain loopback.
 
 ```sh
-python3 build/Coast-community-server/manage.py start
-python3 build/Coast-community-server/manage.py status
-coast community --check
-coast search --community partial-name
-coast show PACKAGE --community
-coast clone PACKAGE --community
-coast install PACKAGE --community
-coast update PACKAGE --community
+python3 build/brine-community-server/manage.py start
+python3 build/brine-community-server/manage.py status
+brine community --check
+brine search --community partial-name
+brine show PACKAGE --community
+brine clone PACKAGE --community
+brine install PACKAGE --community
+brine update PACKAGE --community
 ```
 
-`coast search` combines signed packages, signed recipes and community recipes,
+`brine search` combines signed packages, signed recipes and community recipes,
 with the same literal ranking. `--repo` selects signed binaries; `--source`
 selects recipes; `--community` selects community submissions. The v5 API's
-two-character minimum does not prevent Coast's one-character search: the client
-reads the bounded public metadata index for short queries. `coast search g`
+two-character minimum does not prevent Brine's one-character search: the client
+reads the bounded public metadata index for short queries. `brine search g`
 puts GCC before build metapackages and ignores incidental `g` characters in Qt
 descriptions. Installation always requires exact package names.
 
-`coast community URL --check` checks the API without changing settings.
-`coast community URL` authenticates a change to root-owned configuration;
-`coast community off` disables community queries. Changing that URL preserves
+`brine community URL --check` checks the API without changing settings.
+`brine community URL` authenticates a change to root-owned configuration;
+`brine community off` disables community queries. Changing that URL preserves
 the signed binary origin and publisher fingerprint. Signed binaries and the
 signed source catalog take precedence unless `--community` is explicit.
 Community metadata and Git are untrusted input; a submission never grants
@@ -66,6 +65,8 @@ private backup separately to another host, then restore into empty state with
 The bundle README describes host names, TLS reverse proxies and ports for a
 future controlled network. No firewall or work-network port changes are needed
 for the current VM setup.
+Existing private community settings with a `coast-community` container name
+remain accepted; the new example uses `brine-community`.
 
 ## Start the host service
 
@@ -104,11 +105,11 @@ or a DNS name that resolves to it.
 Export a portable snapshot on the build computer:
 
 ```sh
-make export-packages REPOSITORY_EXPORT=build/coast-repository-server
+make export-packages REPOSITORY_EXPORT=build/brine-repository-server
 ```
 
 Copy that entire output directory to the repository computer, for example to
-`/srv/coast-packages`. It contains signed packages, public keys, source archives,
+`/srv/brine`. It contains signed packages, public keys, source archives,
 static Git origins, the catalog page and the Python server. Its manifest uses
 relative paths, so the build workspace is unnecessary on the other computer.
 It contains neither the package signing private key nor a requirement to build
@@ -117,8 +118,8 @@ or execute Coast programs on the server. Python 3.11 or later is required.
 For a LAN server at the example address `192.168.1.50`, run there:
 
 ```sh
-python3 -B /srv/coast-packages/serve_repository.py \
-  --repository /srv/coast-packages/repository.json \
+python3 -B /srv/brine/serve_repository.py \
+  --repository /srv/brine/repository.json \
   --bind 0.0.0.0 --port 8765 --public-url http://192.168.1.50:8765 \
   --allow-client 192.168.1.0/24
 ```
@@ -133,18 +134,18 @@ that option all clients that can reach the listener may read its public files.
 On Coast, as the normal user:
 
 ```sh
-coast server http://192.168.1.50:8765 --check
-coast server http://192.168.1.50:8765
-coast refresh
-coast install bc
+brine server http://192.168.1.50:8765 --check
+brine server http://192.168.1.50:8765
+brine refresh
+brine install bc
 ```
 
 The first command checks connectivity and verifies the signed database and
 source catalog against the key already installed in Coast. The second repeats
 verification, then authenticates through real sudo to update the client,
 pacman and makepkg settings together. It never imports a key from the network
-or disables signature checks. `coast server` without an address shows the
-current server and pinned signing fingerprint. `coast repo` remains available.
+or disables signature checks. `brine server` without an address shows the
+current server and pinned signing fingerprint. `brine repo` remains available.
 Configuration files are staged under a lock, replaced individually with atomic
 renames and restored on an ordinary write failure; this is not a guarantee of
 a cross-file transaction surviving sudden power loss.
@@ -162,17 +163,17 @@ The exported `deployment/` directory includes JSON configuration examples and
 an optional Linux systemd service. To enable it on a Linux repository computer:
 
 ```sh
-sudo cp /srv/coast-packages/deployment/server.example.json /etc/coast-packages-server.json
+sudo cp /srv/brine/deployment/server.example.json /etc/brine-server.json
 # Edit the JSON with the actual server address and allowed client subnet.
-sudo cp /srv/coast-packages/deployment/coast-packages.service /etc/systemd/system/
+sudo cp /srv/brine/deployment/brine.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now coast-packages.service
+sudo systemctl enable --now brine.service
 ```
 
 Keep the snapshot root-owned, readable, and not writable by the service. The
 service runs as a dynamic unprivileged account with a read-only filesystem view.
 For TLS, use `server-tls.example.json` and place `tls-credentials.conf` at
-`/etc/systemd/system/coast-packages.service.d/tls-credentials.conf`; systemd
+`/etc/systemd/system/brine.service.d/tls-credentials.conf`; systemd
 then supplies the certificate and private TLS key as service credentials.
 A non-systemd server can run the same Python command under its service manager.
 To publish an update, export a fresh complete snapshot and restart the service
@@ -195,7 +196,7 @@ selected Intel e1000/e1000e and I225/I226/82576 devices; QEMU qualification does
 not by itself prove a particular motherboard's physical PHY works.
 
 For a different local port, start the server with `--port PORT`, then change
-`/etc/coast/packages.json` and `/etc/pacman.conf` inside the disposable VM to
+`/etc/brine/config.json` and `/etc/pacman.conf` inside the disposable VM to
 use the corresponding `10.0.2.2:PORT` address. The default configuration points
 to port 8765. A standalone offline image can instead be built with
 `--repository-mode embedded`; hosting is the default.
@@ -205,33 +206,33 @@ to port 8765. A standalone offline image can instead be built with
 In the VM's Terminal:
 
 ```sh
-coast search g                    # GCC/G++, Git, Gawk and other partial matches
-coast search g++                  # literal plus signs, case-insensitive
-coast search --repo editor        # signed binary packages only
-coast search --source ninja       # reviewed source recipes only
-coast search --json g             # structured results, commands and installed versions
-coast info gcc
-coast repo                        # configured server and trusted key fingerprint
-coast list                        # installed packages
-coast install bc                  # signed binary package; sudo authenticates installation
-coast install g++                 # exact provided alias for the gcc package
-coast remove bc
-coast remove --unused bc           # also remove dependencies that are no longer needed
-coast upgrade                     # upstream pacman -Syu
-coast refresh                     # verify and refresh the source catalog as your normal user
+brine search g                    # GCC/G++, Git, Gawk and other partial matches
+brine search g++                  # literal plus signs, case-insensitive
+brine search --repo editor        # signed binary packages only
+brine search --source ninja       # reviewed source recipes only
+brine search --json g             # structured results, commands and installed versions
+brine info gcc
+brine repo                        # configured server and trusted key fingerprint
+brine list                        # installed packages
+brine install bc                  # signed binary package; sudo authenticates installation
+brine install g++                 # exact provided alias for the gcc package
+brine remove bc
+brine remove --unused bc           # also remove dependencies that are no longer needed
+brine upgrade                     # upstream pacman -Syu
+brine refresh                     # verify and refresh the source catalog as your normal user
 ```
 
 Search matches partial package names, executable names, provided aliases and
 descriptions. Multiple terms must all match, and exact names/commands appear
 first. Package names rank ahead of command aliases and descriptive metadata;
 shorter matching names appear before longer names at the same rank. One-letter
-queries match name/command/alias prefixes, so `coast search g` starts with GCC
+queries match name/command/alias prefixes, so `brine search g` starts with GCC
 and omits unrelated graphical packages. Description matching starts at three
 characters; useful name substrings and literal names such as `g++` still work.
 Results distinguish `coast/` signed packages from `recipes/` source
 recipes. The default image includes signed bootstrap metadata, so discovery
 works before contacting the host; installing a package that is not in the
-VM's cache requires the host service. `coast refresh` verifies the catalog before
+VM's cache requires the host service. `brine refresh` verifies the catalog before
 atomically selecting its new cached generation. A failed refresh keeps the
 previous generation intact. Installation and removal require exact names,
 never whichever partial search result appears first.
@@ -270,21 +271,21 @@ results. Refresh that index with `sudo pacman -Fy` after repository updates.
 Binary installation is the default. To build from source instead:
 
 ```sh
-coast refresh
-coast info --source hello-coast
-coast show hello-coast          # verifies the recipe file against the signed catalog
-coast clone hello-coast         # real Git over HTTP; verifies the expected Git commit
+brine refresh
+brine info --source hello-coast
+brine show hello-coast          # verifies the recipe file against the signed catalog
+brine clone hello-coast         # real Git over HTTP; verifies the expected Git commit
 cd ~/Builds/hello-coast
 cat PKGBUILD                     # inspect source, patches and install scripts too
 makepkg --printsrcinfo
 makepkg -si                      # normal-user build; sudo installs the result
 ```
 
-`coast build NAME` builds without installation. `coast install --source NAME`
+`brine build NAME` builds without installation. `brine install --source NAME`
 combines checkout, explicit review and upstream `makepkg --syncdeps --install`.
-`coast update NAME` fetches the Git repository, verifies its head against the
-signed catalog and merges only a fast-forward. `coast checkupdates` compares
-installed versions with recipe versions using upstream vercmp. `coast rpc`
+`brine update NAME` fetches the Git repository, verifies its head against the
+signed catalog and merges only a fast-forward. `brine checkupdates` compares
+installed versions with recipe versions using upstream vercmp. `brine rpc`
 provides version-1 source-catalog search/info JSON. The seed recipes are a
 native example, GNU bc and Ninja. Their source archives are served by the host
 and verified by makepkg against pinned SHA-256 checksums.
@@ -305,7 +306,7 @@ editable, real Git repositories; inspect and port dependencies before building.
 
 Binary packages, the binary database and the file database require trusted
 OpenPGP signatures (`SigLevel = Required`). The signed source catalog is checked
-against the exact fingerprint in root-owned `/etc/coast/packages.json`.
+against the exact fingerprint in root-owned `/etc/brine/config.json`.
 Recipe Git commits and displayed recipe-file SHA-256 hashes come from that
 verified catalog. The image contains public trust data, never the host signing
 secret. The server serves only a verified public-artifact allowlist; it does
@@ -381,6 +382,6 @@ no host package database, raw drive or system account is changed.
 
 The kernel and hostname identify as `Coast` and `coast`. Native preferences,
 account policy, SDK headers, shared files and port sources use `coast` paths.
-The base package is `coast-base`; the source helper is `coast-packages`.
+The base package is `coast-base`; the source helper is `brine`.
 Build and boot Coast with `make iso` and `make run`. The host repository is
-selected by `build/Coast-packages`; component receipts record package provenance.
+built under `LOCAL_REPOSITORY_OUT`; component receipts record package provenance.

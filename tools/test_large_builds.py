@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--limine', type=Path, default=ROOT / 'build/limine-gnu/output/bin')
     parser.add_argument('--output-root', type=Path, required=True)
     parser.add_argument('--qemu-runtime', type=Path, help='native-built QEMU runtime to test with 2 GiB guest RAM')
-    parser.add_argument('--repository', type=Path, default=ROOT / 'build/Coast-repository-server/repository.json')
+    parser.add_argument('--repository', type=Path, default=ROOT / 'build/brine-repository-server/repository.json')
     args = parser.parse_args()
     out = args.output_root.resolve()
     out.mkdir(parents=True, exist_ok=False)

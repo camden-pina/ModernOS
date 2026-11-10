@@ -101,7 +101,7 @@ The full image includes GCC/G++, binutils, GNU Make, Bash/Readline, pacman,
 GnuPG, Python/SQLite, Git, makepkg/fakeroot support, Qt Widgets and QEMU.
 A local package ownership database describes the assembled files. Signed
 package installation requires an explicitly configured repository identity;
-see [Coast Packages](local-repositories.md).
+see [Brine](local-repositories.md).
 
 The `coast-build` and `qemu-build` packages provide additional offline native
 build kits from a configured repository. The native integration workflows

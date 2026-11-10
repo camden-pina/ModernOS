@@ -40,14 +40,14 @@ def create(payload, records):
         ('qemu', '10.2.4', 'QEMU x86-64 TCI emulator and source-built BIOS firmware'),
         ('qemu-devel', '10.2.4', 'QEMU static dependency SDK, fixtures and upstream sources'),
         ('novnc', '1.6.0', 'Source JavaScript VNC client'), ('coast-vm', '1.0', 'Local QEMU launcher and Chromium viewer'),
-        ('coast-packages', '1.6', 'Signed package and reviewed source recipe frontend'),
+        ('brine', '1.6', 'Signed package and reviewed source recipe frontend'),
         ('makepkg-environment', '1.0', 'Source recipes and support files for native package builds')]:
         package(name, version + '-1', description, ['musl'])
     from build_extra_programs import PACKAGES
     for name in ('ninja', 'pkgconf', 'm4', 'patch', 'xz'):
         package(name, PACKAGES[name]['version'] + '-1', 'Upstream ' + name + ' native build tool', ['musl'],
                 ['pkg-config'] if name == 'pkgconf' else [])
-    packages['coast-packages']['depends'] = ['python', 'pacman', 'base-devel']
+    packages['brine']['depends'] = ['python', 'pacman', 'base-devel']
     packages['coast-vm']['depends'] = ['python', 'qemu', 'novnc']
     packages['qemu-devel']['depends'] = ['qemu', 'gcc', 'pkgconf']
     packages['pacman']['depends'] = ['bash', 'gnupg', 'libarchive', 'coreutils', 'findutils', 'file']
@@ -130,7 +130,7 @@ def create(payload, records):
         return 'makepkg-environment'
 
     assign(records.get('makepkg_build', {}), 'makepkg-environment', makepkg)
-    assign(records.get('frontend_build', {}), 'coast-packages', lambda name: 'pacman' if name in ('etc/pacman.conf', 'etc/makepkg.conf') else 'coast-packages')
+    assign(records.get('frontend_build', {}), 'brine', lambda name: 'pacman' if name in ('etc/pacman.conf', 'etc/makepkg.conf') else 'brine')
     assign(records.get('qt_build', {}), 'qt6-demo')
     assign(records.get('qemu_build', {}), 'qemu', lambda name: 'qemu-devel' if
            name.startswith(('usr/lib/coast/qemu-sdk/', 'usr/src/', 'usr/share/coast/qemu/')) else 'qemu')

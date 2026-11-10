@@ -72,7 +72,7 @@ recorded app selection: cleaning an unused app leaves that ISO's receipt valid.
 
 | Components | What they cover |
 | --- | --- |
-| `chromium`, `codeoss`, `bash`, `gcc`, `python`, `packages`, `makepkg`, `qt`, `qemu`, `qemu-viewer` | App products. Shared components are shared: cleaning Chromium includes Electron and the display bridge, so an ISO containing Code OSS needs reassembly too. Prerequisite compiler/source caches are not recursively deleted. |
+| `chromium`, `codeoss`, `bash`, `gcc`, `python`, `brine`, `makepkg`, `qt`, `qemu`, `qemu-viewer` | App products. Shared components are shared: cleaning Chromium includes Electron and the display bridge, so an ISO containing Code OSS needs reassembly too. Prerequisite compiler/source caches are not recursively deleted. |
 | `sources` | Managed Electron checkout, depot_tools and sync receipts; invalidates the runtime and all source consumers. |
 | `electron` | Electron/Node products and compiler object trees; retains its managed checkout. |
 | `glibc`, `libgcc`, `cxx`, `gui-sources`, `gui-runtime`, `application`, `sdk`, `addons`, `rust`, `bridge`, `assets`, `program`, `frontend`, `viewer` | Individual pipeline components; names also appear in `make iso ISO_ARGS=--plan`. |
@@ -82,7 +82,8 @@ recorded app selection: cleaning an unused app leaves that ISO's receipt valid.
 | `cache`, `downloads`, `logs`, `failed`, `tests`, `containers` | Python/npm/linker caches, abandoned Git pack/lock and receipt/extraction scratch files, pinned downloads, component logs, failed staging, qualification fixtures, or the managed GUI build container. Container cleanup resets its environment receipt; KEEP=toolchains retains that container. |
 
 Explicit `sources` and `downloads` cleanup removes that category's cache.
-`packages` selects the frontend and package backend; `program` selects the
+`brine` selects the frontend and package backend; `packages` selects the backend
+tools alone. `program` selects the
 Python/jq build component. The native core and build-time dependencies can
 remain necessary even when an app is omitted from the ISO.
 

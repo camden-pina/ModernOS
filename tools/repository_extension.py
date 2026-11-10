@@ -180,7 +180,7 @@ def extend(repository, output, keys, repo_add, packages, recipes=(), distfiles=(
                 publish(path, '/recipes/' + name + '/files/' + source.name)
     if recipes:
         catalog = output / 'public/recipes/index.json'
-        catalog.write_text(json.dumps(dict(version=1, name='Coast Packages', results=snapshot['recipes']), indent=2) + '\n')
+        catalog.write_text(json.dumps(dict(version=1, name='Brine', results=snapshot['recipes']), indent=2) + '\n')
         sign(catalog)
         publish(catalog, '/recipes/index.json')
         publish(Path(str(catalog) + '.sig'), '/recipes/index.json.sig')

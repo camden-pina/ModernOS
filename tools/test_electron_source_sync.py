@@ -68,9 +68,11 @@ class SourceSyncTests(unittest.TestCase):
         self.old = self.git(self.source, 'rev-parse', 'HEAD')
         self.git(self.source, 'tag', 'old-release')
         self.payload.write_text('locked source\n')
+        (self.source / 'other.txt').write_text('locked companion\n')
         self.commit(self.source)
         self.pin = self.git(self.source, 'rev-parse', 'HEAD')
         self.payload.write_text('Coast patched source\n')
+        (self.source / 'other.txt').write_text('Coast patched companion\n')
         patch_data = self.git(self.source, 'diff') + '\n'
         self.git(self.source, 'add', '.')
         patched_tree = self.git(self.source, 'write-tree')
@@ -115,6 +117,95 @@ class SourceSyncTests(unittest.TestCase):
                 patch.object(sys, 'argv', argv), patch.dict(os.environ, environment), \
                 contextlib.redirect_stdout(io.StringIO()):
             builder.main()
+
+    def overlap_policy_and_patch(self):
+        self.lock['overlays']['src/electron/payload.txt'] = 'policy.h'
+        self.lock_path.write_text(json.dumps(self.lock))
+
+    def verify(self, overlays=False):
+        with patch.object(builder, 'ROOT', self.project):
+            builder.verify(self.output / 'checkout', self.lock, overlays=overlays)
+
+    def test_completed_sync_with_policy_replacing_patched_file_is_reused_read_only(self):
+        self.overlap_policy_and_patch()
+        self.sync()
+        source = self.output / 'checkout/src/electron'
+        self.assertEqual((source / 'payload.txt').read_bytes(), (self.project / 'policy.h').read_bytes())
+        self.assertEqual((source / 'other.txt').read_text(), 'Coast patched companion\n')
+        before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in (
+            source / 'payload.txt', source / 'other.txt', source / '.git/index',
+            self.output / 'checkout/sync-arguments.json', self.output / 'checkout/hooks-ran',
+            self.output / 'SOURCE.json', self.output / 'SYNC.json')}
+        with patch.object(builder, 'fetch_pinned_repository', side_effect=AssertionError('unexpected fetch')):
+            self.sync()
+        self.verify()  # Read-only runtime/packaging consumers use this mode.
+        self.verify(overlays=True)  # The managed pipeline requires every policy.
+        self.assertEqual(before, {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in before})
+
+    def test_interrupted_policy_copy_resumes_without_fetching_or_reapplying_patches(self):
+        self.overlap_policy_and_patch()
+        atomic_write = builder.atomic_write
+
+        def interrupt_after_policy(path, contents):
+            atomic_write(path, contents)
+            if Path(path).name == 'payload.txt':
+                raise KeyboardInterrupt()
+
+        with patch.object(builder, 'atomic_write', side_effect=interrupt_after_policy):
+            with self.assertRaises(KeyboardInterrupt):
+                self.sync()
+        self.assertEqual(json.loads((self.output / 'SYNC.json').read_text())['phase'], 'overlays')
+        self.assertFalse((self.output / 'SOURCE.json').exists())
+        arguments = self.output / 'checkout/sync-arguments.json'
+        previous = arguments.stat().st_mtime_ns
+        self.sync()
+        self.assertEqual(arguments.stat().st_mtime_ns, previous)
+        self.verify(overlays=True)
+
+    def test_policy_match_does_not_skip_other_patch_files(self):
+        self.overlap_policy_and_patch()
+        self.sync()
+        source = self.output / 'checkout/src/electron'
+        (source / 'other.txt').write_text('locked companion\n')
+        for overlays in (False, True):
+            with self.subTest(overlays=overlays):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.verify(overlays=overlays)
+
+    def test_changed_policy_is_rejected_even_outside_patch_context(self):
+        self.overlap_policy_and_patch()
+        self.sync()
+        source = self.output / 'checkout/src/electron'
+        (source / 'payload.txt').write_text('altered Coast policy\n')
+        with self.assertRaisesRegex(ValueError, 'Coast policy differs'):
+            self.verify(overlays=True)
+
+    def test_changed_port_patch_is_rejected_after_policy_replacement(self):
+        self.overlap_policy_and_patch()
+        self.sync()
+        (self.project / 'port.patch').write_text('corrupt patch\n')
+        with self.assertRaisesRegex(ValueError, 'Port patch changed'):
+            self.verify(overlays=True)
+
+    def test_policy_can_replace_all_files_in_a_patch(self):
+        self.overlap_policy_and_patch()
+        self.lock['overlays']['src/electron/other.txt'] = 'policy.h'
+        self.lock_path.write_text(json.dumps(self.lock))
+        self.sync()
+        self.verify()
+        self.verify(overlays=True)
+
+    def test_completed_sync_with_invalidated_receipt_reuses_downloads_and_patches(self):
+        self.overlap_policy_and_patch()
+        self.sync()
+        (self.output / 'SOURCE.json').unlink()  # BuildSession invalidates changed builders.
+        paths = [self.output / 'checkout/sync-arguments.json', self.output / 'checkout/hooks-ran',
+                 self.output / 'depot_tools/.git/FETCH_HEAD']
+        before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths}
+        self.sync()
+        self.verify(overlays=True)
+        self.assertTrue((self.output / 'SOURCE.json').exists())
+        self.assertEqual(before, {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths})
 
     def test_interrupted_fetch_is_adopted_and_reused(self):
         with self.assertRaises(subprocess.CalledProcessError):

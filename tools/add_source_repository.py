@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repository', type=Path, default=ROOT / 'build/Coast-repository-server/repository.json')
+    parser.add_argument('--repository', type=Path, default=ROOT / 'build/brine-repository-server/repository.json')
     parser.add_argument('--output-root', type=Path, required=True)
     parser.add_argument('--source-output', type=Path, default=ROOT / 'build/source-release/coast-source-2026.11.06.tar.xz')
     parser.add_argument('--nasm-build', type=Path, default=ROOT / 'build/nasm/BUILD.json')

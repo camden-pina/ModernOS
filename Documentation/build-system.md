@@ -10,7 +10,7 @@ make run
 ```
 
 `make iso` builds Coast: the kernel, desktop/accounts, Chromium, Code OSS,
-GCC/G++, Bash, Python, Coast Packages/makepkg, Qt, QEMU and its Chromium VM
+GCC/G++, Bash, Python, Brine/makepkg, Qt, QEMU and its Chromium VM
 viewer by default. Optional apps and their dependencies can be selected below. The output is
 `build/coast/image/Coast.iso`.
 
@@ -155,7 +155,7 @@ can remove this generated selection; persist preferences in `.config`.
 | `codeoss` | `bash`, plus that same engine/GUI/bridge and the Code OSS application/modules. |
 | `bash`, `gcc`, `python`, `qt`, `qemu` | No other optional app; their build prerequisites are still compiled. |
 | `makepkg` | `gcc`, `python`, `bash`; package/signature/archive tools are included as runtime components. |
-| `packages` | `makepkg`, `python`, and their prerequisites. |
+| `brine` | Brine package manager; `makepkg`, `python`, and their prerequisites. |
 | `qemu-viewer` | `qemu`, `python`, `chromium`. |
 
 `WITHOUT` excludes required apps: dependent apps are omitted and
@@ -163,7 +163,7 @@ the plan explains why. Explicit `ADD` restores its apps and their runtime
 prerequisites even when saved `WITHOUT` settings omit them. For example, `WITHOUT=chromium` omits the browser and VM
 viewer while retaining Code OSS and its shared engine. Omit both `chromium` and
 `codeoss` to avoid building that engine. `WITHOUT=gcc` also omits makepkg and
-Coast Packages. Qt/QEMU can still require the host cross compiler to build;
+Brine. Qt/QEMU can still require the host cross compiler to build;
 that does not install GCC in the ISO.
 
 The payload omits unselected app files and launcher entries. Its installed

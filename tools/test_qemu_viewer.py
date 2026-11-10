@@ -61,7 +61,7 @@ def main():
     vm = display = server = thread = fixture = None
 
     def check(name, command, expected, user=True, timeout=180):
-        if command.startswith(('coast server ', 'coast install ')):
+        if command.startswith(('brine server ', 'brine install ')):
             vm.command('true')
         output = vm.shell_command(command, expect=expected, as_user=user, timeout=timeout)
         (out / (f'{len(report["checks"]):02d}-output.txt')).write_text(output)
@@ -118,9 +118,9 @@ def main():
         vm.command('true')
         (out / 'network-startup.txt').write_text(vm.command('netinfo'))
         if not args.preinstalled:
-            check('select signed candidate repository', 'coast server ' + origin, 'Package downloads and source builds now use')
+            check('select signed candidate repository', 'brine server ' + origin, 'Package downloads and source builds now use')
             check('verify signed package metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
-            check('install source noVNC client and local VM launcher', 'coast install coast-vm --noconfirm', 'installing coast-vm', timeout=300)
+            check('install source noVNC client and local VM launcher', 'brine install coast-vm --noconfirm', 'installing coast-vm', timeout=300)
             check('fetch the native-built ISO and emulator fixture',
             'curl -fsS ' + origin + '/distfiles/viewer-native.iso -o /tmp/nested.iso && '
             'curl -fsS ' + origin + '/distfiles/viewer-runtime.tar.gz -o /tmp/runtime.tar.gz && '

@@ -28,7 +28,7 @@ def sha(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repository', type=Path, default=ROOT / 'build/Coast-repository-server/repository.json')
+    parser.add_argument('--repository', type=Path, default=ROOT / 'build/brine-repository-server/repository.json')
     parser.add_argument('--build', type=Path, default=ROOT / 'build/qemu/BUILD.json')
     parser.add_argument('--output-root', type=Path, required=True)
     parser.add_argument('--signing-home', type=Path, default=ROOT / 'build/coast-signing-keys')
@@ -141,7 +141,7 @@ def main():
     add('qemu-devel', 'usr/share/doc/qemu/sdk.txt',
         'Static dependency SDK: /usr/lib/coast/qemu-sdk\n'
         'For native configure, export PKG_CONFIG_PATH=/usr/lib/coast/qemu-sdk/lib/pkgconfig\n'
-        'and use pkg-config --static. Sources: coast install qemu-source.\n'
+        'and use pkg-config --static. Sources: brine install qemu-source.\n'
         'The host cross-build recipe and exact configure options accompany the sources.\n'
         'A complete native QEMU source rebuild is not a qualified workflow yet.\n')
     add('qemu-common', 'usr/share/doc/qemu/coast.md', (ROOT / 'Documentation/qemu.md').read_bytes())

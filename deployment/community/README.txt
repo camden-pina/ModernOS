@@ -1,4 +1,4 @@
-Coast Community — portable local server
+Brine Community — portable local server
 
 This bundle runs the actual aurweb 6.5.1 application, MariaDB, Valkey, a
 read-only anonymous Git/cgit interface, and SSH Git submissions in a rootless
@@ -41,12 +41,12 @@ are not signed binary packages, and are not automatically trusted.
 
 From a QEMU Coast VM on this host:
 
-  coast community http://10.0.2.2:8770 --check
-  coast community http://10.0.2.2:8770
-  coast search --community partial-name
-  coast show PACKAGE --community
-  coast clone PACKAGE --community
-  coast install PACKAGE --community
+  brine community http://10.0.2.2:8770 --check
+  brine community http://10.0.2.2:8770
+  brine search --community partial-name
+  brine show PACKAGE --community
+  brine clone PACKAGE --community
+  brine install PACKAGE --community
 
 Search is literal and supports short partial names. A build runs as the
 normal account, after source review. Installation authenticates through real
@@ -57,14 +57,14 @@ packages are not automatically Coast-compatible.
 For a consistent private backup, this stops the owned container, snapshots
 the database and Git together with their numeric ownership, and restarts it:
 
-  python3 manage.py backup /PRIVATE/PATH/coast-community-backup.tar
+  python3 manage.py backup /PRIVATE/PATH/brine-community-backup.tar
 
 The backup includes credentials and keys and is mode 0600. Copy it securely.
 To restore on another Linux host with rootless Podman, copy this bundle and
 the backup, keep state empty, then:
 
   python3 manage.py load
-  python3 manage.py restore /PRIVATE/PATH/coast-community-backup.tar
+  python3 manage.py restore /PRIVATE/PATH/brine-community-backup.tar
   python3 manage.py start
 
 Restore only a trusted private backup. Existing state is never overwritten.

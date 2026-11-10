@@ -8,9 +8,9 @@ url='https://ninja-build.org/'
 license=('Apache-2.0')
 depends=('musl' 'gcc-libs')
 makedepends=('gcc' 'python' 'patch')
-source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja-$pkgver.tar.gz"
-        "${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja-session.patch"
-        "${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja_check.py")
+source=("${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja-$pkgver.tar.gz"
+        "${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja-session.patch"
+        "${BRINE_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/ninja_check.py")
 sha256sums=('974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17'
             'ac0fa91df0d87a62f5a17325b381ca2a39d53a1e9c58ce9f99765b646a039699' '46abf4f3a175552e628670e3555ebd6e97b7cbf4e2cc2c47b04472ba168cc644')
 

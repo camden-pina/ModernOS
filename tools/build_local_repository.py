@@ -69,7 +69,7 @@ def main():
     endpoint = urlsplit(args.guest_url)
     if endpoint.scheme not in ('http', 'https') or not endpoint.hostname or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment or endpoint.path not in ('', '/'):
         parser.error('--guest-url must be a plain HTTP(S) server origin')
-    guest_url = args.guest_url.rstrip('/') if args.repository_mode == 'host' else 'file:///usr/share/coast/packages/repository'
+    guest_url = args.guest_url.rstrip('/') if args.repository_mode == 'host' else 'file:///usr/share/brine/repository'
     out = args.output_root.resolve()
     out.mkdir(parents=True, exist_ok=False)
     arch = args.arch_build.resolve()
@@ -97,7 +97,7 @@ def main():
             raise RuntimeError(str(command[:2]) + ': ' + result.stderr.decode(errors='replace')[-2500:])
         return result.stdout
 
-    sources = [Path(__file__), ROOT / 'tools/repository_base.py', ROOT/'tools/build_coast_base.py', ROOT/'tools/migrate_coast_receipt.py', ROOT / 'tools/serve_repository.py', ROOT/'tools/export_repository.py', ROOT / 'userland/packages/client.py', ROOT/'userland/packages/search.py', ROOT/'userland/packages/community.py',ROOT / 'userland/packages/launcher.c',
+    sources = [Path(__file__), ROOT / 'tools/repository_base.py', ROOT/'tools/build_coast_base.py', ROOT/'tools/migrate_coast_receipt.py', ROOT / 'tools/serve_repository.py', ROOT/'tools/export_repository.py', ROOT / 'userland/packages/client.py', ROOT/'userland/packages/search.py', ROOT/'userland/packages/community.py', ROOT/'userland/packages/configure.py', ROOT / 'userland/packages/launcher.c',
                ROOT/'Documentation/local-repositories.md',ROOT/'userland/runtime/usr/lib/coast/linux-ports/manifest.json',
                *sorted((ROOT/'deployment/repository').glob('*')),
                *sorted((ROOT / 'userland/packages/web').glob('*')),
@@ -160,14 +160,14 @@ def main():
         assert url not in host_files and url.startswith(('/repo/', '/recipes/', '/distfiles/', '/keys/'))
         host_files[url] = dict(path=str(path), sha256=sha(path))
         if args.repository_mode == 'embedded':
-            add('usr/share/coast/packages/repository' + url, path,
-                None if url.startswith('/repo/') else 'coast-packages', 0o644)
+            add('usr/share/brine/repository' + url, path,
+                None if url.startswith('/repo/') else 'brine', 0o644)
 
     base = package('coast-base', '1.0-2', 'Coast native kernel, desktop and musl runtime',
                    provides=['musl=1.2.5', 'gcc-libs=14.2.0', 'curl', 'gzip', 'sudo', 'busybox'],
                    license='custom')
     add('usr/bin/curl', ROOT / 'userland/bin/curl', base, 0o755)
-    generated('etc/os-release','NAME=Coast\nID=coast\nPRETTY_NAME="Coast (Live)"\nVERSION_ID=0.2\n',base)
+    generated('etc/os-release','NAME="Coast OS"\nID=coast\nPRETTY_NAME="Coast OS (Live)"\nVERSION_ID=0.2\n',base)
     generated('etc/hostname','coast\n',base)
     generated('etc/issue','Coast live system\n',base)
     for name, version, description, depends, provides, license in [
@@ -329,21 +329,22 @@ def main():
 
     package('base-devel', '1.0-2', 'Native tools required for local PKGBUILD builds',
             ['coast-base', 'gcc', 'binutils', 'make', 'gawk', 'git', 'bash', 'coreutils', 'findutils', 'file', 'fakeroot', 'pacman', 'patch', 'pkgconf', 'm4','grep','sed','diffutils'], reason=1)
-    package('coast-packages', '1.5-1', 'Coast Packages: signed packages and reviewed community recipes', ['python', 'pacman', 'base-devel'], license='0BSD')
+    package('brine', '1.5-1', 'Brine: signed packages and reviewed community recipes', ['python', 'pacman', 'base-devel'], license='0BSD')
     host([ROOT / 'build/compiler/cross/bin/x86_64-linux-musl-gcc', '-O2', '-static', '-no-pie',
-          '-Wl,-z,relro,-z,now,-z,noexecstack', ROOT / 'userland/packages/launcher.c', '-o', out / 'coast'])
-    add('usr/bin/coast', out / 'coast', 'coast-packages', 0o755)
-    add('usr/lib/coast/packages/client.py', ROOT / 'userland/packages/client.py', 'coast-packages', 0o644)
-    add('usr/lib/coast/packages/search.py', ROOT / 'userland/packages/search.py', 'coast-packages', 0o644)
-    add('usr/lib/coast/packages/community.py',ROOT/'userland/packages/community.py','coast-packages',0o644)
-    add('usr/share/doc/coast/local-repositories.md',ROOT/'Documentation/local-repositories.md','coast-packages',0o644)
+          '-Wl,-z,relro,-z,now,-z,noexecstack', ROOT / 'userland/packages/launcher.c', '-o', out / 'brine'])
+    add('usr/bin/brine', out / 'brine', 'brine', 0o755)
+    add('usr/lib/brine/client.py', ROOT / 'userland/packages/client.py', 'brine', 0o644)
+    add('usr/lib/brine/search.py', ROOT / 'userland/packages/search.py', 'brine', 0o644)
+    add('usr/lib/brine/community.py',ROOT/'userland/packages/community.py','brine',0o644)
+    add('usr/lib/brine/configure.py',ROOT/'userland/packages/configure.py','brine',0o644)
+    add('usr/share/doc/brine/local-repositories.md',ROOT/'Documentation/local-repositories.md','brine',0o644)
     for name in ['pacman.conf', 'makepkg.conf']:
         content = (ROOT / 'userland/packages/config' / name).read_text()
         if name == 'pacman.conf':
-            content = content.replace('Server = file:///var/lib/coast/repository/coast/os/$arch', 'Server = ' + guest_url + '/repo/$arch')
+            content = content.replace('Server = file:///var/lib/brine/repository/coast/os/$arch', 'Server = ' + guest_url + '/repo/$arch')
             content = content.replace('--proto =file', '--noproxy "*" --connect-timeout 5 --max-time 180 --proto =' + ('file' if args.repository_mode == 'embedded' else 'http,https'))
         else:
-            content += '\n# Native source recipes use the same local server as binary packages.\nexport COAST_REPOSITORY_URL=' + repr(guest_url) + '\n'
+            content += '\n# Native source recipes use the same local server as binary packages.\nexport BRINE_REPOSITORY_URL=' + repr(guest_url) + '\n'
         generated('etc/' + name, content, pacman, 0o644)
         packages[pacman]['backup'].append('etc/' + name)
 
@@ -355,9 +356,9 @@ def main():
     public_path = out / 'repo-public.asc'
     public_path.write_bytes(public)
     publish('/keys/coast-local.asc', public_path)
-    generated('etc/coast/packages.json', json.dumps(dict(version=1, url=guest_url,
-              signing_fingerprint=fingerprint,community_url=args.community_url or None), indent=2) + '\n', 'coast-packages')
-    packages['coast-packages']['backup'].append('etc/coast/packages.json')
+    generated('etc/brine/config.json', json.dumps(dict(version=1, url=guest_url,
+              signing_fingerprint=fingerprint,community_url=args.community_url or None), indent=2) + '\n', 'brine')
+    packages['brine']['backup'].append('etc/brine/config.json')
     host(['/usr/bin/gpg', '--batch', '--no-autostart', '--homedir', keyring, '--import', public_path])
     host(['/usr/bin/gpg', '--batch', '--homedir', keyring, '--import-ownertrust'], data=(fingerprint + ':6:\n').encode())
     # Resolve the trust graph now, while writable, so read-only user queries
@@ -413,13 +414,13 @@ def main():
         for path in sorted(bare.rglob('*')):
             suffix = str(path.relative_to(bare))
             if path.is_dir() and args.repository_mode == 'embedded':
-                relative=f'usr/share/coast/packages/repository/recipes/{name}.git/'+suffix
+                relative=f'usr/share/brine/repository/recipes/{name}.git/'+suffix
                 directories[relative]=0o755
-                packages['coast-packages']['directories'].append(relative)
+                packages['brine']['directories'].append(relative)
             if path.is_file() and (suffix == 'HEAD' or suffix == 'info/refs' or suffix.startswith('objects/')):
                 publish(f'/recipes/{name}.git/' + suffix, path)
             elif path.is_file() and args.repository_mode == 'embedded' and suffix in ('config', 'packed-refs'):
-                add(f'usr/share/coast/packages/repository/recipes/{name}.git/' + suffix, path, 'coast-packages', 0o644)
+                add(f'usr/share/brine/repository/recipes/{name}.git/' + suffix, path, 'brine', 0o644)
         recipe_files = {}
         for path in sorted(work.iterdir()):
             if path.is_file():
@@ -431,13 +432,13 @@ def main():
                             FirstSubmitted=EPOCH, LastModified=EPOCH, Commit=commit,
                             URLPath=f'/recipes/{name}.git', Files=recipe_files))
     catalog = out / 'catalog/index.json'
-    atomic_write(catalog, json.dumps(dict(version=1, name='Coast Packages', results=results), indent=2) + '\n')
+    atomic_write(catalog, json.dumps(dict(version=1, name='Brine', results=results), indent=2) + '\n')
     host(['/usr/bin/gpg', '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', '',
           '--local-user', fingerprint, '--detach-sign', catalog])
     publish('/recipes/index.json', catalog)
     publish('/recipes/index.json.sig', str(catalog) + '.sig')
-    add('usr/share/coast/packages/catalog.json', catalog, 'coast-packages', 0o644)
-    add('usr/share/coast/packages/catalog.json.sig', str(catalog) + '.sig', 'coast-packages', 0o644)
+    add('usr/share/brine/catalog.json', catalog, 'brine', 0o644)
+    add('usr/share/brine/catalog.json.sig', str(catalog) + '.sig', 'brine', 0o644)
     for name in ['bc', 'ninja']:
         record = ports['packages'][name]
         path = ROOT / 'build/program-ports-r2/vendor' / record['archive']

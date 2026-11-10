@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run, inspect and back up a portable rootless Coast community server."""
+"""Run, inspect and back up a portable rootless Brine community server."""
 import argparse
 import hashlib
 import json
@@ -28,7 +28,9 @@ def run(command,**kwargs):
 def settings(path):
     config=json.loads(path.read_text())
     if config.get('version')!=1:raise ValueError('unsupported server configuration')
-    if not re.fullmatch(r'coast-community[-a-z0-9]*',config['name']):raise ValueError('invalid owned container name')
+    # Existing private server configurations may still name their owned container
+    # coast-community. Keep those usable without renaming or replacing state.
+    if not re.fullmatch(r'(?:brine|coast)-community[-a-z0-9]*',config['name']):raise ValueError('invalid owned container name')
     if config.get('bind') not in ('127.0.0.1','0.0.0.0'):
         raise ValueError('bind must be an explicit IPv4 loopback or wildcard address')
     for key in ('web_port','ssh_port'):
@@ -71,7 +73,7 @@ def load(engine,manifest):
 
 def start(engine,config,manifest):
     owned(engine,config['name'])
-    if running(engine,config['name']):print('Coast community is already running.');return
+    if running(engine,config['name']):print('Brine community is already running.');return
     image=subprocess.run([engine,'image','exists',manifest['image_id']],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     if image.returncode:load(engine,manifest)
     state=Path(config['state']);state.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -87,7 +89,7 @@ def start(engine,config,manifest):
         '--env','COAST_PUBLIC_ORIGIN='+config['public_origin'],
         '--env','COAST_SSH_PORT='+str(config.get('public_ssh_port',config['ssh_port'])),manifest['image_id']]
     run(args,stdout=subprocess.DEVNULL)
-    print('Coast community started: '+config['public_origin'])
+    print('Brine community started: '+config['public_origin'])
     print('Initial administrator credentials: '+str(state/'ADMIN-CREDENTIALS.txt'))
 
 
@@ -196,4 +198,4 @@ def main():
 
 if __name__=='__main__':
     try:main()
-    except (ValueError,OSError,KeyError,subprocess.CalledProcessError) as error:raise SystemExit('coast-community: '+str(error))
+    except (ValueError,OSError,KeyError,subprocess.CalledProcessError) as error:raise SystemExit('brine-community: '+str(error))

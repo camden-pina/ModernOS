@@ -62,7 +62,7 @@ For development inside Coast, obtain the signed `qemu-build` package from your
 configured repository:
 
 ```sh
-coast install qemu-build --noconfirm
+brine install qemu-build --noconfirm
 mkdir -p ~/Builds/qemu
 cd ~/Builds/qemu
 tar -xzf /usr/src/coast/qemu-build/coast-qemu-10.2.4.tar.gz --strip-components=1

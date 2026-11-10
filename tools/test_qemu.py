@@ -40,13 +40,13 @@ def main():
         vm = runtime.VM(args.cpus, storage=False, network=True, memory='16G', accel='kvm',
                         iso=args.iso, label='qemu-port')
         vm.command('true')
-        check('select repository with existing signing key', 'coast server ' + origin,
+        check('select repository with existing signing key', 'brine server ' + origin,
               'Package downloads and source builds now use')
         check('verify signed pacman metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('refresh matching signed file database metadata', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
-        check('find emulator through Coast search', 'coast search --repo qemu', 'coast/qemu 10.2.4-')
-        check('install signed emulator and matching firmware', 'coast install qemu --noconfirm', 'installing qemu', timeout=180)
-        check('install dependency SDK through package resolution', 'coast install qemu-devel --noconfirm', 'installing qemu-devel', timeout=240)
+        check('find emulator through Brine search', 'brine search --repo qemu', 'coast/qemu 10.2.4-')
+        check('install signed emulator and matching firmware', 'brine install qemu --noconfirm', 'installing qemu', timeout=180)
+        check('install dependency SDK through package resolution', 'brine install qemu-devel --noconfirm', 'installing qemu-devel', timeout=240)
         check('verify installed archive ownership and bytes', 'pacman -Qkk qemu qemu-common glib2 libffi pcre2 pixman libslirp libucontext zlib meson qemu-devel', '0 altered files')
         check('native Python runs packaged Meson', 'meson --version', '1.10.2')
         check('native pkg-config resolves private static dependency SDK',

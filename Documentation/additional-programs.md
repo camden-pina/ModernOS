@@ -1,7 +1,7 @@
 # Additional upstream programs
 
 These programs run in Terminal with the active profile's normal account
-privileges. Install available packages through Coast Packages. For port
+privileges. Install available packages through Brine. For port
 development, `make more-programs` builds these components and their receipts.
 
 | Programs | Version | Use |

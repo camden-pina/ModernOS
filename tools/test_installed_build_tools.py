@@ -42,7 +42,7 @@ def main():
 
     def check(name, command, expected, user=True, timeout=240):
         print('START ' + name, flush=True)
-        if command.startswith(('coast server ', 'coast install ')):
+        if command.startswith(('brine server ', 'brine install ')):
             vm.command('true')
         if len(command.encode()) > 240 or '\n' in command:
             path = out / ('command-' + str(len(report['checks'])) + '.sh')
@@ -64,12 +64,12 @@ def main():
         vm = runtime.VM(4, storage=False, network=True, memory='12G', accel='kvm',
             iso=args.iso.resolve(), label='installed-build-tools')
         vm.command('true')
-        check('select the signed build-tools candidate', 'coast server ' + origin,
+        check('select the signed build-tools candidate', 'brine server ' + origin,
             'Package downloads and source builds now use')
         check('verify signed package metadata', 'pacman -Syy --noconfirm', 'Synchronizing', user=False)
         check('verify the matching signed file database', 'pacman -Fyy --noconfirm', 'Synchronizing', user=False)
         for name in versions:
-            check('install signed ' + name + ' ' + versions[name], 'coast install ' + name + ' --noconfirm', name, timeout=600)
+            check('install signed ' + name + ' ' + versions[name], 'brine install ' + name + ' --noconfirm', name, timeout=600)
         check('installed package ownership and bytes agree', 'pacman -Qkk ' + ' '.join(versions), '0 altered files', timeout=300)
         check('the installed C++ compiler enables POSIX threads', 'g++ -v 2>&1', 'Thread model: posix')
         check('the installed compiler bootstrap has its owned helper', 'bootstrap-toolchain --help', '--posix-threads')
