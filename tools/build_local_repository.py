@@ -4,6 +4,8 @@
 Only known host generators run here. Guest programs/PKGBUILDs never run on the
 host. No host package database, account or system directory is modified.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import base64
 import gzip
@@ -429,7 +431,7 @@ def main():
                             FirstSubmitted=EPOCH, LastModified=EPOCH, Commit=commit,
                             URLPath=f'/recipes/{name}.git', Files=recipe_files))
     catalog = out / 'catalog/index.json'
-    catalog.write_text(json.dumps(dict(version=1, name='Coast Packages', results=results), indent=2) + '\n')
+    atomic_write(catalog, json.dumps(dict(version=1, name='Coast Packages', results=results), indent=2) + '\n')
     host(['/usr/bin/gpg', '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', '',
           '--local-user', fingerprint, '--detach-sign', catalog])
     publish('/recipes/index.json', catalog)
@@ -544,7 +546,7 @@ def main():
         path=ROOT/'userland/vendor/linux-ports'/name
         assert sha(path)==digest
         add('usr/src/coast/package-tools/'+name,path,mode=0o644)
-    for path in [ROOT / 'tools/build_arch_ports.py', ROOT / 'tools/build_package_support.py', ROOT / 'tools/patch_fakeroot_unix.py', *sources]:
+    for path in [ROOT / 'tools/build_arch_ports.py', ROOT / 'tools/build_package_support.py', ROOT / 'tools/build_state.py', ROOT / 'tools/patch_fakeroot_unix.py', *sources]:
         add('usr/src/coast/package-tools/port/' + str(path.relative_to(ROOT)), path, mode=0o644)
     assert {str(p.relative_to(ROOT)): sha(p) for p in sources} == inputs
     manifest = dict(state='assembled; guest validation pending', target_host_executed=False,
@@ -553,9 +555,10 @@ def main():
                     guest_url=guest_url, public_signing_fingerprint=fingerprint,
                     signing_secret_included=False, commands=commands, confinement=conf,
                     sources={'ports': str(args.ports.resolve()), 'arch': str(arch), 'qt': str(args.qt_build.resolve()), 'base': base_receipt})
-    (out / 'BUILD.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(manifest, indent=2) + '\n')
     print(f'Built {len(packages)} signed packages and {len(results)} local Git recipes', flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

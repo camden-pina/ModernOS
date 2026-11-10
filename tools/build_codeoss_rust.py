@@ -5,6 +5,8 @@ Pinned Rust host tools stay local to this build. Cargo uses the upstream
 lockfile. The upstream wasm2c PAC backend retains explicit memory bounds
 checks and has no runtime JIT. Its vendored PAC wasm is recorded separately.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -52,7 +54,7 @@ def main():
         snapshot = history / (digest(stamp) + '.json')
         if not snapshot.exists():
             shutil.copyfile(stamp, snapshot)
-    stamp.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(stamp, json.dumps(identity, indent=2) + '\n')
     vendor = out / 'vendor'
     vendor.mkdir(exist_ok=True)
     for pin in [pins['source'], pins['wabt'], *pins['rust_host_tools'].values()]:
@@ -154,9 +156,10 @@ def main():
         host_wasm2c_sha256=digest(wasm2c), jit_enabled=False, explicit_pac_memory_bounds_checks=True,
         embedded_upstream_pac_wasm_sha256=digest(source / 'pac-wasm-guest/pac_guest.wasm'),
         embedded_pac_wasm_rebuilt_from_source=False, licenses=licenses, target_execution_on_linux=False)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Code OSS proxy resolver rebuilt for the source GNU ABI', flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

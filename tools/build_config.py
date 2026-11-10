@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / '.config'
 GROUPS = {
     'build': 'Build resources and output',
+    'apps': 'Applications and runtime dependencies',
     'desktop': 'Build features and verification',
     'sources': 'Verified sources and package trust',
     'vm': 'Virtual machine resources',
@@ -46,13 +47,17 @@ OPTIONS = (
     Option('O', 'Output parent directory', 'build', 'build',
            'Kernel output directory and parent of the default OS build directory. Kbuild requires a path without whitespace.'),
     Option('ISO_BUILD', 'OS build directory', 'build', None,
-           'Automatic: O/coast. Contains component receipts, logs and image/Coast.iso. Choose a fresh directory when recorded source inputs change.'),
+           'Automatic: O/coast. Contains component receipts, logs and image/Coast.iso. Verified completed components are reused; changed inputs invalidate dependent outputs.'),
     Option('SOURCE_MIRRORS', 'Source download mirrors', 'build', '',
            'Optional space-separated HTTPS mirrors for the base source manifest. Checksums are always verified.'),
+    Option('APPS', 'Applications to install', 'apps', 'all',
+           'all (default), none, or space/comma-separated names: chromium codeoss bash gcc python packages makepkg qt qemu qemu-viewer. Required runtime apps are added automatically.'),
+    Option('WITHOUT', 'Applications to omit', 'apps', '',
+           'Apps requiring an omitted app are omitted too: Code OSS needs Bash; Packages needs makepkg/Python; makepkg needs GCC/Python/Bash; the QEMU viewer needs QEMU/Python/Chromium. Code OSS shares the Electron/Chromium engine.'),
     Option('DIAGNOSTICS', 'Code OSS diagnostics', 'desktop', False,
            'Include opt-in editor diagnostics. This affects the build identity.', 'bool'),
     Option('QUALIFY', 'Run guest qualification after building', 'desktop', False,
-           'Enable diagnostics and all eleven guest qualification suites. Requires KVM, OVMF, passt, GnuPG, Pillow and Tesseract.', 'bool'),
+           'Enable diagnostics and the guest suites applicable to the selected apps. Requires KVM, OVMF, passt, GnuPG, Pillow and Tesseract.', 'bool'),
     Option('WITH_MICROSOFT_AUTH', 'Microsoft sign-in helpers', 'desktop', False,
            'Include upstream proprietary Microsoft authentication binaries. Their provenance is recorded.', 'bool'),
     Option('ELECTRON_CHECKOUT', 'Verified Electron checkout', 'sources', None,
@@ -60,7 +65,7 @@ OPTIONS = (
     Option('RUNTIME_BUILD', 'Verified Electron/Node receipt', 'sources', None,
            'Optional complete runtime BUILD.json. Also set the matching Electron checkout. Artifacts and pins are verified.'),
     Option('COMPONENTS', 'Component receipt map', 'sources', None,
-           'Optional JSON map of component names to source-build receipts. Reuse is hash-verified; every OS integration remains included.'),
+           'Optional JSON map of component names to source-build receipts. Reuse is hash-verified; app selection controls which integrations are installed.'),
     Option('PACKAGE_CONFIG', 'Public package repository trust', 'sources', None,
            'Optional public JSON containing url, signing_fingerprint and public_key. Empty leaves repository setup to the OS owner.'),
     Option('MEMORY', 'Guest RAM', 'vm', '16G',
@@ -155,6 +160,8 @@ def validate(values):
     values = {option.key: convert(option, values[option.key]) for option in OPTIONS}
     if values['RUNTIME_BUILD'] and not values['ELECTRON_CHECKOUT']:
         raise ValueError('RUNTIME_BUILD also needs the matching ELECTRON_CHECKOUT')
+    from build_components import app_selection
+    app_selection(values['APPS'], values['WITHOUT'])
     return values
 
 
@@ -214,6 +221,12 @@ def save(path, values):
     if path.exists() and path.read_bytes() != text.encode('utf-8'):
         atomic_write(Path(str(path) + '.old'), path.read_bytes())
     atomic_write(path, text)
+    # Named settings under build/ are user input, even though that directory
+    # otherwise contains disposable generated products.
+    if path.resolve().is_relative_to(ROOT / 'build'):
+        from build_state import read_json, write_json
+        registry = ROOT / 'build/config-files.json'
+        write_json(registry, sorted(set(read_json(registry, []) + [str(path.resolve())])))
 
 
 def makefile(values):

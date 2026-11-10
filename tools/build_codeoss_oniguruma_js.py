@@ -5,6 +5,8 @@ Uses a verified Binaryen host tool only inside the existing read-only,
 network-unshared build confinement. Does not execute any guest executable.
 Changes one packed ASAR module; all other file contents stay byte-identical.
 """
+from build_state import project_lock
+from build_state import atomic_write
 from pathlib import Path
 import argparse,copy,hashlib,json,struct,subprocess,tarfile
 
@@ -101,6 +103,8 @@ def main():
         translator_sha256=TOOL_SHA,translator_source=provenance,translator_command=command,confinement=confinement,
         loader_sha256=file_sha(loader_path),packed_files_verified=count,changed_packed_files=[TARGET],
         license=str(out/'Binaryen-LICENSE'),license_sha256=file_sha(license_path),host_guest_executable_execution=False)
-    (out/'BUILD.json').write_text(json.dumps(record,indent=2)+'\n')
+    atomic_write(out/'BUILD.json', json.dumps(record,indent=2)+'\n')
     print('Built interpreter Oniguruma ASAR:',record['asar_sha256'],'verified packed files:',count)
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

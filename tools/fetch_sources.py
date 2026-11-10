@@ -14,7 +14,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import fcntl
 from urllib.parse import urlsplit
+from build_state import atomic_copy, project_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / 'userland/vendor'
@@ -73,19 +75,40 @@ def download(url, partial, retries=2, retry_ipv4=True):
                '--connect-timeout', '20', '--max-time', '600',
                '--speed-limit', '1024', '--speed-time', '30',
                '--output', str(partial), url]
+    if partial.exists() and partial.stat().st_size:
+        command[1:1] = ['--continue-at', '-']
     try:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as error:
+        if '--continue-at' in command and error.returncode in (22, 33):
+            # Servers may reject Range, or a stale partial may be too long.
+            partial.unlink(missing_ok=True)
+            position = command.index('--continue-at')
+            del command[position:position + 2]
+            subprocess.run(command, check=True)
+            return
         # Some host resolvers stall on dual-stack release-asset redirects.
         # Retry connection failures over IPv4 with the same TLS and hash
         # checks, without forcing IPv4 on hosts that support IPv6 properly.
         if not retry_ipv4 or error.returncode not in (5, 6, 7, 28):
             raise
         print(f'Retrying {url} over IPv4 after a connection failure', flush=True)
+        if '--continue-at' not in command and partial.exists() and partial.stat().st_size:
+            command[1:1] = ['--continue-at', '-']
         subprocess.run([command[0], '--ipv4', *command[1:]], check=True)
 
 
 def fetch(entry, destination=VENDOR, check_only=False, mirror_bases=None):
+    destination = Path(destination)
+    lock_root = ROOT / 'build/.fetch-locks'
+    lock_root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(str((destination / entry['archive']).absolute()).encode()).hexdigest()
+    with (lock_root / key).open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _fetch(entry, destination, check_only, mirror_bases)
+
+
+def _fetch(entry, destination, check_only=False, mirror_bases=None):
     archive = destination / entry['archive']
     if archive.exists():
         verify(archive, entry['sha256'])
@@ -93,11 +116,12 @@ def fetch(entry, destination=VENDOR, check_only=False, mirror_bases=None):
 
     # Native source packages provide this shared offline distfile directory.
     # Verify again before copying into the user's writable source checkout.
-    installed = Path(os.environ.get('COAST_DISTFILES_DIR', '/usr/src/coast/distfiles')) / entry['archive']
+    shared = ROOT / 'build/downloads' / entry['sha256'] / entry['archive']
+    installed = shared if shared.is_file() else Path(os.environ.get('COAST_DISTFILES_DIR', '/usr/src/coast/distfiles')) / entry['archive']
     if installed.is_file() and not check_only:
         verify(installed, entry['sha256'])
         destination.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(installed, archive)
+        atomic_copy(installed, archive)
         return
 
     if check_only:
@@ -106,11 +130,11 @@ def fetch(entry, destination=VENDOR, check_only=False, mirror_bases=None):
     destination.mkdir(parents=True, exist_ok=True)
     print(f'Fetching {entry["archive"]}', flush=True)
 
-    # Each concurrent invocation owns its partial file. A failed transfer or
-    # checksum cannot leave a file that later builders mistake for an archive.
-    with tempfile.NamedTemporaryFile(prefix=f'.{archive.name}.', suffix='.part',
-                                     dir=destination, delete=False) as temporary:
-        partial = Path(temporary.name)
+    # The filename binds partial bytes to the expected hash. The per-archive
+    # lock serializes concurrent users; only verified complete bytes publish.
+    partial = destination / ('.' + archive.name + '.' + entry['sha256'][:16] + '.part')
+    if partial.is_symlink():
+        raise ValueError('A download partial must not be a symlink: ' + str(partial))
 
     try:
         for index, url in enumerate(urls):
@@ -129,10 +153,17 @@ def fetch(entry, destination=VENDOR, check_only=False, mirror_bases=None):
             else:
                 break
 
-        verify(partial, entry['sha256'])
+        try:
+            verify(partial, entry['sha256'])
+        except ValueError:
+            partial.unlink(missing_ok=True)
+            raise
+        with partial.open('rb') as stream:
+            os.fsync(stream.fileno())
         partial.replace(archive)
     finally:
-        partial.unlink(missing_ok=True)
+        if partial.exists() and not partial.stat().st_size:
+            partial.unlink()
 
 
 def main():
@@ -163,6 +194,7 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        with project_lock():
+            main()
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         raise SystemExit(str(error)) from error

@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from build_state import atomic_write, project_lock, read_json, write_json
 
 from prepare_electron_host import (prepare as prepare_host, prepare_node, protobuf_isolation,
     generated_source_overlay, generated_source_record, out_of_tree_generator)
@@ -29,9 +30,152 @@ def run(command, cwd, env=None):
     subprocess.run(list(map(str, command)), cwd=cwd, env=env, check=True, stdin=subprocess.DEVNULL)
 
 
+def fetch_pinned_repository(url, commit, destination, environment):
+    """Fetch only the locked commit, including its complete tree and blobs."""
+    destination = Path(destination)
+    if destination.is_symlink():
+        raise ValueError('Source checkout must not be a symlink: ' + str(destination))
+    if not (destination / '.git').exists():
+        run(['git', 'init', destination], destination.parent, environment)
+        run(['git', 'remote', 'add', 'origin', url], destination, environment)
+    else:
+        remote = subprocess.run(['git', '-C', str(destination), 'remote', 'get-url', 'origin'], capture_output=True, text=True)
+        if remote.returncode:
+            run(['git', 'remote', 'add', 'origin', url], destination, environment)
+            actual = url
+        else:
+            actual = remote.stdout.strip()
+        if actual != url:
+            raise ValueError('Source remote changed: ' + str(destination))
+    for name in ('index.lock', 'HEAD.lock', 'shallow.lock', 'config.lock'):
+        (destination / '.git' / name).unlink(missing_ok=True)
+    for pending in (destination / '.git/objects/pack').glob('tmp_pack_*'):
+        pending.unlink()
+    if subprocess.run(['git', '-C', str(destination), 'cat-file', '-e', commit + '^{commit}'],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        run(['git', 'fetch', '--progress', '--depth=1', '--no-tags', 'origin', commit],
+            destination, environment)
+    run(['git', 'checkout', '--detach', commit], destination, environment)
+
+
+def prepare_sources(out, lock, environment, recover_only=False):
+    from clean_project import assert_idle
+    assert_idle(ROOT)
+    checkout, depot = out / 'checkout', out / 'depot_tools'
+    electron = next(r for r in lock['repositories'] if r['path'] == 'src/electron')
+    config = dict(name='src/electron', url=electron['url'], deps_file='DEPS', managed=False,
+                  custom_deps={}, custom_vars={'apply_patches': False})
+    configuration = ('solutions = ' + repr([config]) + '\ncache_dir = None\n'
+        'target_os = ["linux"]\ntarget_os_only = True\n'
+        'target_cpu = ["x64"]\ntarget_cpu_only = True\n')
+    identity = dict(lock_sha256=sha(LOCK),
+                    overlays={p: sha(ROOT / p) for p in lock['overlays'].values()})
+    source = read_json(out / 'SOURCE.json')
+    if source == identity:
+        verify(checkout, lock, overlays=True)
+        return
+    checkpoint = out / 'SYNC.json'
+    state = read_json(checkpoint)
+    if not isinstance(state, dict) or not isinstance(state.get('identity'), dict):
+        state = None
+    if state is not None and state.get('identity') != identity:
+        raise ValueError('Electron source pins/policies changed; run make clean COMPONENT=sources first')
+    if state is None:
+        if checkout.exists():
+            if not (checkout / '.gclient').is_file() or (checkout / '.gclient').read_text() != configuration:
+                raise ValueError('Unrecognized source checkout; preserve it and select a fresh output directory')
+            # Adopt an interrupted managed shallow sync, never an external checkout.
+            phase = 'fetch'
+            for record in lock['repositories']:
+                repo = checkout / record['path']
+                if (repo / '.git').is_dir() and record.get('patch'):
+                    applied = subprocess.run(['git', '-C', str(repo), 'apply', '--reverse', '--check',
+                        str(ROOT / record['patch'])], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+                    if applied:
+                        phase = 'patch'
+            if phase == 'patch':
+                for record in lock['repositories']:
+                    result = subprocess.run(['git', '-C', str(checkout / record['path']), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+                    if result.returncode or result.stdout.strip() != record['commit']:
+                        phase = 'fetch'
+                        break
+            state = dict(identity=identity, phase=phase)
+        else:
+            state = dict(identity=identity, phase='fetch')
+        write_json(checkpoint, state)
+    print('Electron source preparation: ' + state['phase'] + ' (completed repositories are reused)', flush=True)
+    if state.get('phase') not in {'fetch', 'patch', 'hooks', 'overlays', 'complete'}:
+        raise ValueError('Invalid source recovery phase; clean the managed sources component')
+    if recover_only:
+        return
+    fetch_pinned_repository(lock['depot_tools']['url'], lock['depot_tools']['commit'], depot, environment)
+    checkout.mkdir(exist_ok=True)
+    atomic_write(checkout / '.gclient', configuration)
+
+    if state['phase'] == 'fetch':
+        for record in lock['repositories']:
+            repo = checkout / record['path']
+            gitdir = repo / '.git'
+            if not gitdir.is_dir():
+                continue
+            for name in ('index.lock', 'HEAD.lock', 'shallow.lock', 'config.lock'):
+                (gitdir / name).unlink(missing_ok=True)
+            for pending in (gitdir / 'objects/pack').glob('tmp_pack_*'):
+                pending.unlink()
+            available = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', record['commit'] + '^{commit}'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+            if available:
+                # Finish an interrupted checkout of this generated source tree.
+                run(['git', 'checkout', '--force', '--detach', record['commit']], repo, environment)
+            else:
+                # gclient cannot update an unborn repository left by a failed fetch.
+                # No complete commit was downloaded; other repositories stay intact.
+                shutil.rmtree(gitdir)
+        run([depot / 'gclient', 'sync', '--nohooks', '--no-history', '--verbose',
+             '--revision', 'src/electron@' + electron['commit']], checkout, environment)
+        for record in lock['repositories']:
+            actual = subprocess.check_output(['git', '-C', str(checkout / record['path']), 'rev-parse', 'HEAD'], text=True).strip()
+            if actual != record['commit']:
+                raise ValueError('gclient dependency differs from the source lock: ' + record['path'])
+        state['phase'] = 'patch'
+        write_json(checkpoint, state)
+    if state['phase'] == 'patch':
+        for record in lock['repositories']:
+            if not record.get('patch'):
+                continue
+            patch = ROOT / record['patch']
+            if sha(patch) != record['patch_sha256']:
+                raise ValueError('Port patch checksum mismatch: ' + str(patch))
+            repo = checkout / record['path']
+            if subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=repo,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                continue
+            if subprocess.run(['git', 'apply', '--check', str(patch)], cwd=repo,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                run(['git', 'reset', '--hard', record['commit']], repo, environment)
+            run(['git', 'apply', '--check', patch], repo, environment)
+            run(['git', 'apply', patch], repo, environment)
+        state['phase'] = 'hooks'
+        write_json(checkpoint, state)
+    if state['phase'] == 'hooks':
+        host_bin, _ = prepare_node(out / 'host-tools', checkout / 'src')
+        environment['PATH'] = str(host_bin) + ':' + environment['PATH']
+        environment['npm_config_cache'] = str(out / 'host-tools/npm-cache')
+        environment['npm_config_update_notifier'] = 'false'
+        run([depot / 'gclient', 'runhooks'], checkout, environment)
+        state['phase'] = 'overlays'
+        write_json(checkpoint, state)
+    verify(checkout, lock)
+    for target, origin in lock['overlays'].items():
+        atomic_write(checkout / target, (ROOT / origin).read_bytes())
+    write_json(out / 'SOURCE.json', identity)
+    state['phase'] = 'complete'
+    write_json(checkpoint, state)
+
+
 def runtime_sidecars(directory):
     # Electron's default app loader and English locale must accompany a fresh
-    # image. Overlay images used to inherit these files from an older ISO.
+    # image.
     names = ['snapshot_blob.bin', 'resources.pak', 'chrome_100_percent.pak',
              'chrome_200_percent.pak', 'icudtl.dat', 'libffmpeg.so',
              'resources/default_app.asar', 'locales/en-US.pak']
@@ -69,6 +213,7 @@ def main():
     parser.add_argument('--checkout', type=Path, help='use existing verified source read-only; build outputs stay under --output-root')
     parser.add_argument('--configure-check', action='store_true', help='generate fresh build graphs over a read-only verified checkout')
     parser.add_argument('--sync', action='store_true', help='create a fresh pinned source checkout and run upstream build-tool hooks')
+    parser.add_argument('--recover-only', action='store_true', help='with --sync, record the interrupted sync phase without downloads')
     parser.add_argument('--build', action='store_true', help='compile Electron and standalone Node after source preparation')
     parser.add_argument('--reconfigure', action='store_true',
         help='record changed inputs and regenerate this builder\'s existing read-only-source output graph')
@@ -77,6 +222,8 @@ def main():
     if args.reconfigure and (not args.checkout or not (args.configure_check or args.build)):
         parser.error('--reconfigure requires --checkout and a configure/build action')
     lock = json.loads(LOCK.read_text())
+    if args.recover_only and not args.sync:
+        parser.error('--recover-only requires --sync')
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     if args.checkout:
@@ -128,7 +275,7 @@ def main():
                 run([*conf, '--chdir', build, '--', source / 'buildtools/linux64/gn', '--root=' + str(source),
                      '--root-pattern=' + root, '--root-target=' + root, '--script-executable=' + sys.executable,
                      'gen', '.'], out, environment)
-            receipt.write_text(json.dumps(dict(**identity, compiled=False, source_read_only=True,
+            atomic_write(receipt, json.dumps(dict(**identity, compiled=False, source_read_only=True,
                 target_host_executed=False, protobuf_backend='vendored-python',
                 hidden_system_protobuf_modules=hidden_modules), indent=2) + '\n')
             if args.build:
@@ -162,9 +309,9 @@ def main():
                         [Path(__file__), ROOT / 'tools/prepare_electron_host.py', ROOT / 'ports/electron/node-host.json']},
                     sidecars=sidecars, features=dict(jitless_compiled=True, drumbrake_explicit_bounds_checks=True),
                     state='source compiled; guest qualification pending')
-                (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+                atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
                 license = source / 'third_party/electron_node/LICENSE'
-                (out / 'NODE.json').write_text(json.dumps(dict(binary=products['node']['path'],
+                atomic_write(out / 'NODE.json', json.dumps(dict(binary=products['node']['path'],
                     binary_sha256=products['node']['sha256'], parent_electron_sha256=products['electron']['sha256'],
                     guest_execution_on_host=False, sidecars={p: sidecars[p] for p in ('snapshot_blob.bin', 'icudtl.dat') if p in sidecars},
                     license=dict(path=str(license), sha256=sha(license)),
@@ -177,42 +324,9 @@ def main():
                    'GIT_TERMINAL_PROMPT': '0', 'PYTHONDONTWRITEBYTECODE': '1'}
     environment['PATH'] = str(depot) + ':' + environment['PATH']
     if args.sync:
-        if checkout.exists() or depot.exists():
-            parser.error('A fresh output root is required for --sync; existing source trees are preserved')
-        run(['git', 'clone', '--no-checkout', lock['depot_tools']['url'], depot], out)
-        run(['git', 'checkout', '--detach', lock['depot_tools']['commit']], depot)
-        checkout.mkdir()
-        electron = next(r for r in lock['repositories'] if r['path'] == 'src/electron')
-        config = dict(name='src/electron', url=electron['url'], deps_file='DEPS', managed=False,
-                      custom_deps={}, custom_vars={'apply_patches': False})
-        (checkout / '.gclient').write_text('solutions = ' + repr([config]) + '\n'
-                'target_os = ["linux"]\ntarget_os_only = True\n'
-                'target_cpu = ["x64"]\ntarget_cpu_only = True\n')
-        run([depot / 'gclient', 'sync', '--nohooks', '--with_branch_heads', '--with_tags',
-             '--revision', 'src/electron@' + electron['commit']], checkout, environment)
-        for record in lock['repositories']:
-            repo = checkout / record['path']
-            actual = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
-            if actual != record['commit']:
-                raise ValueError('gclient dependency differs from the source lock: ' + record['path'])
-            if record.get('patch'):
-                patch = ROOT / record['patch']
-                if sha(patch) != record['patch_sha256']:
-                    raise ValueError('Port patch checksum mismatch: ' + str(patch))
-                run(['git', 'apply', '--check', patch], repo)
-                run(['git', 'apply', patch], repo)
-        # The lock includes upstream Electron's patches as well as the Coast
-        # NodePlatform adapter. apply_patches=False avoids applying them twice.
-        host_bin, _host_node = prepare_node(out / 'host-tools', checkout / 'src')
-        environment['PATH'] = str(host_bin) + ':' + environment['PATH']
-        environment['npm_config_cache'] = str(out / 'host-tools/npm-cache')
-        environment['npm_config_update_notifier'] = 'false'
-        run([depot / 'gclient', 'runhooks'], checkout, environment)
-        verify(checkout, lock)
-        for target, source in lock['overlays'].items():
-            shutil.copyfile(ROOT / source, checkout / target)
-        (out / 'SOURCE.json').write_text(json.dumps(dict(lock_sha256=sha(LOCK),
-            overlays={p: sha(ROOT / p) for p in lock['overlays'].values()}), indent=2) + '\n')
+        prepare_sources(out, lock, environment, args.recover_only)
+        if args.recover_only:
+            return
     if not (out / 'SOURCE.json').is_file():
         parser.error('Run --sync first, or use --checkout for read-only source verification')
     receipt = json.loads((out / 'SOURCE.json').read_text())
@@ -268,16 +382,17 @@ def main():
                 [Path(__file__), ROOT / 'tools/prepare_electron_host.py', ROOT / 'ports/electron/node-host.json']},
             features=dict(jitless_compiled=True, drumbrake_explicit_bounds_checks=True),
             state='source compiled; guest qualification pending')
-        (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+        atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
         license = source / 'third_party/electron_node/LICENSE'
         node = dict(binary=products['node']['path'], binary_sha256=products['node']['sha256'],
             parent_electron_sha256=products['electron']['sha256'], guest_execution_on_host=False,
             sidecars={p: sidecars[p] for p in ('snapshot_blob.bin', 'icudtl.dat') if p in sidecars},
             license=dict(path=str(license), sha256=sha(license)),
             state='source compiled; guest qualification pending')
-        (out / 'NODE.json').write_text(json.dumps(node, indent=2) + '\n')
+        atomic_write(out / 'NODE.json', json.dumps(node, indent=2) + '\n')
     print('Source checkout:', checkout)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

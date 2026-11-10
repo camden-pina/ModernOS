@@ -4,6 +4,8 @@
 Original sources, objects, executable and ThinLTO cache stay read-only. Only
 the selected compiler/linker run; the guest Electron binary is never executed.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import difflib
 import hashlib
@@ -41,7 +43,7 @@ def main():
     baseline_paths=[cached/'electron',cached/'args.gn']
     for unit in units:baseline_paths += [unit['original'],unit['source'],cached/unit['target']]
     baseline={str(p):sha(p) for p in baseline_paths}
-    (out/'BASELINE.json').write_text(json.dumps(baseline,indent=2)+'\n')
+    atomic_write(out/'BASELINE.json', json.dumps(baseline,indent=2)+'\n')
     patch=[]
     for unit in units:
         patch.extend(difflib.unified_diff(unit['original'].read_text().splitlines(True),unit['source'].read_text().splitlines(True),fromfile='original/'+unit['relative'],tofile='coast/'+unit['relative']))
@@ -72,7 +74,7 @@ def main():
         compile_cmd[compile_cmd.index('-o')+1]=str(unit['output'])
         compile_cmd[compile_cmd.index('-MF')+1]=str(unit['output'])+'.d'
         compiles[unit['relative']]=dict(original=original_command,selected=compile_cmd)
-        (out/'COMPILE.json').write_text(json.dumps(compiles,indent=2)+'\n')
+        atomic_write(out/'COMPILE.json', json.dumps(compiles,indent=2)+'\n')
         print('Compiling selected source:',unit['relative'],flush=True)
         subprocess.run(conf+['--',*compile_cmd],env=env,stdin=subprocess.DEVNULL,check=True)
     lines=(cached/'obj/electron/electron_app.ninja').read_text().splitlines()
@@ -88,7 +90,7 @@ def main():
     for unit in units:
         link_conf+=['--ro-bind',str(unit['output']),str(cached/unit['target'])]
         selected_objects[unit['target']]=dict(path=str(unit['output']),sha256=sha(unit['output']))
-    (out/'LINK.json').write_text(json.dumps(dict(original=link_original,selected=link,inputs=inventory,response_sha256=sha(rsp),selected_objects=selected_objects,confinement=link_conf),indent=2)+'\n')
+    atomic_write(out/'LINK.json', json.dumps(dict(original=link_original,selected=link,inputs=inventory,response_sha256=sha(rsp),selected_objects=selected_objects,confinement=link_conf),indent=2)+'\n')
     print('Relinking cached Electron inputs with selected objects',flush=True)
     subprocess.run(link_conf+['--',*link],env=env,stdin=subprocess.DEVNULL,check=True)
     strip=electron/'checkout/src/third_party/llvm-build/Release+Asserts/bin/llvm-strip'
@@ -97,8 +99,10 @@ def main():
         if sha(Path(name))!=expected:raise RuntimeError('A preserved input changed: '+name)
     if (out/'electron').stat().st_size>256*1024*1024:raise RuntimeError('Runtime exceeds the existing image bound')
     record=dict(state='built; guest runtime validation pending',binary=str(out/'electron'),binary_sha256=sha(out/'electron'),unstripped=str(view/'electron'),unstripped_sha256=sha(view/'electron'),sources={str(unit['source']):sha(unit['source']) for unit in units},original_inputs=baseline,config=str(config_path),config_sha256=sha(config_path),compile_commands=compiles,link_command=link,confinement=link_conf,host_editor_execution=False,scope='Selected source compilations; original linker command in a private reflinked build view; input objects/headers/libraries read-only; original source/object/runtime unchanged',link_inventory='Explicit input paths/sizes/mtimes captured; inherited cached compilation provenance retained separately')
-    (out/'BUILD.json').write_text(json.dumps(record,indent=2)+'\n')
+    atomic_write(out/'BUILD.json', json.dumps(record,indent=2)+'\n')
     print('Runtime ready:',out/'electron',record['binary_sha256'],flush=True)
 
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

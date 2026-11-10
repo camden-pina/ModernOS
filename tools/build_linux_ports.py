@@ -2,6 +2,9 @@
 """Build bounded official CLI ports with the existing stock Linux/musl toolchain.
 No host install, source downloads, native-command replacement or kernel stubs.
 """
+from source_archive import unpack, unpack_zip
+from build_state import project_lock
+from build_state import atomic_write
 from pathlib import Path
 import argparse,hashlib,json,os,shutil,subprocess,tarfile,zipfile,datetime,fcntl,time
 ROOT=Path(__file__).resolve().parents[1];BUILD=ROOT/'build/linux-ports';VENDOR=ROOT/'userland/vendor/linux-ports';PREFIX=ROOT/'userland/runtime/usr/lib/coast/linux-ports';CROSS=ROOT/'build/compiler/cross/bin/x86_64-linux-musl-'
@@ -38,10 +41,9 @@ def main():
   version=package['version'];directory='sqlite-amalgamation-'+package['archive'].split('-')[-1].split('.')[0] if name=='sqlite' else name+'-'+version;source=BUILD/directory
   if not source.exists():
    if archive.suffix=='.zip':
-    with zipfile.ZipFile(archive) as bundle:
-     assert all(not Path(n).is_absolute() and '..' not in Path(n).parts for n in bundle.namelist());bundle.extractall(BUILD)
+    unpack_zip(archive, BUILD)
    else:
-    with tarfile.open(archive) as bundle:bundle.extractall(BUILD,filter='data')
+    unpack(archive, BUILD, filter='data')
   assert source.is_dir(),source
   for patch in package.get('patches',[]):
    path=VENDOR/patch['file'];assert digest(path)==patch['sha256'];stamp=source/('.applied-'+patch['file'])
@@ -104,7 +106,7 @@ def main():
   corresponding=ROOT/'userland/runtime/usr/src/coast/linux-ports';corresponding.mkdir(parents=True,exist_ok=True);shutil.copy2(archive,corresponding/archive.name)
   for patch in package.get('patches',[]):shutil.copy2(VENDOR/patch['file'],corresponding/patch['file'])
   records[name]={'name':name,'version':version,'official_patch_count':len(package.get('patches',[])),'source_modified':bool(package.get('patches')),'coast_source_patches':False,'source':package,'linkage':'rebuilt static x86-64 Linux/musl1.2.5, not a distribution binary','options':options,'compiler':env['CC'],'cflags':FLAGS,'ldflags':LINK,'programs':installed,'libraries':librecords}
-  result={'recorded_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'result':'built-not-yet-guest-validated','packages':list(records.values()),'host_installations':False};(BUILD/'manifest.json').write_text(json.dumps(result,indent=2)+'\n');shutil.copy2(BUILD/'manifest.json',PREFIX/'manifest.json')
+  result={'recorded_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'result':'built-not-yet-guest-validated','packages':list(records.values()),'host_installations':False};atomic_write(BUILD/'manifest.json', json.dumps(result,indent=2)+'\n');shutil.copy2(BUILD/'manifest.json',PREFIX/'manifest.json')
  sdk=PREFIX/'sdk'
  share=ROOT/'userland/runtime/usr/share/coast/linux-ports';share.mkdir(parents=True,exist_ok=True)
  examples=ROOT/'userland/runtime/usr/src/coast/linux-ports/examples';examples.mkdir(parents=True,exist_ok=True)
@@ -117,6 +119,8 @@ def main():
   run(ROOT,'sqlite-concurrency-check-build',[env['CC'],*FLAGS,*LINK,'-I'+str(sdk/'include'),ROOT/'userland/linux-ports/sqlite-concurrency-check.c','-L'+str(sdk/'lib'),'-lsqlite3','-lm','-ldl','-pthread','-o',PREFIX/'sqlite-concurrency-check'],env)
   run(ROOT,'sandbox-record-check-build',[str(ROOT/'build/native-musl/bin/musl-gcc'),'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-fno-pie','-fno-stack-protector','-mno-avx','-mno-avx2','-pthread',*LINK,ROOT/'userland/web-capability-check.c','-o',PREFIX/'sandbox-record-check'],env)
   fixture={'result':'built-not-yet-guest-validated','fixtures':[{'path':str(p.relative_to(ROOT/'userland/runtime')),'sha256':digest(p)} for p in (PREFIX/'record-lock-check',PREFIX/'compat-diagnostics',PREFIX/'sqlite-concurrency-check',PREFIX/'sandbox-record-check')],'sources':['record-lock-check.c','compat-diagnostics.c','sqlite-concurrency-check.c']}
-  (BUILD/'checks-manifest.json').write_text(json.dumps(fixture,indent=2)+'\n');shutil.copy2(BUILD/'checks-manifest.json',PREFIX/'checks-manifest.json')
+  atomic_write(BUILD/'checks-manifest.json', json.dumps(fixture,indent=2)+'\n');shutil.copy2(BUILD/'checks-manifest.json',PREFIX/'checks-manifest.json')
  print('BUILT '+', '.join(records),flush=True)
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

@@ -2,6 +2,7 @@
 """Package a separate Terminal image from an explicit immutable r7 base ISO.
 Uses cached build tools; never builds a kernel/engine or attaches a host disk.
 """
+from build_state import atomic_write
 from pathlib import Path
 import argparse,hashlib,io,json,re,subprocess,tarfile
 p=argparse.ArgumentParser(description=__doc__)
@@ -57,4 +58,4 @@ config='version = 1\n[boot]\ntitle = "Coast"\nkernel = "/boot/kernel.elf"\nresol
 conf=O/'boot.conf';conf.write_text(config)
 iso=O/a.image_name;subprocess.run(['python3','-B',str(R/'tools/build_boot_iso.py'),'--bootloader','limine','--config',str(conf),'--kernel',str(extracted/'kernel.elf'),'--initramfs',str(ram),'--source-root',str(R),'--root',str(O/'iso-root'),'--output',str(iso),'--limine-dir',str(R/'build/limine-binary')],check=True)
 manifest={'state':'built; guest verification is separate','base_iso':str(base),'base_iso_sha256':sha(base),'iso':str(iso),'iso_sha256':sha(iso),'initramfs_sha256':sha(ram),'kernel_sha256':sha(extracted/'kernel.elf'),'bash_sha256':sha(binary),'bash_build':record,'preserved_binaries':binaries,'fixture_sha256':sha(fixture),'preset':a.preset,'resolution':resolution,'default_scale':100 if a.preset=='normal' else 150,'host_disk_or_network_attached':False}
-(O/'MANIFEST.json').write_text(json.dumps(manifest,indent=2)+'\n');print(json.dumps({'result':'built','iso':str(iso),'sha256':manifest['iso_sha256'],'prior_images_unchanged':True},indent=2),flush=True)
+atomic_write(O/'MANIFEST.json', json.dumps(manifest,indent=2)+'\n');print(json.dumps({'result':'built','iso':str(iso),'sha256':manifest['iso_sha256'],'prior_images_unchanged':True},indent=2),flush=True)

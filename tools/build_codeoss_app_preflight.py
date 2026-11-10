@@ -2,6 +2,8 @@
 """Build an isolated upstream codium ELF/ABI preflight image, not a runnable IDE.
 Uses cached project tooling, an explicit immutable base ISO and a new output.
 """
+from build_state import project_lock
+from build_state import atomic_write
 from pathlib import Path
 import argparse,subprocess,json,tarfile,hashlib
 
@@ -27,5 +29,7 @@ def main():
    i=tarfile.TarInfo(name);i.mode=0o755;i.size=f.stat().st_size
    with f.open('rb') as h:dest.addfile(i,h)
  conf=O/'boot.conf';conf.write_text('version = 1\n[boot]\ntitle = "Coast application preflight"\nkernel = "/boot/kernel.elf"\nresolution = "1280x800x32"\ncmdline = ""\n[[boot.modules]]\npath = "/boot/initramfs.tar"\nstring = "initramfs"\n[menu]\ntimeout = 0\nresolution = "1280x800x32"\nwallpaper = "/boot/boot-background.jpg"\n');iso=O/'Coast-CodeOSS-App-Preflight.iso';run(['python3','-B',R/'tools/build_boot_iso.py','--bootloader','limine','--config',conf,'--kernel',O/'kernel.elf','--initramfs',ram,'--source-root',R,'--root',O/'iso-root','--output',iso,'--limine-dir',R/'build/limine-binary']);assert sha(base)==basehash
- record={'purpose':'Original prerequisite probe plus unmodified upstream codium ELF only; full application resources are not staged and this is not a runnable IDE','base_iso':str(base),'base_iso_sha256':basehash,'kernel_sha256':sha(O/'kernel.elf'),'codium_sha256':sha(codium),'contract_sha256':sha(contract),'iso_sha256':sha(iso),'guest_validation':'not yet run','host_installations':False};(O/'MANIFEST.json').write_text(json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))
-if __name__=='__main__':main()
+ record={'purpose':'Original prerequisite probe plus unmodified upstream codium ELF only; full application resources are not staged and this is not a runnable IDE','base_iso':str(base),'base_iso_sha256':basehash,'kernel_sha256':sha(O/'kernel.elf'),'codium_sha256':sha(codium),'contract_sha256':sha(contract),'iso_sha256':sha(iso),'guest_validation':'not yet run','host_installations':False};atomic_write(O/'MANIFEST.json', json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))
+if __name__ == '__main__':
+    with project_lock():
+        main()

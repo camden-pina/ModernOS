@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Source-build static xorriso and mtools for assembling boot images in Coast."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -52,8 +55,7 @@ def main():
         fetch(record)
         source, build, prefix = out / directory, out / (name + '-build'), out / 'runtime'
         if not source.exists():
-            with tarfile.open(ROOT / 'userland/vendor' / record['archive']) as archive:
-                archive.extractall(out, filter='data')
+            unpack(ROOT / 'userland/vendor' / record['archive'], out, filter='data')
         if name == 'xorriso':
             patch = ROOT / 'ports/image-tools/xorriso-private-buffer.patch'
             apply = ['patch', '-p1', '-i', str(patch)]
@@ -92,7 +94,7 @@ def main():
         files[str(destination.relative_to(prefix))] = dict(path=str(destination), sha256=sha(destination))
         packages[name] = dict(version=version, release=2 if name == 'xorriso' else 1,
                              source=record, files=files, license=license_id)
-    (out / 'BUILD.json').write_text(json.dumps(dict(packages=packages, commands=commands,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(packages=packages, commands=commands,
         source_sha256={str(p.relative_to(ROOT)): sha(p) for p in
             [Path(__file__), ROOT / 'ports/image-tools/xorriso-private-buffer.patch']},
         target_host_executed=False), indent=2) + '\n')
@@ -100,4 +102,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

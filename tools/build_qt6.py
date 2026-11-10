@@ -4,6 +4,9 @@
 Host generators are built separately. Target executables never run on the host.
 Compilation has no network and only the selected build directory is writable.
 """
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse,hashlib,json,os,re,shutil,subprocess,tarfile,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -33,15 +36,10 @@ def main():
   def stable(record):return {**record,'source_sha256':{k:v for k,v in record['source_sha256'].items() if k!='tools/build_qt6.py'}}
   if not a.reconfigure or stable(previous)!=stable(identity):raise SystemExit('Qt build inputs changed; choose a fresh output directory or --reconfigure for builder-only fixes')
   history=out/'configuration-history';history.mkdir(exist_ok=True);shutil.copyfile(stamp,history/(sha(stamp)+'.json'))
- stamp.write_text(json.dumps(identity,indent=2)+'\n')
+ atomic_write(stamp, json.dumps(identity,indent=2)+'\n')
  archive=ROOT/f'build/qt6/vendor/qtbase-everywhere-src-{VERSION}.tar.xz'
- if not archive.is_file():
-  archive.parent.mkdir(parents=True,exist_ok=True);fd,temp=tempfile.mkstemp(prefix='qtbase-',suffix='.download',dir=archive.parent);os.close(fd);pending=Path(temp)
-  try:
-   subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','2','--max-time','180','--output',str(pending),SOURCE_URL],check=True,stdin=subprocess.DEVNULL)
-   if sha(pending)!=SOURCE_SHA256:raise SystemExit('Qt source checksum mismatch; cache was not replaced')
-   pending.replace(archive)
-  finally:pending.unlink(missing_ok=True)
+ from fetch_sources import fetch
+ fetch(dict(archive=archive.name, url=SOURCE_URL, sha256=SOURCE_SHA256), archive.parent)
  if sha(archive)!=SOURCE_SHA256:raise SystemExit('Qt source checksum mismatch: '+str(archive))
  base=a.sdk_build.resolve() if a.sdk_build else out
  sdk_record=None
@@ -54,7 +52,7 @@ def main():
    if sha(Path(sdk_record['sdk'])/name)!=digest:raise SystemExit('SDK library changed: '+name)
  source=Path(sdk_record['source_directory']) if sdk_record else base/f'qtbase-everywhere-src-{VERSION}'
  if not source.exists():
-  with tarfile.open(archive) as t:t.extractall(out,filter='data')
+  unpack(archive, out, filter='data')
  from linux_uapi import prepare as prepare_uapi
  headers=prepare_uapi(out/'linux-uapi')
  conf=['bwrap','--unshare-all','--die-with-parent','--new-session','--ro-bind','/','/','--proc','/proc','--dev','/dev','--tmpfs','/tmp','--bind',str(out),str(out),'--chdir',str(out)]
@@ -126,5 +124,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
    if path.is_file():shutil.copy2(path,sources/path.name)
   upstream=runtime/'usr/src/qt6';upstream.mkdir(parents=True,exist_ok=True);shutil.copy2(archive,upstream/archive.name)
  if recipe_inputs!={name:sha(ROOT/name) for name in recipe_inputs} or any(sha(Path(name))!=value for name,value in compiler_inputs.items()):raise SystemExit('Qt build inputs changed during compilation')
- (out/'BUILD.json').write_text(json.dumps(record,indent=2)+'\n');print(record['state'],flush=True)
-if __name__=='__main__':main()
+ atomic_write(out/'BUILD.json', json.dumps(record,indent=2)+'\n');print(record['state'],flush=True)
+if __name__ == '__main__':
+    with project_lock():
+        main()

@@ -5,15 +5,22 @@ Host setup is a prerequisite. Each completed component is verified and reused
 on restart. An explicit component map can reuse source-build receipts; existing
 ISOs and runtime staging directories are never accepted as desktop inputs.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import time
 
 from source_tree import audit, digest
+from build_progress import SourceSyncStatus, run_logged
+from build_components import APPS, APP_REQUIRES, APP_COMPONENTS, DEPENDENCIES, RESTARTABLE, app_selection, components_for, graph_for, receipt_path
+from build_session import BuildSession
+from build_state import Checkpoints, read_json, write_json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,9 +28,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def verify_receipt(path):
     path = Path(path).resolve(strict=True)
     record = json.loads(path.read_text())
-    for name, expected in record.get('source_sha256', {}).items():
-        if digest(ROOT / name) != expected:
-            raise ValueError('Source recipe changed; rebuild this component: ' + name)
+    for field in ('source_sha256', 'source_policy_sha256', 'build_scripts_sha256'):
+        for name, expected in record.get(field, {}).items():
+            if digest(ROOT / name) != expected:
+                raise ValueError('Source recipe changed; rebuild this component: ' + name)
 
     def verify_assets(value):
         if isinstance(value, dict):
@@ -73,13 +81,33 @@ def main():
     parser.add_argument('--with-microsoft-auth', action='store_true',
                         help='include upstream proprietary Microsoft sign-in binaries (omitted by default)')
     parser.add_argument('--plan', action='store_true', help='print the build commands without running them')
+    parser.add_argument('--apps', default='all', help='space/comma-separated apps, all (default), or none')
+    parser.add_argument('--without', default='', help='omit apps and their runtime dependents; explain exclusions in the plan')
+    parser.add_argument('--add', default='', help='add apps to the last ISO selection, building missing dependencies')
+    parser.add_argument('--build-only', action='store_true', help='build components without assembling the ISO')
+    parser.add_argument('--target', default='', help='apps or internal component names to build with their dependencies')
     args = parser.parse_args()
+    if args.build_only and set(args.target.replace(',', ' ').split()) & {'image', 'qualification'}:
+        parser.error('Use make iso (and QUALIFY=1) for assembly and guest verification')
     args.diagnostics = args.diagnostics or args.qualify
     if not 1 <= args.jobs <= 24:
         parser.error('--jobs must be 1..24')
     if args.runtime_build and not args.electron_checkout:
         parser.error('--runtime-build also requires its verified --electron-checkout')
+    if Path(os.path.abspath(args.output_root)) != args.output_root.resolve():
+        parser.error('Choose a real output directory, without symlinked parents')
     out = args.output_root.resolve()
+    last_selection = read_json(out / 'image/MANIFEST.json') or read_json(out / 'SELECTION.json', {})
+    previous_apps = last_selection.get('apps') if args.add else None
+    apps, omitted = app_selection(args.apps, args.without, args.add, previous_apps)
+    needed = components_for(apps, args.target if args.build_only else None)
+    if args.build_only and not args.target:
+        needed.discard('image')
+    graph = graph_for(apps)
+    if 'electron' in needed:
+        graph['kernel'].add('electron')
+    else:
+        graph['kernel'].discard('electron')
     overrides = json.loads(args.components.read_text()) if args.components else {}
     names = {'glibc', 'libgcc', 'cxx', 'gui-sources', 'gui-runtime', 'application', 'sdk',
              'addons', 'rust', 'kernel', 'native', 'compiler', 'packages', 'cli', 'bridge', 'assets'}
@@ -145,6 +173,12 @@ def main():
         ('viewer', command('prepare_qemu_viewer.py', '--qemu-build', receipts['qemu'],
             '--program-build', receipts['program'], '--output-root', receipts['viewer'].parent), False),
     ]
+    stages = [stage for stage in stages if stage[0] in needed]
+    if 'electron' not in needed:
+        for index, (name, argv, resumable) in enumerate(stages):
+            if name == 'kernel':
+                position = argv.index('--runtime-build')
+                stages[index] = (name, argv[:position] + argv[position + 2:], resumable)
     assembly = command('assemble_desktop.py', '--runtime-build', runtime, '--output-root', out / 'image',
         '--native-build', receipts['native'].parent, '--kernel-build', receipts['kernel'].parent,
         '--gui-runtime', receipts['gui-runtime'], '--application-build', receipts['application'].parent,
@@ -155,115 +189,155 @@ def main():
             for item in ('--' + name + '-build', receipts[name])],
         *(['--diagnostics'] if args.diagnostics else []),
         *(['--with-microsoft-auth'] if args.with_microsoft_auth else []))
+    assembly_options = {'--runtime-build': 'electron', '--native-build': 'native', '--kernel-build': 'kernel',
+        '--gui-runtime': 'gui-runtime', '--application-build': 'application', '--addons-build': 'addons',
+        '--rust-build': 'rust', '--bridge-build': 'bridge', '--assets-build': 'assets', '--cli-build': 'cli',
+        '--compiler-build': 'compiler', '--packages-build': 'packages', '--program-build': 'program',
+        '--makepkg-build': 'makepkg', '--frontend-build': 'frontend', '--qt-build': 'qt',
+        '--qemu-build': 'qemu', '--viewer-build': 'viewer'}
+    for option, name in assembly_options.items():
+        if name not in needed and option in assembly:
+            position = assembly.index(option)
+            del assembly[position:position + 2]
+    assembly += ['--apps', ' '.join(apps) or 'none']
     electron = command('build_electron_source.py', '--output-root', out / 'electron', '--jobs', jobs,
         *(['--checkout', checkout] if args.electron_checkout else []), '--build')
     if args.plan:
-        print(json.dumps(dict(runtime_receipt=str(runtime), inherited_iso=False,
-            source_sync=None if args.electron_checkout or args.runtime_build else
+        print(json.dumps(dict(runtime_receipt=str(runtime) if 'electron' in needed else None, inherited_iso=False,
+            apps=apps, omitted_apps=omitted, app_dependencies={app: sorted(APP_REQUIRES.get(app, ())) for app in apps},
+            build_components=sorted(needed), shared_runtime_consumers=sorted(set(apps) & {'chromium', 'codeoss'}),
+            source_sync=None if 'sources' not in needed or args.electron_checkout or args.runtime_build else
                 command('build_electron_source.py', '--output-root', out / 'electron', '--sync', '--jobs', jobs),
-            runtime_build=None if args.runtime_build else electron,
+            runtime_build=None if 'electron' not in needed or args.runtime_build else electron,
             stages=[dict(name=name, receipt=str(receipts[name]), reused=name in overrides, argv=argv)
-                    for name, argv, _ in stages], assembly=assembly,
+                    for name, argv, _ in stages], assembly=None if args.build_only else assembly,
             qualification=command('qualify_desktop.py', '--iso', out / 'image/Coast.iso',
-                '--output-root', out / 'qualification') if args.qualify else None), indent=2))
+                '--output-root', out / 'qualification') if args.qualify and not args.build_only else None), indent=2))
         return
-    out.mkdir(parents=True, exist_ok=True)
-    lock = (out / '.build.lock').open('a')
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     inventory = audit()
-    # Prose/handoff edits do not invalidate compiled components. All other
-    # publishable inputs are fixed throughout this workflow.
     source_identity = {name: entry['sha256'] for name, entry in inventory.items() if not name.endswith('.md')}
-    identity = dict(source_sha256=source_identity, overrides={name: dict(path=str(receipts[name]),
-        sha256=digest(receipts[name])) for name in overrides},
-        external_runtime=dict(path=str(runtime), sha256=digest(runtime)) if args.runtime_build else None,
-        electron_checkout=str(checkout), diagnostics=args.diagnostics, microsoft_auth=args.with_microsoft_auth,
-        repository_config_sha256=digest(args.repository_config) if args.repository_config else None)
+    from clean_project import assert_idle, validate_output
+    validate_output(ROOT, out)
+    assert_idle(ROOT, paths=[out])
+    out.mkdir(parents=True, exist_ok=True)
+    session_graph = graph_for(last_selection.get('apps', apps)) if args.build_only else graph
+    if 'electron' in needed:
+        session_graph['kernel'].add('electron')
+    session = BuildSession(ROOT, out, source_identity, session_graph)
+    if last_selection.get('apps') is not None:
+        write_json(out / 'SELECTION.json', dict(apps=last_selection['apps']))
     stamp = out / 'PIPELINE.json'
-    if stamp.exists() and json.loads(stamp.read_text()) != identity:
-        raise ValueError('Desktop build inputs changed; choose a fresh --output-root to preserve completed outputs')
-    stamp.write_text(json.dumps(identity, indent=2) + '\n')
-    logs = out / 'logs'
-    logs.mkdir(exist_ok=True)
+    identity = dict(source_sha256=source_identity, apps=apps,
+        overrides={name: dict(path=str(receipts[name]), sha256=digest(receipts[name])) for name in overrides},
+        electron_checkout=str(checkout), diagnostics=args.diagnostics, microsoft_auth=args.with_microsoft_auth)
+    previous = read_json(stamp)
+    if previous and previous != identity:
+        write_json(out / 'history' / ('pipeline-' + str(time.time_ns()) + '.json'), previous)
+    write_json(stamp, identity)
+    for app, reason in sorted(omitted.items()):
+        print('Omitted app: ' + app + ' (' + reason + ')', flush=True)
+    if 'chromium' not in apps and 'codeoss' in apps:
+        print('Shared Electron/Chromium engine is required by Code OSS; only the browser app is omitted.', flush=True)
+    total = len(stages) + int('sources' in needed) + int('electron' in needed) + int(not args.build_only) + int(args.qualify and not args.build_only)
+    step = 0
+    completed = {}
 
-    def run(name, argv):
-        print('Desktop source build: ' + name + ' (log: ' + str(logs / (name + '.log')) + ')', flush=True)
-        with (logs / (name + '.log')).open('a') as log:
-            subprocess.run(argv, cwd=ROOT, stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT, check=True)
-
-    if not args.runtime_build and not runtime.exists():
-        if not args.electron_checkout and not (out / 'electron/SOURCE.json').exists():
-            run('electron-sync', command('build_electron_source.py', '--output-root', out / 'electron', '--sync', '--jobs', jobs))
-        run('electron', electron)
-    verify_receipt(runtime)
-    # Also verifies repository pins, policies, exact ELF hashes and the paired
-    # Node product. Generated admission files remain in this workflow's output.
-    from electron_admission import prepare
-    prepare(runtime, out / 'electron-admission.h')
-    for name, argv, resumable in stages:
-        path = receipts[name]
-        if path.exists():
-            verified = verify_receipt(path)
-            if name == 'frontend' and args.repository_config:
-                if (verified.get('repository') or {}).get('configuration_sha256') != digest(args.repository_config):
-                    raise ValueError('The selected Coast Packages receipt uses a different public repository configuration')
+    def execute(name, argv, path, *, restart=False, external=False, detail=None):
+        nonlocal step
+        step += 1
+        dependencies = [completed[dep] for dep in graph.get(name, ()) if dep in completed]
+        def verify(path):
+            record = verify_receipt(path)
+            aliases = {'gui_runtime': 'gui-runtime', 'sdk_receipt': 'sdk', 'application_sdk': 'sdk', 'runtime': 'electron'}
+            for dep, dep_path in completed.items():
+                prefix = dep.replace('-', '_')
+                keys = [prefix + '_build_sha256'] + [key + '_sha256' for key, value in aliases.items() if value == dep]
+                for key in keys:
+                    if key in record and record[key] != digest(dep_path):
+                        raise ValueError('Component uses a different dependency: ' + name + ' -> ' + dep)
+            if name == 'sources':
+                from build_electron_source import verify as verify_sources, LOCK
+                if record.get('lock_sha256') != digest(LOCK):
+                    raise ValueError('Electron source lock changed')
+                verify_sources(checkout, json.loads(LOCK.read_text()), overlays=True)
+            if name == 'qualification' and record.get('state') != 'passed':
+                raise ValueError('Qualification is incomplete; retry unfinished phases')
+            if name == 'image' and record.get('apps', list(APPS)) != apps:
+                raise ValueError('Image has a different application selection')
+            if name == 'kernel':
+                expected = digest(runtime) if 'electron' in needed else None
+                if record.get('runtime_build_sha256') != expected:
+                    raise ValueError('Kernel admits a different runtime')
             if name == 'application':
-                packaged = json.loads(path.read_text())
                 compilation = path.with_name('BUILD.json')
                 verify_receipt(compilation)
-                if packaged['compilation_receipt_sha256'] != digest(compilation):
+                if record['compilation_receipt_sha256'] != digest(compilation):
                     raise ValueError('Application compilation and packaging receipts differ')
-            print('Verified desktop component: ' + name, flush=True)
-            continue
-        if name in overrides:
-            raise ValueError('Missing explicitly selected source-build receipt: ' + str(path))
-        if not resumable and path.parent.exists():
-            failed = out / 'failed'
-            failed.mkdir(exist_ok=True)
-            path.parent.rename(failed / (name + '-' + str(time.time_ns())))
-        run(name, argv)
-        verify_receipt(path)
-    manifest = out / 'image/MANIFEST.json'
-    if not manifest.exists():
-        if manifest.parent.exists():
-            failed = out / 'failed'
-            failed.mkdir(exist_ok=True)
-            manifest.parent.rename(failed / ('image-' + str(time.time_ns())))
-        run('assembly', assembly)
-    result = verify_receipt(manifest)
-    if result.get('inherited_iso') is not False or not result.get('gui_libraries_compiled_from_source'):
-        raise ValueError('The full desktop must use fresh assembly and source-built GUI libraries')
+            if name == 'frontend' and args.repository_config:
+                if (record.get('repository') or {}).get('configuration_sha256') != digest(args.repository_config):
+                    raise ValueError('Package repository configuration changed')
+            return record
+        record = session.run(name, argv, path, verify, dependencies=dependencies,
+            restart=restart, step=step, total=total, detail=detail, external=external,
+            extra={'apps': apps, 'diagnostics': args.diagnostics} if name == 'image' else None)
+        completed[name] = Path(path)
+        return record
+
+    if 'sources' in needed:
+        if args.electron_checkout or args.runtime_build:
+            from build_electron_source import verify as verify_sources, LOCK
+            verify_sources(checkout, json.loads(LOCK.read_text()))
+            completed['sources'] = ROOT / 'ports/electron/sources.lock.json'
+            step += 1
+        else:
+            source_lock = json.loads((ROOT / 'ports/electron/sources.lock.json').read_text())
+            execute('sources', command('build_electron_source.py', '--output-root', out / 'electron', '--sync', '--jobs', jobs),
+                out / 'electron/SOURCE.json', detail=SourceSyncStatus(checkout, source_lock['repositories']))
+    if 'electron' in needed:
+        execute('electron', electron, runtime, external=bool(args.runtime_build))
+        from electron_admission import prepare
+        prepare(runtime, out / 'electron-admission.h')
+    for name, argv, resumable in stages:
+        execute(name, argv, receipts[name], restart=not resumable, external=name in overrides)
+    if args.build_only:
+        print('Requested components are built. Add an app to the ISO with: make iso ADD=app-name', flush=True)
+        return
+    result = execute('image', assembly, out / 'image/MANIFEST.json', restart=True)
+    write_json(out / 'SELECTION.json', dict(apps=apps))
+    if result.get('inherited_iso') is not False:
+        raise ValueError('The ISO must use fresh source assembly')
     if any(digest(ROOT / name) != expected for name, expected in source_identity.items()):
-        raise ValueError('Desktop sources changed while building')
+        raise ValueError('Sources changed while building; rerun make iso to revalidate affected components')
     record = dict(state='source-built desktop assembled; guest qualification separate',
-        iso=result['iso'], iso_sha256=result['iso_sha256'], inherited_iso=False,
-        manifest_sha256=digest(manifest), pipeline_sha256=digest(stamp),
-        components={name: dict(path=str(path), sha256=digest(path)) for name, path in receipts.items()},
-        runtime_build_sha256=digest(runtime), prebuilt_application_inputs=result['prebuilt_application_inputs'],
+        iso=result['iso'], iso_sha256=result['iso_sha256'], apps=apps, inherited_iso=False,
+        manifest_sha256=digest(out / 'image/MANIFEST.json'), pipeline_sha256=digest(stamp),
+        components={name: dict(path=str(path), sha256=digest(path)) for name, path in completed.items()},
+        runtime_build_sha256=digest(runtime) if 'electron' in needed else None,
+        prebuilt_application_inputs=result.get('prebuilt_application_inputs', []),
         optional_microsoft_auth_binaries=args.with_microsoft_auth)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
-    print('Fresh source-built desktop ISO:', result['iso'], flush=True)
+    write_json(out / 'BUILD.json', record)
+    print('Source-built Coast ISO:', result['iso'], flush=True)
     if args.qualify:
         proof = out / 'qualification/QUALIFICATION.json'
-        if proof.exists() and verify_receipt(proof).get('state') == 'passed':
-            if json.loads(proof.read_text())['iso_sha256'] != result['iso_sha256']:
-                raise ValueError('The qualification receipt describes another image')
-            print('Verified fresh desktop qualification:', proof, flush=True)
-        else:
-            if proof.parent.exists():
-                failed = out / 'failed'
-                failed.mkdir(exist_ok=True)
-                proof.parent.rename(failed / ('qualification-' + str(time.time_ns())))
-            run('qualification', command('qualify_desktop.py', '--iso', result['iso'], '--output-root', proof.parent))
+        execute('qualification', command('qualify_desktop.py', '--iso', result['iso'], '--output-root', proof.parent), proof)
         if verify_receipt(proof).get('state') != 'passed':
-            raise ValueError('The fresh desktop qualification did not pass')
+            raise ValueError('Guest qualification did not pass')
         if any(digest(ROOT / name) != expected for name, expected in source_identity.items()):
-            raise ValueError('Desktop sources changed during qualification')
+            raise ValueError('Sources changed during qualification')
         record.update(state='source-built desktop assembled and qualified in Coast',
             qualification=dict(path=str(proof), sha256=digest(proof)))
-        (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+        write_json(out / 'BUILD.json', record)
 
 
 if __name__ == '__main__':
-    main()
+    from contextlib import nullcontext
+    try:
+        with (nullcontext() if '--plan' in sys.argv else project_lock()):
+            main()
+    except KeyboardInterrupt:
+        print('\nBuild interrupted. Component logs are saved under the build directory.', file=sys.stderr)
+        sys.exit(130)
+    except subprocess.CalledProcessError as error:
+        sys.exit(error.returncode if error.returncode > 0 else 1)
+    except (OSError, ValueError) as error:
+        sys.exit(str(error))

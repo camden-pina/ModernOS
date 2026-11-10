@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Produce source/version-bound Code OSS bytecode caches in an isolated guest."""
+from build_state import atomic_write
 import argparse
 import fcntl
 import hashlib
@@ -92,4 +93,4 @@ with Path(str(iso)+'.lock').open('a') as lock:
         record['error'] = repr(error); (out/'exception.txt').write_text(traceback.format_exc()); raise
     finally:
         if vm: vm.close()
-        (out/'CACHE.json').write_text(json.dumps(record, indent=2)+'\n')
+        atomic_write(out/'CACHE.json', json.dumps(record, indent=2)+'\n')

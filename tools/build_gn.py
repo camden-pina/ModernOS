@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build Chromium's exact GN revision for Coast's threaded native C++ SDK."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -94,7 +96,7 @@ def main():
     shutil.copyfile(source / 'LICENSE', license)
     inputs = [Path(__file__), SOURCES, patch, ROOT / 'tools/linux_uapi.py',
               ROOT / 'tools/fetch_sources.py', ROOT / 'tools/source_archive.py']
-    (out / 'BUILD.json').write_text(json.dumps(dict(version=record['version'], source=record,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version=record['version'], source=record,
         files={str(p.relative_to(runtime)): dict(path=str(p), sha256=digest(p),
             mode=0o755 if p.stat().st_mode & 0o111 else 0o644)
             for p in sorted(runtime.rglob('*')) if p.is_file()}, commands=commands,
@@ -105,4 +107,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

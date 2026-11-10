@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Cross-build PIC OpenSSL archives for dynamically linked native package tools."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -21,7 +24,7 @@ def main():
     p.add_argument('--output-root',type=Path,required=True)
     a=p.parse_args();out=a.output_root.resolve();out.mkdir(parents=True,exist_ok=False)
     archive=ROOT/'userland/vendor/openssl-3.5.9-source.tar.gz';assert sha(archive)==EXPECTED
-    with tarfile.open(archive) as tar:tar.extractall(out,filter='data')
+    unpack(archive, out, filter='data')
     source=out/'openssl-openssl-3.5.9';build=out/'objects';build.mkdir();prefix=out/'prefix'
     before={str(path.relative_to(source)):sha(path) for path in source.rglob('*') if path.is_file()}
     cross=ROOT/'build/compiler/cross/bin/x86_64-linux-musl-'
@@ -46,7 +49,9 @@ def main():
                  source_archive_sha256=EXPECTED,commands=commands,confinement=conf,environment=env,
                  target_host_executed=False,source_sha256={'tools/build_openssl_pic.py':sha(Path(__file__))},
                  artifacts={str(path):sha(path) for path in prefix.rglob('*') if path.is_file()})
-    (out/'BUILD.json').write_text(json.dumps(receipt,indent=2)+'\n');print('PIC OpenSSL archives built for native package tools.')
+    atomic_write(out/'BUILD.json', json.dumps(receipt,indent=2)+'\n');print('PIC OpenSSL archives built for native package tools.')
 
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

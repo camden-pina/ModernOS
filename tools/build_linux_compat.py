@@ -4,6 +4,9 @@
 The sources are official signed GNU releases / kernel.org checksum-pinned
 util-linux. No Coast source patch or host installation is performed.
 """
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse,hashlib,json,os,shutil,subprocess,tarfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -28,7 +31,7 @@ def main():
  uapi_archive=ROOT/'userland/vendor'/uapi['archive']['path']
  assert digest(uapi_archive)==uapi['archive']['sha256'],'UAPI archive checksum mismatch'
  if not (BUILD/'linux-uapi/linux/fs.h').exists():
-  with tarfile.open(uapi_archive) as tar:tar.extractall(BUILD,filter='data')
+  unpack(uapi_archive, BUILD, filter='data')
  for item in uapi['files']:
   assert digest(BUILD/'linux-uapi'/item['path'])==item['sha256'],item['path']
  env=os.environ.copy()
@@ -40,7 +43,7 @@ def main():
   archive=ROOT/'userland/vendor'/config['archive'];assert digest(archive)==by_name[config['archive']]['sha256']
   source=BUILD/name
   if not source.exists():
-   with tarfile.open(archive) as tar:tar.extractall(BUILD,filter='data')
+   unpack(archive, BUILD, filter='data')
   env['CPPFLAGS']='-isystem '+str(BUILD/'linux-uapi')
   options=['./configure','--prefix=/usr','--build='+subprocess.check_output(['gcc','-dumpmachine'],text=True).strip(),'--host=x86_64-linux-musl','--disable-nls',*config['options']]
   key=hashlib.sha256(json.dumps([by_name[config['archive']]['sha256'],uapi['archive']['sha256'],options,{k:env[k] for k in ('CC','CFLAGS','CPPFLAGS','LDFLAGS')}]).encode()).hexdigest();stamp=source/'.coast-linux-configured'
@@ -70,6 +73,8 @@ def main():
   if not output.exists() or not stamp.exists() or stamp.read_text()!=fixture_key:
    run(ROOT,name+'-build',[env['CC'],*env['CFLAGS'].split(),'-isystem',str(BUILD/'linux-uapi'),'-pthread','-static','-no-pie',str(source),'-o',str(output)],env);stamp.write_text(fixture_key)
   fixtures.append({'name':name,'in_tree_semantic_fixture':True,'source_sha256':digest(source),'elf_sha256':digest(output)})
- manifest=BUILD/('manifest-'+(a.package or 'all')+'.json');manifest.write_text(json.dumps({'programs':records,'fixtures':fixtures,'provenance':provenance,'uapi':uapi},indent=2)+'\n');shutil.copy2(manifest,ROOT/'userland/runtime/usr/lib/coast/linux-compat'/manifest.name)
+ manifest=BUILD/('manifest-'+(a.package or 'all')+'.json');atomic_write(manifest, json.dumps({'programs':records,'fixtures':fixtures,'provenance':provenance,'uapi':uapi},indent=2)+'\n');shutil.copy2(manifest,ROOT/'userland/runtime/usr/lib/coast/linux-compat'/manifest.name)
  print('Linux-targeted upstream tools built; manifest='+str(manifest),flush=True)
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

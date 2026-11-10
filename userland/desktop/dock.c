@@ -100,8 +100,7 @@ static int roles(int *out) {
   for (int pass = 0; pass < 2; pass++)
     for (unsigned i = 0; i < sizeof(app_order) / sizeof(app_order[0]); i++) {
       int app = app_order[i];
-      struct os_stat executable;
-      if (app == APP_CHROMIUM && stat("/bin/chromium-wayland", &executable))
+      if (!app_available((App)app))
         continue;
       bool pinned = (desk.dock_pins & (1u << app)) != 0;
       if ((pass == 0 && pinned) ||

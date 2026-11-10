@@ -5,6 +5,9 @@ The build machine first creates a musl cross compiler. That compiler builds
 the native tools; no glibc libraries are copied into the guest. Stage stamps
 allow an interrupted build to resume without rebuilding the earlier stages.
 """
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import hashlib
@@ -114,8 +117,7 @@ def main():
             raise SystemExit(f'Upstream source checksum mismatch: {path}')
         destination = SOURCE / filename.split('.tar.')[0]
         if not (destination / '.coast-extracted').exists():
-            with tarfile.open(path) as archive:
-                archive.extractall(SOURCE, filter='data')
+            unpack(path, SOURCE, filter='data')
             (destination / '.coast-extracted').touch()
 
     gcc = SOURCE / ('gcc-' + VERSION)
@@ -200,7 +202,7 @@ def main():
     files = {str(p.relative_to(runtime)): dict(path=str(p), sha256=hashlib.sha256(p.read_bytes()).hexdigest(),
         mode=0o755 if p.stat().st_mode & 0o111 else 0o644)
         for p in sorted(runtime.rglob('*')) if p.is_file()}
-    (BUILD / 'BUILD.json').write_text(json.dumps(dict(version=VERSION, sources=PACKAGES,
+    atomic_write(BUILD / 'BUILD.json', json.dumps(dict(version=VERSION, sources=PACKAGES,
         source_sha256=inputs, thread_model='posix' if args.posix_threads else 'single',
         musl_libc_sha256=hashlib.sha256((MUSL / 'lib/libc.a').read_bytes()).hexdigest(),
         target_host_executed=False, files=files), indent=2) + '\n')
@@ -253,4 +255,5 @@ def export_sdk(gcc, runtime):
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

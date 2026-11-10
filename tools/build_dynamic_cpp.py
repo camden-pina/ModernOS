@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build a separate GCC 14 POSIX shared C++ ABI using pinned local sources."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import inspect
@@ -147,7 +149,7 @@ def package():
             shutil.copy2(source, sdk / source.name)
     records = {str(p.relative_to(RUNTIME)): hashlib.sha256(p.read_bytes()).hexdigest()
                for p in (lib / 'libgcc_s.so.1', lib / 'libstdc++.so.6')}
-    (BUILD / 'manifest.json').write_text(json.dumps({'gcc':'14.2.0','musl':'1.2.5','thread_backend':'posix','shared':records},indent=2)+'\n')
+    atomic_write(BUILD / 'manifest.json', json.dumps({'gcc':'14.2.0','musl':'1.2.5','thread_backend':'posix','shared':records},indent=2)+'\n')
 
 
 def build_fixtures():
@@ -199,4 +201,5 @@ def main():
     print('Shared C++ runtime packaged', flush=True)
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

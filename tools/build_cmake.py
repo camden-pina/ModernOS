@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build static CMake tools for Coast, including an offline native bootstrap."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -111,7 +113,7 @@ def main():
         for p in sorted(runtime.rglob('*')) if p.is_file()}
     inputs = [Path(__file__), SOURCES, coast, patch, ROOT / 'tools/linux_uapi.py',
               ROOT / 'tools/fetch_sources.py', ROOT / 'tools/source_archive.py']
-    (out / 'BUILD.json').write_text(json.dumps(dict(version=record['version'], source=record,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version=record['version'], source=record,
         files=files, commands=commands, target_host_executed=args.native,
         build_mode='native-coast' if args.native else 'linux-cross',
         source_sha256={str(p.relative_to(ROOT)): digest(p) for p in inputs},
@@ -120,4 +122,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

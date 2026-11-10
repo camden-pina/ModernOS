@@ -2,6 +2,7 @@
 """Build the opt-in native Code OSS text-core host from existing JSC archives.
 Does not download sources, build an engine, change host tooling or build an ISO.
 """
+from build_state import atomic_write
 from pathlib import Path
 import argparse,subprocess,json,hashlib,shutil,os
 R=Path(__file__).resolve().parents[1]
@@ -17,5 +18,5 @@ resource=R/'userland/runtime/usr/share/codeoss';resource.mkdir(parents=True,exis
 for name in ['editor-cli.js','file-service-check.js','core-check-native.js','LICENSE.txt','PORT-STATUS.txt']:shutil.copy2(R/'ports/codeoss'/name,resource/name)
 relink=R/'userland/runtime/usr/lib/codeoss/relink';relink.mkdir(parents=True,exist_ok=True)
 for obj in objects:shutil.copy2(obj,relink/Path(obj).name)
-(B/'build-commands.json').write_text(json.dumps(commands,indent=2)+'\n');shutil.copy2(B/'build-commands.json',relink/'build-commands.json')
-record={'result':'built-not-yet-guest-validated','binary':str(a.output),'binary_sha256':hashlib.sha256(a.output.read_bytes()).hexdigest(),'engine_rebuilt':False,'compiler':str(compiler),'relink_objects':objects,'engine_archives':list(map(str,libs))};(B/'build.json').write_text(json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))
+atomic_write(B/'build-commands.json', json.dumps(commands,indent=2)+'\n');shutil.copy2(B/'build-commands.json',relink/'build-commands.json')
+record={'result':'built-not-yet-guest-validated','binary':str(a.output),'binary_sha256':hashlib.sha256(a.output.read_bytes()).hexdigest(),'engine_rebuilt':False,'compiler':str(compiler),'relink_objects':objects,'engine_archives':list(map(str,libs))};atomic_write(B/'build.json', json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))

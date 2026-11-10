@@ -17,7 +17,7 @@ def main():
  manifest=a.iso.with_name('MANIFEST.json')
  if manifest.is_file():
   image=json.loads(manifest.read_text())
-  if image.get('wider_integrations'):
+  if 'compiler_build' in image.get('components', {}):
    compiler=Path(image['components']['compiler_build']['path'])
    if digest(compiler)!=image['components']['compiler_build']['sha256']:raise ValueError('Compiler receipt changed')
    cc=compiler.parent/'cross/bin/x86_64-linux-musl-gcc'

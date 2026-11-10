@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build the Chromium desktop kernel with the checked-in Coast ABI profile."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 import os
@@ -47,7 +49,7 @@ def main():
     if source_identity() != sources:
         raise ValueError('Kernel sources changed during compilation')
     admission = args.output_root / 'electron-admission.json'
-    (args.output_root / 'KERNEL.json').write_text(json.dumps(dict(
+    atomic_write(args.output_root / 'KERNEL.json', json.dumps(dict(
         kernel_sha256=digest(args.output_root / 'vmlinux'), command=command, flags=flags,
         source_profile_sha256=digest(ROOT / 'ports/chromium/kernel-flags.json'),
         runtime_build_sha256=digest(args.runtime_build) if args.runtime_build else None,
@@ -57,4 +59,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

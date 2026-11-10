@@ -5,6 +5,8 @@ BusyBox awk removes a replacement backslash needed by opt-functions.awk,
 silently dropping the C++ language flags. Use the upstream GNU implementation
 for both awk and gawk; no generated compiler tables are patched or substituted.
 """
+from source_archive import unpack
+from build_state import project_lock
 import hashlib
 import os
 from pathlib import Path
@@ -35,8 +37,7 @@ def main():
     if not stamp.exists() or stamp.read_text() != key or not (directory / 'gawk').exists():
         if directory.exists():
             shutil.rmtree(directory)
-        with tarfile.open(source) as archive:
-            archive.extractall(BUILD, filter='data')
+        unpack(source, BUILD, filter='data')
         env = os.environ.copy()
         for name in ('CC', 'CFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LIBS', 'CONFIG_SITE'):
             env.pop(name, None)
@@ -71,4 +72,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

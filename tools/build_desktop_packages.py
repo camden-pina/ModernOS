@@ -5,6 +5,8 @@ The binary-package CLI uses static musl programs. The higher-level Python Coast
 client and fakeroot/makepkg source-build environment remain separate components.
 No existing ISO, repository, signing identity or installed host package is read.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -56,7 +58,7 @@ def main():
         history = out / 'configuration-history'
         history.mkdir(exist_ok=True)
         shutil.copyfile(stamp, history / (digest(stamp) + '.json'))
-    stamp.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(stamp, json.dumps(identity, indent=2) + '\n')
     registry = read_manifest()
     pins = {name: registry[archive] for name, archive in [
         ('zlib', 'zlib-1.3.2.tar.xz'), ('openssl', 'openssl-3.5.9-source.tar.gz'),
@@ -154,7 +156,7 @@ def main():
         run('make-install', ['make', 'install', 'DESTDIR=' + str(out / 'make-install')], build, extra)
         copy(out / 'make-install/usr/bin/make', prefix / 'bin/make')
     dependencies = out / 'DEPENDENCIES.json'
-    dependencies.write_text(json.dumps(dict(prefix=str(prefix), target_host_executed=False,
+    atomic_write(dependencies, json.dumps(dict(prefix=str(prefix), target_host_executed=False,
         sources=pins, **identity,
         artifacts={str(p): digest(p) for p in prefix.rglob('*') if p.is_file()}), indent=2) + '\n')
     arch = out / 'arch'
@@ -207,9 +209,10 @@ def main():
         state='binary package CLI source compiled; Coast qualification pending',
         coast_python_frontend_included=False, makepkg_environment_complete=False,
         target_host_executed=False)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Source-built pacman/GnuPG/archive/HTTPS tools ready', flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

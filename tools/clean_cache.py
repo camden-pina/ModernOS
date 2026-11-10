@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 
 from source_tree import files
+from build_state import project_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -117,4 +118,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

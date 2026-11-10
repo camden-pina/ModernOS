@@ -48,14 +48,12 @@ static int launcher_indices(int *indices) {
   int count = 0;
   for (int i = 0; i < APP_COUNT; i++) {
     if (!apps[i].name) continue;
-    struct os_stat qt;
-    if(i==APP_QT && stat("/usr/bin/qt6-demo",&qt))continue;
-    if(i==APP_CHROMIUM && stat("/bin/chromium-wayland",&qt))continue;
+    if (!app_available((App)i)) continue;
     if (i != APP_CODE && matches(apps[i].name))
       indices[count++] = i;
   }
   /* Keep the earlier text-core preview behind the complete editor in search. */
-  if (matches(apps[APP_CODE].name))
+  if (app_available(APP_CODE) && matches(apps[APP_CODE].name))
     indices[count++] = APP_CODE;
   if (matches("Return to console"))
     indices[count++] = APP_COUNT;

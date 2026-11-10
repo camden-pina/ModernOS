@@ -5,6 +5,8 @@ Host build tools execute inside the network-unshared build namespace. The
 guest Electron application never executes on the host. Resource limits stop
 only this build's supervised process; partial artifacts remain for inspection.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -86,7 +88,9 @@ def main():
                 features={'jitless_compiled':True,'javascript_jit_compilers':False,'wasm_interpreter':True,'v8_sandbox':True,'drumbrake_explicit_bounds_checks':bool(record.get('drumbrake_explicit_bounds_checks'))},
                 host_editor_execution=False,scope='Private reflinked GN/Ninja build; original runtime/source/objects unchanged')
     result.update(minimum_free_gib=a.minimum_free_gib,maximum_disk_drop_gib=maximum_drop//1024**3)
-    (out/'BUILD.json').write_text(json.dumps(result,indent=2)+'\n')
+    atomic_write(out/'BUILD.json', json.dumps(result,indent=2)+'\n')
     print('Runtime ready:',binary,result['binary_sha256'],flush=True)
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

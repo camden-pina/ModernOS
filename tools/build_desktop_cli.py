@@ -5,6 +5,8 @@ The native base already supplies source-built BusyBox command tools. This
 component adds the parent-controlled PTY port used by Coast's Terminal, with
 its own static ncurses library. It never imports an existing ISO or runtime.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -53,7 +55,7 @@ def main():
     stamp = out / 'SOURCE.json'
     if stamp.exists() and json.loads(stamp.read_text()) != identity:
         raise ValueError('Terminal build inputs changed; select a fresh output root')
-    stamp.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(stamp, json.dumps(identity, indent=2) + '\n')
     vendor = out / 'vendor'
     vendor.mkdir(exist_ok=True)
     sources = {'bash': bash, 'ncurses': curses}
@@ -148,9 +150,10 @@ def main():
     record = dict(**identity, sources=sources, files=files, aliases={'usr/bin/bash': '../../bin/bash'},
         commands=commands, target_execution_on_linux=False,
         state='Bash/Readline source compiled; Coast PTY qualification pending')
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Desktop Bash terminal built:', binary, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

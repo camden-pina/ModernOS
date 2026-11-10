@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Prepare a small private rebuild over a completed readonly Electron graph."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse,hashlib,json,re,subprocess
 from pathlib import Path
 
@@ -76,7 +78,9 @@ def main():
                              'native_build_log':str(parent/'native-build.log'),
                              'native_build_log_sha256':sha(parent/'native-build.log'),
                              'reason':'Recompile native platform policies over the preserved runtime; retain all consistency checks.'}}
-    (out/'PLAN.json').write_text(json.dumps(prepared,indent=2)+'\n')
+    atomic_write(out/'PLAN.json', json.dumps(prepared,indent=2)+'\n')
     print('Prepared bounded Electron component:',len(steps),'steps;',compiler_steps,'compilers',flush=True)
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

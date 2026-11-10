@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Prepare an isolated GNU SDK for Code OSS's source-built native modules."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import io
 import json
@@ -106,7 +108,7 @@ def main():
         if not target.is_relative_to(sysroot) or not (target.is_file() or target.is_dir()):
             raise ValueError('Application SDK alias leaves its staged inputs: ' + name)
     inputs = [Path(__file__), HEADERS, ROOT / 'tools/prepare_gnu_sdk.py', ROOT / 'tools/prepare_gui_runtime.py']
-    (out / 'APPLICATION-SDK.json').write_text(json.dumps(dict(
+    atomic_write(out / 'APPLICATION-SDK.json', json.dumps(dict(
         state='GNU application SDK staged; native-module consumer qualification pending',
         gnu_sdk_sha256=digest(out / 'SDK.json'), gui_runtime_sha256=digest(args.gui_runtime), files=files, aliases=aliases,
         header_archives={p['archive']: p['sha256'] for p in packages.values()},
@@ -116,4 +118,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

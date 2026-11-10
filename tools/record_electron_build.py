@@ -6,6 +6,8 @@ checks the pinned source overlays and arguments, strips copies of the two
 products, and records their hashes. It never executes either runtime and
 does not claim that a manual native build or its runtime has been qualified.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 from pathlib import Path
@@ -66,12 +68,12 @@ def main():
             for name, directory in graph.items()},
         recorder_sha256=sha(Path(__file__)))
     receipt = out / 'BUILD.json'
-    receipt.write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(receipt, json.dumps(record, indent=2) + '\n')
     # Apply the same ELF bounds, W^X, source-policy and canonical path checks
     # used by the kernel builder before accepting a manual build receipt.
     prepare(receipt, out / 'electron-admission.h')
     license_path = checkout / 'src/third_party/electron_node/LICENSE'
-    (out / 'NODE.json').write_text(json.dumps(dict(binary=products['node']['path'],
+    atomic_write(out / 'NODE.json', json.dumps(dict(binary=products['node']['path'],
         binary_sha256=products['node']['sha256'], parent_electron_sha256=products['electron']['sha256'],
         guest_execution_on_host=False, sidecars={name: sidecars[name] for name in ['snapshot_blob.bin', 'icudtl.dat'] if name in sidecars},
         license=dict(path=str(license_path), sha256=sha(license_path)),
@@ -80,4 +82,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

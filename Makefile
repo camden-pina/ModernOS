@@ -1,3 +1,22 @@
+# All mutating Make invocations share the cleanup lock. Recursive invocations
+# verify the inherited owner's PID/token instead of trying to lock it twice.
+coast_guard_root := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+coast_guard_goals := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+coast_guard_flags := $(if $(filter --%,$(firstword $(MAKEFLAGS))),,$(firstword $(MAKEFLAGS)))
+coast_guard_readonly := $(or $(findstring n,$(coast_guard_flags)),$(findstring q,$(coast_guard_flags)))
+coast_guard_exempt := $(if $(filter-out help menuconfig config defconfig,$(coast_guard_goals)),,yes)
+coast_guard_held := $(if $(or $(coast_guard_readonly),$(coast_guard_exempt)),yes,$(shell python3 -B "$(coast_guard_root)/tools/build_state.py" held))
+ifneq ($(coast_guard_held),yes)
+.DEFAULT_GOAL := all
+.PHONY: $(coast_guard_goals)
+ifneq ($(filter clean userland-clean,$(coast_guard_goals)),)
+ifneq ($(filter-out clean userland-clean,$(coast_guard_goals)),)
+$(error Run cleanup and build commands separately)
+endif
+endif
+$(coast_guard_goals) &:
+	+@python3 -B "$(coast_guard_root)/tools/build_state.py" guard -- $(MAKE) --no-print-directory -f "$(coast_guard_root)/Makefile" $(coast_guard_goals)
+else
 # Coast: a monolithic x86-64 kernel built with a small Kbuild-style system.
 .DEFAULT_GOAL := all
 
@@ -389,11 +408,14 @@ export KBUILD_CPPFLAGS KBUILD_CFLAGS KBUILD_AFLAGS KBUILD_LDFLAGS LWIP_ROOT
 
 KERNEL_IMAGE := $(objtree)/vmlinux
 TARGET_KERNEL := $(KERNEL_IMAGE)
-# The release always contains the complete OS and its application integrations.
+# The default includes every app; selections control build and install dependencies.
 JOBS ?= 4
 ISO_BUILD ?= $(BUILD_DIR)/coast
 ISO_IMAGE ?= $(ISO_BUILD)/image/Coast.iso
 ISO_ARGS ?=
+APPS ?= all
+WITHOUT ?=
+ADD ?=
 DIAGNOSTICS ?= 0
 QUALIFY ?= 0
 WITH_MICROSOFT_AUTH ?= 0
@@ -401,7 +423,10 @@ ELECTRON_CHECKOUT ?=
 RUNTIME_BUILD ?=
 COMPONENTS ?=
 PACKAGE_CONFIG ?=
-COAST_BUILD_OPTIONS = $(if $(filter 1,$(DIAGNOSTICS)),--diagnostics) \
+COAST_BUILD_OPTIONS = --apps $(call coast_quote,$(APPS)) \
+	$(if $(WITHOUT),--without $(call coast_quote,$(WITHOUT))) \
+	$(if $(ADD),--add $(call coast_quote,$(ADD))) \
+	$(if $(filter 1,$(DIAGNOSTICS)),--diagnostics) \
 	$(if $(filter 1,$(QUALIFY)),--qualify) \
 	$(if $(filter 1,$(WITH_MICROSOFT_AUTH)),--with-microsoft-auth) \
 	$(if $(ELECTRON_CHECKOUT),--electron-checkout $(call coast_quote,$(ELECTRON_CHECKOUT))) \
@@ -433,13 +458,14 @@ include $(srctree)/arch/x86/boot/efi/Makefile
 include $(srctree)/scripts/bootloaders/$(BOOTLOADER).mk
 AUDIO_FIRMWARE ?= $(wildcard /lib/firmware/aw88399_acf.bin)
 
-.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso _test-iso _test-image clean \
+.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso build _test-iso _test-image clean \
 	userland-clean help test-boot-config FORCE
 all: vmlinux
 kernel vmlinux: $(KERNEL_IMAGE)
 
 prepare:
 	@mkdir -p "$(objtree)"
+	$(Q)python3 -B "$(srctree)/tools/build_state.py" register-kernel $(call coast_quote,$(objtree))
 ifneq ($(objtree),$(srctree))
 	@if [ -f "$(objtree)/Makefile" ] && [ "$$(head -n 1 "$(objtree)/Makefile")" != '# Generated output directory wrapper.' ]; then \
 		echo 'Output directory contains a source Makefile; choose another O= directory.' >&2; exit 1; \
@@ -459,7 +485,7 @@ $(LWIP_ROOT)/.prepared: $(srctree)/tools/prepare_lwip.py $(srctree)/userland/ven
 $(srctree)/userland/vendor/lwip-2.2.1.tar.gz:
 	$(Q)python3 "$(srctree)/tools/fetch_sources.py" lwip-2.2.1.tar.gz
 
-.PHONY: fetch-sources check-sources test-source-fetch browser-host test-browser-build test-source-tree test-desktop-assembly test-build-config source-check source-archive desktop-kernel nasm limine
+.PHONY: fetch-sources check-sources test-source-fetch browser-host test-browser-build test-source-tree test-desktop-assembly test-build-config test-build-progress test-electron-source-sync test-build-lifecycle test-optional-apps source-check source-archive desktop-kernel nasm limine
 fetch-sources:
 	$(Q)python3 "$(srctree)/tools/fetch_sources.py"
 check-sources:
@@ -475,6 +501,14 @@ test-desktop-assembly:
 	$(Q)python3 -B "$(srctree)/tools/test_desktop_assembly.py"
 test-build-config:
 	$(Q)python3 -B "$(srctree)/tools/test_build_config.py"
+test-build-progress:
+	$(Q)python3 -B "$(srctree)/tools/test_build_progress.py"
+test-electron-source-sync:
+	$(Q)python3 -B "$(srctree)/tools/test_electron_source_sync.py"
+test-build-lifecycle:
+	$(Q)python3 -B "$(srctree)/tools/test_build_lifecycle.py"
+test-optional-apps:
+	$(Q)python3 -B "$(srctree)/tools/test_optional_apps.py"
 
 # Publish only sources; keep all archives and generated tools under build/.
 source-check:
@@ -499,6 +533,8 @@ setup-host:
 	$(Q)python3 -B "$(srctree)/tools/setup_host.py" --install $(HOST_ARGS)
 iso:
 	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root $(call coast_quote,$(ISO_BUILD)) --jobs $(call coast_quote,$(JOBS)) $(COAST_BUILD_OPTIONS) $(ISO_ARGS)
+build:
+	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root $(call coast_quote,$(ISO_BUILD)) --jobs $(call coast_quote,$(JOBS)) $(COAST_BUILD_OPTIONS) --build-only $(if $(COMPONENT),--target $(call coast_quote,$(COMPONENT))) $(ISO_ARGS)
 image-tools:
 	$(Q)python3 -B "$(srctree)/tools/build_image_tools.py"
 
@@ -549,12 +585,16 @@ test-boot-config:
 # Port builders and guest tests use shared build/ caches and userland outputs.
 include $(srctree)/scripts/Makefile.targets
 
-clean: efi-clean
-	$(Q)$(MAKE) --no-print-directory -f $(srctree)/scripts/Makefile.clean obj=.
-	$(Q)rm -f -- $(call coast_quote,$(KERNEL_IMAGE)) $(call coast_quote,$(KERNEL_IMAGE).cmd) $(call coast_quote,$(INITRAMFS)) $(call coast_quote,$(ISO_IMAGE))
-	$(Q)rm -rf -- $(call coast_quote,$(ISO_ROOT))
+COMPONENT ?=
+KEEP ?=
+ALL ?= 0
+PREVIEW ?= 0
+clean:
+	$(Q)python3 -B "$(srctree)/tools/clean_project.py" --output-root $(call coast_quote,$(abspath $(ISO_BUILD))) \
+		--kernel-output $(call coast_quote,$(objtree)) $(if $(COMPONENT),--component $(call coast_quote,$(COMPONENT))) \
+		$(if $(filter 1,$(ALL)),--all) $(if $(KEEP),--keep $(call coast_quote,$(KEEP))) $(if $(filter 1,$(PREVIEW)),--preview)
 userland-clean:
-	$(Q)$(MAKE) -C $(srctree)/userland clean
+	$(Q)python3 -B "$(srctree)/tools/clean_project.py" --output-root $(call coast_quote,$(abspath $(ISO_BUILD))) --component userland $(if $(filter 1,$(PREVIEW)),--preview)
 
 help:
 	@printf '%s\n' \
@@ -562,7 +602,15 @@ help:
 		'  make menuconfig            Configure build and VM settings; save .config' \
 		'  make iso                   Build the complete Coast desktop and integrations' \
 		'  make run                   Boot that ISO in QEMU without rebuilding' \
+		'  make build COMPONENT=app   Build an app and its dependencies, without an ISO' \
+		'  make iso ADD=app           Add an app to the last ISO selection' \
+		'  make clean PREVIEW=1       Preview dependency-aware cleanup' \
+		'  make clean COMPONENT=app   Clean a component and invalidate dependent outputs' \
+		'  make clean ALL=1           Reset generated products, sources and downloads' \
+		'  make clean KEEP="sources downloads toolchains"  Retain reusable inputs' \
 		'' \
+		'  Apps:          APPS=all|none|"app app" WITHOUT="app app" ADD="app app"' \
+		'                 chromium codeoss bash gcc python packages makepkg qt qemu qemu-viewer' \
 		'  Build options: JOBS=4 ISO_BUILD=path O=path ISO_ARGS="--plan"' \
 		'                 DIAGNOSTICS=0|1 QUALIFY=0|1 WITH_MICROSOFT_AUTH=0|1' \
 		'  Run options:   MEMORY=16G SMP=4 QEMU_ACCEL=kvm|tcg QEMU_DISPLAY=gtk,gl=off' \
@@ -576,7 +624,7 @@ help:
 		'  make [-jN]                 Build only the kernel (build/vmlinux)' \
 		'  make source-check          Audit sources for publication' \
 		'  make source-archive        Export the offline kernel source kit' \
-		'  make clean                 Clean the selected kernel/image output' \
+		'  make clean                 Clean generated products; retain sources and downloads' \
 		'  Optional arguments and developer commands: Documentation/build-system.md'
 
 FORCE:
@@ -604,3 +652,5 @@ test-power-host:
 .PHONY: test-initramfs
 test-initramfs:
 	$(Q)python3 -B "$(srctree)/tools/test_initramfs.py"
+
+endif # project build/cleanup guard

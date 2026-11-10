@@ -1,4 +1,6 @@
 """Restore checksum-pinned optional Node modules used by Linux build scripts."""
+from source_archive import unpack
+from build_state import atomic_write
 import base64
 import hashlib
 import json
@@ -102,7 +104,7 @@ def prepare_node(output, source):
     record = dict(node_sha256=pin['node_binary_sha256'], npm_version=pin['npm_version'],
         npm_package_sha256=pin['npm_package_sha256'], executables=pin.get('executables', {}),
         source='Chromium host tools and pinned Node npm sources')
-    (output / 'NODE.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(output / 'NODE.json', json.dumps(record, indent=2) + '\n')
     return binary, record
 
 
@@ -147,8 +149,7 @@ def prepare(output):
             raise ValueError('Unrecognized host module; select a fresh output directory')
         unpacked = output / ('unpack-' + record['archive'])
         unpacked.mkdir()
-        with tarfile.open(archive) as bundle:
-            bundle.extractall(unpacked, filter='data')
+        unpack(archive, unpacked, filter='data')
         package = unpacked / 'package'
         metadata = json.loads((package / 'package.json').read_text())
         if metadata['name'] != record['name'] or metadata['version'] != record['version']:

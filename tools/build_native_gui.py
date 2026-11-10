@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Compile the native desktop into a fresh output with read-only source mounts."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -68,9 +70,10 @@ def main():
         raise RuntimeError('Desktop source changed during compilation')
     record = dict(source_sha256=before, commands=commands, confinement=conf,
                   binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), host_executed=False)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Native desktop ready:', binary, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

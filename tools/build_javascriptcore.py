@@ -3,6 +3,8 @@
 
 This component has no browser frontend. Chromium is the desktop browser.
 """
+from source_archive import unpack
+from build_state import project_lock
 import argparse
 import hashlib
 import json
@@ -173,8 +175,7 @@ def main():
             raise SystemExit(f'Missing or wrong pinned source: {archive}')
         marker = BUILD / (filename + '.extracted')
         if not marker.exists():
-            with tarfile.open(archive) as source:
-                source.extractall(BUILD, filter='data')
+            unpack(archive, BUILD, filter='data')
             marker.touch()
 
     if not Path(str(CROSS) + 'g++').exists() or not GCC_SOURCE.exists():
@@ -290,4 +291,5 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

@@ -5,6 +5,9 @@ This leaves the established static musl/compiler/port caches intact. The only
 musl changes adapt its virtual-address reservation to Coast's eager file
 snapshots and enforce the supported x86-64/W^X profile before mapping a DSO.
 """
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import inspect
@@ -143,8 +146,7 @@ def build_musl(jobs):
     if not stamp.exists() or stamp.read_text() != key or not (PREFIX / 'lib/libc.so').is_file():
         if SOURCE.exists():
             shutil.rmtree(SOURCE)
-        with tarfile.open(ARCHIVE) as archive:
-            archive.extractall(BUILD, filter='data')
+        unpack(ARCHIVE, BUILD, filter='data')
         patch_musl()
         env = os.environ.copy()
         for name in ('CC', 'CXX', 'CFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LIBS', 'CONFIG_SITE',
@@ -325,7 +327,7 @@ def build_fixtures():
                 'libc_sha256': hashlib.sha256((RUNTIME / 'usr/lib/libc.so').read_bytes()).hexdigest(),
                 'fixtures': {p.relative_to(FIXTURES).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                              for p in sorted(FIXTURES.rglob('*')) if p.is_file()}}
-    (BUILD / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    atomic_write(BUILD / 'manifest.json', json.dumps(manifest, indent=2) + '\n')
     stamp.write_text(key)
 
 
@@ -345,4 +347,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

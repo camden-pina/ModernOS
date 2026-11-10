@@ -5,6 +5,8 @@ Only host compilers run, in a network-isolated namespace. Original images and
 toolchains remain read-only. Archive paths, links and text are migrated together;
 executables are rebuilt from source rather than edited as raw bytes.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import io
@@ -183,9 +185,10 @@ def main():
                   base=dict(path=str(base), sha256=initial), changes=changes, commands=commands,
                   confinement=conf, target_host_executed=False,
                   native_binaries={name:dict(path=str(path),sha256=sha(path)) for name,path in overrides.items()})
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Coast base ready:', iso, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

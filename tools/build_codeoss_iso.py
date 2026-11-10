@@ -5,6 +5,8 @@ Builds guest bridges under the existing confined compiler. Reuses the input
 kernel unchanged; use build_electron_iso.py first when changing kernel sources.
 An unused output directory is required. No editor binaries run on the host.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import base64
 import fcntl
@@ -439,9 +441,10 @@ def main():
                       confinement='existing read-only, network-unshared bridge compiler',
                       limits=['one2400x1300 physical-pixel workbench;1200x650 logical at2x', 'jitless', 'software pixels',
                               'folder access follows guest inode permissions; RAM files are not persistent'])
-        (out / 'MANIFEST.json').write_text(json.dumps(record, indent=2) + '\n')
+        atomic_write(out / 'MANIFEST.json', json.dumps(record, indent=2) + '\n')
         print('ISO ready:', iso, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

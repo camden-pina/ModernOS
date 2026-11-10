@@ -2,6 +2,7 @@
 """Overlay a separate Code OSS shared-service image onto an immutable tested ISO.
 No kernel/engine rebuild, disk attachment, download or replacement of old images.
 """
+from build_state import atomic_write
 from pathlib import Path
 import argparse,hashlib,io,json,subprocess,tarfile
 p=argparse.ArgumentParser(description=__doc__)
@@ -66,4 +67,4 @@ resolution='1280x800x32' if a.preset=='normal' else '2560x1600x32'
 config='version = 1\n[boot]\ntitle = "Coast"\nkernel = "/boot/kernel.elf"\nresolution = '+json.dumps(resolution)+'\ncmdline = '+json.dumps(settings.get('cmdline',''))+'\n[[boot.modules]]\npath = "/boot/initramfs.tar"\nstring = "initramfs"\n[menu]\ntimeout = 0\nresolution = '+json.dumps(resolution)+'\nwallpaper = "/boot/boot-background.jpg"\n';conf=O/'boot.conf';conf.write_text(config);iso=O/a.image_name
 subprocess.run(['python3','-B',str(R/'tools/build_boot_iso.py'),'--bootloader','limine','--config',str(conf),'--kernel',str(E/'kernel.elf'),'--initramfs',str(ram),'--source-root',str(R),'--root',str(O/'iso-root'),'--output',str(iso),'--limine-dir',str(R/'build/limine-binary')],check=True)
 record={'state':'built; guest validation separate','base_iso':str(base),'base_iso_sha256':sha(base),'iso':str(iso),'iso_sha256':sha(iso),'kernel_sha256':sha(E/'kernel.elf'),'preset':a.preset,'resolution':resolution,'preserved_binaries':preserved,'overlaid_files':overlaid,'host_disk_or_network_attached':False}
-(O/'MANIFEST.json').write_text(json.dumps(record,indent=2)+'\n');print(json.dumps({k:v for k,v in record.items() if k not in ['overlaid_files','preserved_binaries']},indent=2))
+atomic_write(O/'MANIFEST.json', json.dumps(record,indent=2)+'\n');print(json.dumps({k:v for k,v in record.items() if k not in ['overlaid_files','preserved_binaries']},indent=2))

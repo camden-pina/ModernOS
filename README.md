@@ -27,15 +27,33 @@ user. The build fetches pinned upstream sources and uses rootless Podman and
 Bubblewrap. [Host setup](Documentation/host-setup.md) covers other distributions,
 required namespaces and inspecting the setup commands before installation.
 
-The ISO is **`build/coast/image/Coast.iso`**. Rerun `make iso` to resume
-completed stages. Electron/Chromium is a large
+The ISO is **`build/coast/image/Coast.iso`**. Live progress shows the current
+stage, elapsed time, tool percentages and source download sizes; full logs are
+saved under `build/coast/logs/`. Rerun `make iso` to resume
+verified components and continue interrupted source preparation. Pinned sources use shallow Git checkouts to avoid downloading
+upstream history. Electron/Chromium is still a large
 source build: reserve more than 100 GB for it plus space for the other build
 trees. The desktop VM uses 16 GiB RAM. QEMU uses KVM when available and falls
 back to slower software emulation.
 
-`make iso` builds the complete desktop: the kernel, native desktop and account
+`make iso` defaults to the complete desktop: the kernel, native desktop and account
 tools, Chromium, Code OSS, GCC/G++, Python, Coast Packages/makepkg, Qt Widgets,
-QEMU and the Chromium VM viewer. `make run` boots that ISO without rebuilding.
+QEMU and the Chromium VM viewer. The wizard can omit optional apps and explains
+their dependencies. `make run` boots that ISO without rebuilding.
+
+For example, omit Chromium and add it later:
+
+```sh
+make iso WITHOUT=chromium
+make build COMPONENT=chromium
+make iso ADD=chromium
+```
+
+Code OSS still needs the shared Electron/Chromium engine. Omitting Chromium
+also omits the Chromium-based VM viewer; add `qemu-viewer` later to restore it.
+[App selection and dependencies](Documentation/build-system.md#optional-applications)
+cover this and other choices. [Recovery and cleanup](Documentation/repository-cleanup.md)
+describe `make clean`, per-component cleanup, full resets and KEEP options.
 [Optional arguments](Documentation/build-system.md) cover build parallelism,
 output directories, VM settings and developer workflows.
 
@@ -48,7 +66,7 @@ before building. A Coast source archive already includes its source inventory.
 
 ## Use Coast
 
-Enter `gui` at the Coast console. Super+B opens Chromium, Super+T Terminal and
+Enter `gui` at the Coast console. Super+B opens Chromium when installed, Super+T Terminal and
 Super+E Files. Super+Space opens Spotlight; use it to launch Code OSS, Coast
 Packages, Qt 6 Demo and the other installed applications. Set the owner password
 in Settings → Profiles before using sudo.
@@ -78,15 +96,18 @@ state stay in ignored local directories.
 
 ```sh
 make source-check test-source-tree test-source-fetch test-desktop-assembly
+make test-build-lifecycle test-optional-apps
 python3 -B tools/test_package_configuration.py
 ```
 
-The integrated desktop has passed all 11 guest qualification phases, including real
+An integrated desktop source build has passed all 11 guest qualification phases, including real
 package transactions, Qt input/clipboard and nested QEMU through Chromium/noVNC.
 Source-export component builds pass UEFI/BIOS boot checks. Qualification reuses
 verified source-built Electron/Node components; an empty full Electron graph
 build is not yet verified end to end. [Source builds](Documentation/source-builds.md)
-records the precise coverage and remaining prebuilt inputs.
+records the precise coverage and remaining prebuilt inputs. Recovery, cleanup and
+app selection have host/fixture coverage; this change has not had a fresh full
+Electron build or guest qualification run.
 
 See [the build guide](Documentation/build-system.md), [desktop](Documentation/desktop.md),
 [browser](Documentation/chromium-browser.md), [accounts](Documentation/accounts.md),

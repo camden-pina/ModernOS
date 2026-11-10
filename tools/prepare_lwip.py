@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Verify/extract the upstream TCP/IP core outside the kernel source tree."""
+from source_archive import unpack
+from build_state import project_lock
 import hashlib
 from pathlib import Path
 import shutil
@@ -21,8 +23,7 @@ def main():
     if temporary.exists():
         shutil.rmtree(temporary)
     temporary.mkdir(parents=True)
-    with tarfile.open(ARCHIVE) as source:
-        source.extractall(temporary, filter='data')
+    unpack(ARCHIVE, temporary, filter='data')
     extracted = temporary / 'lwip-STABLE-2_2_1_RELEASE'
     if TARGET.exists():
         shutil.rmtree(TARGET)
@@ -37,4 +38,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

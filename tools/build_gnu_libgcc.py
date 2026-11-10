@@ -5,6 +5,8 @@ An existing C compiler bootstraps the library. GCC's target metadata and
 generator programs are built from the pinned GCC sources; a second complete
 compiler is unnecessary for this library-only bootstrap.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -160,7 +162,7 @@ def main():
         shutil.copyfile(source / name, notices / name)
     inputs = [Path(__file__), ROOT / 'userland/vendor/sources.json', ROOT / 'tools/fetch_sources.py',
         ROOT / 'tools/source_archive.py', ROOT / 'tools/source_tree.py']
-    (out / 'BUILD.json').write_text(json.dumps(dict(version='14.2.0', source=record, generator_sources=prerequisites,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version='14.2.0', source=record, generator_sources=prerequisites,
         glibc_build_sha256=digest(receipt), bootstrap_compiler=args.cc,
         files={str(p.relative_to(runtime)): dict(path=str(p), sha256=digest(p),
             mode=0o755 if p.stat().st_mode & 0o111 else 0o644)
@@ -173,4 +175,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

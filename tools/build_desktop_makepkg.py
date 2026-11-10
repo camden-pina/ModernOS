@@ -5,6 +5,8 @@ The shared musl loader and archive tools are separate from the static package
 CLI. Only build outputs are writable during compilation; target ELFs never run
 on Linux. Existing signing identities and repository services are not inputs.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -72,7 +74,7 @@ def main():
         history = out / 'configuration-history'
         history.mkdir(exist_ok=True)
         shutil.copyfile(configuration, history / (digest(configuration) + '.json'))
-    configuration.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(configuration, json.dumps(identity, indent=2) + '\n')
     vendor, runtime, logs = out / 'vendor', out / 'runtime', out / 'logs'
     for path in (vendor, runtime, logs):
         path.mkdir(exist_ok=True)
@@ -136,7 +138,7 @@ def main():
     specs = dynamic.PREFIX / 'lib/coast-dynamic.specs'
     specs.write_text('*self_spec:\n%<static %<no-pie %{!shared:%{!r:-pie}}\n\n')
     dynamic_receipt = out / 'SHARED-MUSL.json'
-    dynamic_receipt.write_text(json.dumps(dict(prefix=str(dynamic.PREFIX), target_host_executed=False,
+    atomic_write(dynamic_receipt, json.dumps(dict(prefix=str(dynamic.PREFIX), target_host_executed=False,
         source_sha256={name: value for name, value in original.items() if name in
                        ('tools/build_dynamic.py', 'userland/dynamic/musl-loader-validation.h')},
         source=registry['musl-1.2.5.tar.gz'], artifacts={str(p): digest(p) for p in sorted(dynamic.PREFIX.rglob('*'))
@@ -278,9 +280,10 @@ def main():
         source_sha256=original, compiler_build_sha256=digest(receipts['compiler']),
         packages_build_sha256=digest(receipts['packages']), program_build_sha256=digest(receipts['program']),
         components=identity['components'], shared_musl=dict(path=str(dynamic_receipt), sha256=digest(dynamic_receipt)))
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Fresh makepkg environment compiled:', out, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

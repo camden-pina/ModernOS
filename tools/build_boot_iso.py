@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Package one selected boot manager and the shared Coast boot payload."""
+from build_state import project_lock
 import argparse
 import os
 from pathlib import Path, PurePosixPath
@@ -304,4 +305,5 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    with project_lock():
+        sys.exit(main())

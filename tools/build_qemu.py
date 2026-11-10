@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build QEMU and its static SDK for Coast, on Linux or natively in Coast."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import hashlib
@@ -102,7 +104,7 @@ def main():
     configuration = out / 'CONFIGURATION.json'
     if configuration.exists() and json.loads(configuration.read_text()) != identity:
         raise ValueError('QEMU build inputs changed; choose a fresh output directory')
-    configuration.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(configuration, json.dumps(identity, indent=2) + '\n')
 
     def run(name, command, cwd, extra=None):
         command = list(map(str, command))
@@ -128,8 +130,8 @@ def main():
         source = out / record['source']
         stamp = source / '.coast-source'
         if not stamp.is_file() or stamp.read_text() != record['sha256']:
-            if source.exists():
-                raise RuntimeError(f'Unrecognized source tree: {source}; use a fresh output root')
+            if source.exists() and stamp.exists():
+                raise RuntimeError(f'Changed source tree: {source}; clean this component before rebuilding')
             # EDK2's host-only X11IncludeHack points into /usr/include.
             # It is unrelated to the shipped x86 BIOS and is never needed.
             def safe_member(member, destination):
@@ -211,7 +213,7 @@ def main():
         changed = [str(p.relative_to(prefix)) for p in prefix.rglob('*') if p.is_file()
                    and not p.is_symlink() and before.get(p.relative_to(prefix)) != sha(p)]
         if changed:
-            inventory.write_text(json.dumps(sorted(set(known_paths) | set(changed)), indent=2) + '\n')
+            atomic_write(inventory, json.dumps(sorted(set(known_paths) | set(changed)), indent=2) + '\n')
         if inventory.is_file():
             sdk_files[name] = json.loads(inventory.read_text())
         return build
@@ -248,7 +250,7 @@ def main():
     meson_stage('libslirp', [], 'libslirp.a')
     meson_stage('libucontext', ['-Dcpu=x86_64', '-Ddocs=false',
                 '-Dc_args=' + repr([*shlex.split(flags), '-Wa,--noexecstack'])], 'libucontext_posix.a')
-    (out / 'SDK.json').write_text(json.dumps(sdk_files, indent=2) + '\n')
+    atomic_write(out / 'SDK.json', json.dumps(sdk_files, indent=2) + '\n')
     if args.dependencies_only:
         return
 
@@ -346,7 +348,7 @@ def main():
                 copy(source / candidate, 'usr/share/licenses/qemu-port/' + name + '/' + candidate)
         copy(vendor / record['archive'], 'usr/src/coast/qemu/vendor/' + record['archive'])
     for path in [Path(__file__), SOURCES, patch, public_key, ROOT / 'Documentation/qemu.md',
-                 ROOT / 'tools/fetch_sources.py', ROOT / 'tools/source_archive.py',
+                 ROOT / 'tools/fetch_sources.py', ROOT / 'tools/source_archive.py', ROOT / 'tools/build_state.py',
                  ROOT / 'tools/linux_uapi.py', ROOT / 'tools/prepare_browser_host.py',
                  ROOT / 'tools/qemu_firmware.py', ROOT / 'ports/qemu/boot_coast.py',
                  ROOT / 'ports/qemu/ninja-session.patch',
@@ -389,7 +391,7 @@ def main():
             version=packages['ninja']['version'], patch_sha256=sha(ROOT / 'ports/qemu/ninja-session.patch'))}
     record['release_supplied_firmware'] = sorted(p.name for p in (runtime / 'usr/share/qemu').iterdir()
                                                 if p.is_file() and p.name not in firmware)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     if args.install_runtime:
         for relative, asset in files.items():
             if relative.startswith('usr/src/'):
@@ -401,4 +403,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

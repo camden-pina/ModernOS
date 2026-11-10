@@ -5,6 +5,8 @@ This builds the application separately from Coast's Electron runtime. Upstream
 NPM lockfiles select build dependencies; native addons are requested from source.
 The generated application still needs image assembly and Coast qualification.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -74,7 +76,7 @@ def main():
             snapshot = history / (digest(source_receipt) + '.json')
             if not snapshot.exists():
                 shutil.copyfile(source_receipt, snapshot)
-            source_receipt.write_text(json.dumps(identity, indent=2) + '\n')
+            atomic_write(source_receipt, json.dumps(identity, indent=2) + '\n')
     else:
         if workspace.exists():
             parser.error('Unrecognized application source workspace; select a fresh output root')
@@ -92,7 +94,7 @@ def main():
         # Upstream postinstall records local repository settings. This generated
         # checkout needs no commits, user identity, remotes or credentials.
         subprocess.run(['git', 'init', '--quiet', '--initial-branch=source-build', str(workspace / 'vscode')], check=True)
-        source_receipt.write_text(json.dumps(identity, indent=2) + '\n')
+        atomic_write(source_receipt, json.dumps(identity, indent=2) + '\n')
     source = workspace / 'vscode'
     host_record = None
     if args.native:
@@ -154,18 +156,18 @@ def main():
         if not patched.exists():
             run('patch', ['bash', '-c', '. "$1"; declare -f > "$2"', 'coast-codeoss',
                 out / 'prepare-prefix.sh', functions], workspace)
-            patched.write_text(json.dumps(dict(source_identity=identity,
+            atomic_write(patched, json.dumps(dict(source_identity=identity,
                 product_sha256=digest(source / 'product.json'),
                 npm_lock_sha256=digest(source / 'package-lock.json')), indent=2) + '\n')
         if not (out / 'INSTALLED.json').exists():
             run('npm', ['bash', out / 'prepare-install.sh'])
             locks = {str(p.relative_to(source)): digest(p) for p in source.rglob('package-lock.json')
                      if 'node_modules' not in p.relative_to(source).parts}
-            (out / 'INSTALLED.json').write_text(json.dumps(dict(lockfiles=locks, host_tools=host_record,
+            atomic_write(out / 'INSTALLED.json', json.dumps(dict(lockfiles=locks, host_tools=host_record,
                 native_addons_requested_from_source=True), indent=2) + '\n')
         if not (out / 'PREPARED.json').exists():
             run('branding', ['bash', '-c', '. "$1"; . "$2"', 'coast-codeoss', functions, out / 'prepare-suffix.sh'])
-            (out / 'PREPARED.json').write_text(json.dumps(dict(source_identity=identity,
+            atomic_write(out / 'PREPARED.json', json.dumps(dict(source_identity=identity,
                 package_sha256=digest(source / 'package.json'), product_sha256=digest(source / 'product.json')),
                 indent=2) + '\n')
     if args.build:
@@ -186,7 +188,7 @@ def main():
             raise ValueError('Upstream build did not produce the application entry point')
         inputs = [Path(__file__), SOURCES, ROOT / 'tools/prepare_electron_host.py',
             ROOT / 'ports/electron/node-host.json', ROOT / 'tools/fetch_sources.py', ROOT / 'tools/source_archive.py', PACKAGING_PATCH]
-        (out / 'BUILD.json').write_text(json.dumps(dict(version=pins['release'], sources=pins,
+        atomic_write(out / 'BUILD.json', json.dumps(dict(version=pins['release'], sources=pins,
             application_directory=str(products), commands=commands,
             files={str(p.relative_to(products)): dict(path=str(p), sha256=digest(p))
                    for p in sorted(products.rglob('*')) if p.is_file()},
@@ -204,7 +206,7 @@ def main():
         gulpfile = source / 'build/gulpfile.vscode.ts'
         if not stamp.exists():
             run('packaging-patch', ['patch', '-p1', '-i', PACKAGING_PATCH])
-            stamp.write_text(json.dumps(dict(patch_sha256=digest(PACKAGING_PATCH),
+            atomic_write(stamp, json.dumps(dict(patch_sha256=digest(PACKAGING_PATCH),
                 gulpfile_sha256=digest(gulpfile)), indent=2) + '\n')
         expected = json.loads(stamp.read_text())
         if expected != dict(patch_sha256=digest(PACKAGING_PATCH), gulpfile_sha256=digest(gulpfile)):
@@ -215,7 +217,7 @@ def main():
         application = workspace / 'Coast-application-linux-x64/resources/app'
         if not all((application / relative).is_file() for relative in ['package.json', 'product.json', 'out/main.js']):
             raise ValueError('Incomplete packaged Code OSS application')
-        packaged.write_text(json.dumps(dict(version=pins['release'],
+        atomic_write(packaged, json.dumps(dict(version=pins['release'],
             application_directory=str(application), compilation_receipt_sha256=digest(compilation),
             files={str(p.relative_to(application)): dict(path=str(p), sha256=digest(p))
                    for p in sorted(application.rglob('*')) if p.is_file()},
@@ -227,4 +229,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

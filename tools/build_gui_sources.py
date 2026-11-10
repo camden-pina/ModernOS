@@ -6,10 +6,13 @@ package exported for the Coast runtime is built from its checksum-pinned source
 and Debian patches. No package is installed on the host. Completed source
 packages are verified and reused on restart; failed builds retain their logs.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import hashlib
 import json
+import secrets
 from pathlib import Path
 import shlex
 import shutil
@@ -25,8 +28,38 @@ SOURCES = ROOT / 'ports/chromium/gui-sources.json'
 
 def atomic_json(path, value):
     temporary = path.with_suffix('.json.part')
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
+    atomic_write(temporary, json.dumps(value, indent=2, sort_keys=True) + '\n')
     temporary.replace(path)
+
+
+
+def prepare_container(out, pins, runner=None):
+    runner = runner or subprocess.run
+    container = 'coast-gui-' + hashlib.sha256(str(out).encode()).hexdigest()[:16]
+    label = 'io.coast.source-build'
+    def host(command, **kwargs):
+        return runner(list(map(str, command)), check=True, stdin=subprocess.DEVNULL, **kwargs)
+    binding = secrets.token_hex(16)
+    atomic_write(out / '.coast-container-binding', binding)
+    exists = runner(['podman', 'container', 'exists', container], check=False).returncode == 0
+    if exists:
+        info = json.loads(runner(['podman', 'inspect', container], check=True, capture_output=True, text=True).stdout)[0]
+        if info['Config']['Labels'].get(label) != str(out) or info['ImageName'] != pins['container_image']:
+            raise ValueError('The existing container does not belong to this source build')
+        host(['podman', 'start', container], stdout=subprocess.DEVNULL)
+        mounted = runner(['podman', 'exec', container, 'cat', '/work/.coast-container-binding'], capture_output=True, text=True)
+        if mounted.returncode or mounted.stdout != binding:
+            # A previously deleted/recreated host directory can leave a valid
+            # container attached to the old inode. Never build into that mount.
+            host(['podman', 'rm', '-f', container], stdout=subprocess.DEVNULL)
+            exists = False
+    if not exists:
+        (out / 'ENVIRONMENT.json').unlink(missing_ok=True)
+        host(['podman', 'create', '--name', container, '--label', label + '=' + str(out),
+            '--platform', 'linux/amd64', '--volume', str(out) + ':/work',
+            pins['container_image'], 'sleep', 'infinity'], stdout=subprocess.DEVNULL)
+        host(['podman', 'start', container], stdout=subprocess.DEVNULL)
+    return container
 
 
 def main():
@@ -79,16 +112,7 @@ def main():
         if result.returncode:
             raise RuntimeError('GUI source stage failed; see ' + str(out / 'logs' / (log + '.log')))
 
-    exists = subprocess.run(['podman', 'container', 'exists', container], check=False).returncode == 0
-    if exists:
-        info = json.loads(subprocess.check_output(['podman', 'inspect', container], text=True))[0]
-        if info['Config']['Labels'].get(label) != str(out) or info['ImageName'] != pins['container_image']:
-            raise ValueError('The existing container does not belong to this source build')
-    else:
-        host(['podman', 'create', '--name', container, '--label', label + '=' + str(out),
-            '--platform', 'linux/amd64', '--volume', str(out) + ':/work',
-            pins['container_image'], 'sleep', 'infinity'], stdout=subprocess.DEVNULL)
-    host(['podman', 'start', container], stdout=subprocess.DEVNULL)
+    prepare_container(out, pins)
     try:
         if not (out / 'ENVIRONMENT.json').exists():
             snapshot = pins['snapshot']
@@ -187,4 +211,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

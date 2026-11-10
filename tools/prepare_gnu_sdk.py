@@ -5,6 +5,8 @@ The resulting sysroot is separate from Coast's MUSL SDK. Linux build tools can
 use its wrappers to avoid introducing newer host GLIBC/GLIBCXX requirements
 into application addons. The wrappers do not run the compiled target programs.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 from pathlib import Path, PurePosixPath
@@ -93,7 +95,7 @@ def main():
         path.write_text('#!/bin/sh\nexec ' + shlex.join(command) + ' "$@"\n')
         path.chmod(0o755)
         commands[name] = command
-    (out / 'SDK.json').write_text(json.dumps(dict(
+    atomic_write(out / 'SDK.json', json.dumps(dict(
         state='source-built GNU SDK staged; consumer qualification required',
         component_build_sha256={name: digest(path) for name, path in receipts.items()},
         files=staged, aliases=aliases, compiler_commands=commands,
@@ -104,4 +106,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

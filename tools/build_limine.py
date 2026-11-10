@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Compile Limine BIOS/UEFI boot files from the checksum-pinned source release."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -57,10 +59,11 @@ def main():
         if not path.is_file():
             raise ValueError('Missing source-built boot file: ' + str(path))
         products[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    (out / 'BUILD.json').write_text(json.dumps(dict(source=source_record, products=products, compiler=args.compiler,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(source=source_record, products=products, compiler=args.compiler,
                                                    source_built=True), indent=2) + '\n')
     print('Source-built bootloader:', build / 'bin')
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

@@ -16,7 +16,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential clang lld nasm mtools xorriso python3 curl bzip2 xz-utils gnupg
       - name: Check publication, source fetching, boot configuration and host services
         run: |
-          make source-check test-source-tree test-source-fetch test-desktop-assembly test-build-config test-electron-admission test-runtime-fixture test-acpi-host test-power-host test-efi-loader test-boot-config
+          make source-check test-source-tree test-source-fetch test-desktop-assembly test-build-config test-build-progress test-electron-source-sync test-build-lifecycle test-optional-apps test-electron-admission test-runtime-fixture test-acpi-host test-power-host test-efi-loader test-boot-config
           python3 -B tools/test_package_configuration.py
           python3 -B tools/test_build_workflows.py
       - name: Compile the kernel, desktop and boot components from a fresh checkout

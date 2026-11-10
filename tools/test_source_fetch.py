@@ -80,6 +80,39 @@ class SourceFetchTest(unittest.TestCase):
         self.assertEqual(archive.read_bytes(), self.payload)
         self.assertEqual(list(self.directory.iterdir()), [archive])
 
+    def test_interrupted_transfer_resumes_only_verified_pinned_bytes(self):
+        def interrupted(command, **kw):
+            Path(command[command.index('--output') + 1]).write_bytes(self.payload[:9])
+            raise KeyboardInterrupt
+        with patch('fetch_sources.subprocess.run', side_effect=interrupted):
+            with self.assertRaises(KeyboardInterrupt):
+                fetch(self.entry, self.directory)
+        self.assertFalse((self.directory / self.entry['archive']).exists())
+        def resume(command, **kw):
+            self.assertIn('--continue-at', command)
+            partial = Path(command[command.index('--output') + 1])
+            self.assertEqual(partial.read_bytes(), self.payload[:9])
+            with partial.open('ab') as stream:
+                stream.write(self.payload[9:])
+        with patch('fetch_sources.subprocess.run', side_effect=resume):
+            fetch(self.entry, self.directory)
+        self.assertEqual((self.directory / self.entry['archive']).read_bytes(), self.payload)
+
+    def test_server_without_range_support_restarts_with_checksum_verification(self):
+        partial = self.directory / ('.' + self.entry['archive'] + '.' + self.entry['sha256'][:16] + '.part')
+        partial.write_bytes(self.payload[:4])
+        attempts = []
+        def download(command, **kw):
+            attempts.append(command[:])
+            if '--continue-at' in command:
+                raise subprocess.CalledProcessError(33, command)
+            Path(command[command.index('--output') + 1]).write_bytes(self.payload)
+        with patch('fetch_sources.subprocess.run', side_effect=download):
+            fetch(self.entry, self.directory)
+        self.assertEqual(len(attempts), 2)
+        self.assertIn('--continue-at', attempts[0])
+        self.assertNotIn('--continue-at', attempts[1])
+
     def test_bad_download_and_network_error_leave_no_archive(self):
         def bad_download(command, **kwargs):
             Path(command[command.index('--output') + 1]).write_bytes(b'wrong upstream data')
@@ -132,7 +165,7 @@ class SourceFetchTest(unittest.TestCase):
             self.assertEqual(primary_attempts[0][primary_attempts[0].index('--retry') + 1], '0')
             archive.unlink()
 
-    def test_all_mirrors_failing_leave_no_archive(self):
+    def test_all_mirrors_failing_preserve_partial_for_resume(self):
         entry = dict(self.entry, mirrors=['https://mirror.invalid/fixture.tar.gz'])
 
         def download(command, **kwargs):
@@ -144,7 +177,10 @@ class SourceFetchTest(unittest.TestCase):
                 fetch(entry, self.directory)
         self.assertEqual([call.args[0][-1] for call in transfer.call_args_list],
                          [entry['url'], entry['mirrors'][0], entry['mirrors'][0]])
-        self.assertEqual(list(self.directory.iterdir()), [])
+        self.assertFalse((self.directory / entry['archive']).exists())
+        partials = list(self.directory.glob('.*.part'))
+        self.assertEqual(len(partials), 1)
+        self.assertEqual(partials[0].read_bytes(), b'partial')
 
     def test_custom_mirror_is_tried_before_upstream_and_package_mirrors(self):
         entry = dict(self.entry, mirrors=['https://backup.invalid/fixture.tar.gz'])

@@ -1,7 +1,7 @@
 # Coast development handoff
 
 Repository: https://github.com/camden-pina/ModernOS.git. Work on `main`, tracking
-`origin/main`. The committed baseline before this cleanup is `944e211`.
+`origin/main`. The committed baseline before this recovery/app-selection change is `c8aced2`.
 
 ## Build and run
 
@@ -12,9 +12,12 @@ make iso
 make run
 ```
 
-There is one Coast OS build. `make iso` always builds the kernel, desktop,
-Chromium, Code OSS, compiler, Python, Coast Packages/makepkg, Qt and QEMU with
-its viewer. The build pipeline includes all 22 component stages unconditionally.
+There is one Coast OS build. Plain `make iso` includes the kernel, desktop,
+Chromium, Code OSS, compiler, Python, Coast Packages/makepkg, Qt and QEMU/viewer.
+The default pipeline has 22 component stages plus source/runtime preparation,
+assembly and optional qualification. `APPS` and `WITHOUT` select optional apps;
+build requirements and installed-app requirements are separate. Keep one public
+`make iso`/`make run` interface without named image editions.
 `make run` boots `build/coast/image/Coast.iso` without rebuilding it.
 
 Keep the README quickstart to setup, `make menuconfig`, `make iso`, `make run`. Build parallelism,
@@ -27,14 +30,56 @@ validated TOML. Make loads it automatically; command-line variables override
 saved values. `CONFIG=path` selects another settings file, and the wizard's
 load/save controls support reusing configurations. `make config` is the plain
 questionnaire; `make defconfig` saves defaults with an `.old` backup.
-Configuration does not run builds, install host packages or start VMs.
+The app fields explain runtime dependencies. Configuration does not run builds,
+install host packages or start VMs.
 `make test-build-config` checks persistence, literal arguments and Make overrides.
+
+The Electron source sync fetches depot_tools at depth one and uses gclient
+`--no-history` without extra tags/branch heads. Its `.gclient` disables global
+Git mirrors. All 170 source revisions, patches, overlays and build arguments
+remain pinned. `make test-electron-source-sync` checks real local shallow Git
+fetches, patches, hooks and rejection of unexpected revisions.
+
+`make iso` shows stage progress, elapsed time, tool counters, recent log output
+and source Git bytes/rates. Unknown totals use an activity bar. Complete component
+logs stay in `ISO_BUILD/logs/`. Ctrl+C stops the stage's process group;
+`make test-build-progress` checks logging, counters and child shutdown.
+
+`tools/build_components.py` owns the app/build dependency graphs. Code OSS
+requires Bash and shares Electron/Chromium with the browser. The viewer requires
+QEMU/Python/Chromium; Packages requires makepkg/Python; makepkg requires
+GCC/Python/Bash. Omitting a prerequisite omits dependent apps with an explanation.
+An explicit `ADD` restores its app/runtime prerequisites despite saved omissions.
+`make build COMPONENT=chromium` builds the app/prerequisites without an ISO;
+`make iso ADD=chromium` adds it to the last ISO selection. `SELECTION.json`
+preserves that selection when component work invalidates `MANIFEST.json`.
+
+`tools/build_state.py` supplies durable writes and the shared lifecycle lock.
+`tools/build_session.py` verifies component/source/dependency identities, records
+`STATE.json`, retains compatible object trees and restarts one-shot staging.
+Managed Electron sync resumes fetch/patch/hooks/overlays using `SYNC.json`.
+Pinned archive downloads retain range-resumable partials; transactional archive
+extraction publishes complete source trees. Qualification checkpoints passed
+phases against the exact image/manifest/harness and records omitted-app suites
+as skipped. This is phase/tool-level recovery, not checkpointing a compiler or
+running VM. Keep the documented recovery limits honest.
 
 The setup command explicitly installs Ubuntu/Debian host prerequisites.
 Do not install host packages as part of agent verification.
 `python3 -B tools/setup_host.py --check` checks prerequisites without installing.
 
 ## Validation evidence
+
+The focused recovery/app-selection suite passes 102 host/fixture checks, including
+39 lifecycle cases. Coverage includes dependency
+closures, selected ISO payloads, package dependency records, static/dynamic ELF
+checks, configuration/Make arguments, interrupted download/sync/hooks, archive
+extraction, component retries, atomic receipts and selective/full cleanup.
+Desktop launcher availability has a production C test; the desktop compiles.
+Source-fetch tests retain checksum/TLS behavior. Existing sanitizer-based snap,
+damage and transition checks pass. Exact command results and cleanup records
+are kept under `build/maintenance-checks/` and indexed by `READINESS.json`.
+No full Electron rebuild or new guest qualification is claimed for this change.
 
 The integrated desktop passed all 11 guest qualification phases, including
 signed package operations, makepkg, Qt USB/clipboard and nested QEMU through
@@ -50,8 +95,8 @@ and documentation does not change historical qualification results.
 
 Local evidence and exact artifact paths are in `build/maintenance-checks/`.
 `READINESS.json` indexes source/host checks, HTTP/TLS/Git guest checks, desktop
-launch checks, boot-component checks and command-plan verification. No builds
-or VMs are to be run for this command/documentation cleanup, as requested.
+launch checks, boot-component checks and command-plan verification. Do not launch a full Electron compile just to check orchestration or naming.
+The new app-selection path has not been guest-qualified in this turn.
 Kernel/userland regression checks manage their own internal fixtures.
 
 ## Preserve local state
@@ -64,10 +109,23 @@ applications, VMs, private state or files outside this project.
 and `build/cleanup-records/` record reviewed cleanup. Local implementation notes
 are under ignored `build/local-notes/`.
 
-`tools/clean_cache.py` previews regenerable caches; `--apply` removes its selected
-paths. `--intermediates` verifies completed Electron/Node receipts before
-selecting object/debug trees. Keep downloads and usable SDKs unless a specific
-maintenance task authorizes their deletion.
+`make clean PREVIEW=1` shows exact removals and dependency invalidations.
+`make clean` retains source/download caches; `COMPONENT=...` selects individual
+apps/components or cache/log/test categories. `ALL=1` resets generated storage;
+`KEEP='sources downloads toolchains images logs tests'` retains selected classes.
+Explicit source cleanup invalidates the shared runtime and its consumers.
+The cleaner checks the current ISO app selection, protects selected targets,
+public sources/configuration/private state, refuses unsafe external roots and
+journals before removal. Pinned upstream key/config fixtures are checked against
+Git/source-archive provenance before removal; private edits keep coherent source
+trees and their preparation records. FIFO/socket cleanup is covered as well. Build roots and external Kbuild outputs are registered;
+named wizard settings under build/ are registered for protection as well.
+
+The canceled shallow sync must keep completed repository objects and its
+recovery checkpoint. Clear abandoned Git pack/lock files only after checking
+that the build stopped. `COMPONENT=cache` includes those managed sync leftovers.
+`tools/clean_cache.py` remains the narrower product-preserving cache cleaner.
+See [cleanup/recovery](repository-cleanup.md) for precise scope and KEEP rules.
 
 ## Publication
 

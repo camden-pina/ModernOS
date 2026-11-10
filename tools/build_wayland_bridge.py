@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Build the Chromium/Code OSS bridge and Wayland SDK from pinned C sources."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -71,8 +74,7 @@ def main():
         fetch(record, vendor)
         source = out / ('wayland-1.21.0' if name == 'wayland' else 'libffi-3.5.2')
         if not source.exists():
-            with tarfile.open(vendor / record['archive']) as archive:
-                archive.extractall(out, filter='data')
+            unpack(vendor / record['archive'], out, filter='data')
     source, prefix, host = out / 'wayland-1.21.0', out / 'sdk', out / 'host'
     flags = '-std=gnu11 -O2 -g0 -fPIC -fno-stack-protector -mno-avx -mno-avx2'
     ar = 'ar' if args.cc else str(cross) + 'ar'
@@ -113,7 +115,7 @@ def main():
     generated = out / 'generated'
     generated.mkdir(exist_ok=True)
     keymap = (ROOT / 'ports/wayland/keymap-us.xkb').read_text()
-    (generated / 'keymap-us.h').write_text('/* Fixed US XKB map; see ports/wayland/xkeyboard-config-COPYING. */\n'
+    atomic_write(generated / 'keymap-us.h', '/* Fixed US XKB map; see ports/wayland/xkeyboard-config-COPYING. */\n'
         'static const char k1_keymap[] = ' + json.dumps(keymap) + ';\n'
         + ''.join(f'#define K1_XKB_{name} (1u << {index})\n' for name, index in
                   [('Shift', 0), ('Lock', 1), ('Control', 2), ('Mod1', 3), ('Mod2', 4), ('Mod4', 6)]))
@@ -168,7 +170,7 @@ def main():
     for name, product in products.items():
         if name != 'trash-put' and 'INTERP' in subprocess.check_output(['readelf', '-l', product['path']], text=True):
             raise ValueError('The display bridge must use its source-built static SDK')
-    (out / 'BUILD.json').write_text(json.dumps(dict(products=products, sources=source_records,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(products=products, sources=source_records,
         source_sha256={str(p.relative_to(ROOT)): sha(p) for p in [*bridge.iterdir(), Path(__file__),
             ROOT / 'userland/chromium-browser/network-check.c', ROOT / 'userland/network-check.c'] if p.is_file()},
         application_sdk_sha256=sha(args.gnu_sdk / 'APPLICATION-SDK.json') if args.gnu_sdk else None,
@@ -177,4 +179,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

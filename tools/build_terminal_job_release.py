@@ -2,6 +2,8 @@
 """Build a separate job-control kernel/GUI image from an explicit immutable base.
 No host packages, credentials, raw disks, networking or running VMs are used.
 """
+from build_state import project_lock
+from build_state import atomic_write
 from pathlib import Path
 import argparse,hashlib,io,json,subprocess,tarfile
 
@@ -45,5 +47,7 @@ def main():
  iso=O/('Coast-Terminal-Jobs'+('-native' if a.preset=='native' else '')+'-tested.iso')
  run(['python3','-B',R/'tools/build_boot_iso.py','--bootloader','limine','--config',conf,'--kernel',kernel,'--initramfs',ram,'--source-root',R,'--root',O/'iso-root','--output',iso,'--limine-dir',R/'build/limine-binary'])
  assert sha(base)==basehash and sha(frozen)==frozenhash,'Preserved input changed'
- record={'iso':str(iso),'iso_sha256':sha(iso),'base_iso':str(base),'base_iso_sha256':basehash,'kernel':str(kernel),'kernel_sha256':sha(kernel),'original_frozen_kernel_sha256':frozenhash,'gui_sha256':sha(gui),'fixture_sha256':sha(fixture),'preset':a.preset,'resolution':resolution,'default_scale':150 if a.preset=='native' else 100,'fresh_default_shell':'GNU Bash; existing per-profile selection remains authoritative','validation':'not yet run; filename is a release convention, not a validation claim','extra_disks_or_network':False};(O/'MANIFEST.json').write_text(json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))
-if __name__=='__main__':main()
+ record={'iso':str(iso),'iso_sha256':sha(iso),'base_iso':str(base),'base_iso_sha256':basehash,'kernel':str(kernel),'kernel_sha256':sha(kernel),'original_frozen_kernel_sha256':frozenhash,'gui_sha256':sha(gui),'fixture_sha256':sha(fixture),'preset':a.preset,'resolution':resolution,'default_scale':150 if a.preset=='native' else 100,'fresh_default_shell':'GNU Bash; existing per-profile selection remains authoritative','validation':'not yet run; filename is a release convention, not a validation claim','extra_disks_or_network':False};atomic_write(O/'MANIFEST.json', json.dumps(record,indent=2)+'\n');print(json.dumps(record,indent=2))
+if __name__ == '__main__':
+    with project_lock():
+        main()

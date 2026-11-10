@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Build a bootable native Coast desktop from source on Linux or inside Coast.
 
-This small image contains the kernel, desktop, account helpers and native shell
-tools. Chromium and third-party application ports are separate build products.
+This internal component supplies the kernel, desktop, account helpers and
+native shell tools to the OS assembler and boot tests.
 No existing ISO, compiled guest payload or private artifact directory is read.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -72,11 +74,13 @@ def main():
         if not source.exists():
             unpack(ROOT / 'userland/vendor/musl-1.2.5.tar.gz', out)
         prefix = out / 'musl'
-        if not (prefix / 'bin/musl-gcc').exists():
+        installed = prefix / '.coast-installed.json'
+        if not installed.exists() or not all((prefix / name).is_file() for name in ('bin/musl-gcc', 'lib/libc.a', 'lib/crt1.o')):
             env = {**os.environ, 'CC': 'gcc', 'CFLAGS': '-O2 -std=gnu11 -fno-pie -mno-avx -mno-avx2'}
             run([source / 'configure', '--prefix=' + str(prefix), '--disable-shared'], env, source)
             run(['make', '-j' + str(args.jobs)], env, source)
             run(['make', 'install'], env, source)
+            atomic_write(installed, json.dumps(dict(source_sha256=sources['musl-1.2.5.tar.gz']['sha256'], complete=True)) + '\n')
         compiler = str(prefix / 'bin/musl-gcc')
     environment = {**os.environ, 'COAST_PORTS_CC': compiler, 'COAST_BUILD_JOBS': str(args.jobs),
         'COAST_PORTS_BUILD': str(out / 'busybox-build'), 'COAST_PORTS_BIN': str(out / 'programs'),
@@ -114,7 +118,7 @@ def main():
          '--limine-dir', out / 'limine/output/bin'])
     if source_identity() != sources_before:
         raise ValueError('Native desktop sources changed during compilation')
-    (out / 'BUILD.json').write_text(json.dumps(dict(iso=str(image), iso_sha256=sha(image),
+    atomic_write(out / 'BUILD.json', json.dumps(dict(iso=str(image), iso_sha256=sha(image),
         initramfs=str(initramfs), initramfs_sha256=sha(initramfs),
         source_sha256=sources_before,
         kernel_sha256=sha(kernel), programs={n: sha(programs / n) for n in names},
@@ -124,4 +128,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

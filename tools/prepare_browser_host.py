@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Prepare verified browser build tools locally; no system installation needed."""
+from source_archive import unpack
+from build_state import project_lock
 import argparse
 import fcntl
 import hashlib
@@ -62,8 +64,7 @@ def prepare_archive(entry, cache):
     with tempfile.TemporaryDirectory(prefix='.browser-host-', dir=host) as temporary:
         staging = Path(temporary)
         if entry['kind'] == 'tar':
-            with tarfile.open(archive) as contents:
-                contents.extractall(staging, filter='data')
+            unpack(archive, staging, filter='data')
             unpacked = staging / entry['directory']
         else:
             unpacked = staging / 'unpacked'
@@ -133,8 +134,7 @@ def prepare_ruby(root, cache, jobs):
     source = cache / 'ruby-3.4.7'
     if not (source / 'configure').is_file():
         with tempfile.TemporaryDirectory(prefix='.ruby-extract-', dir=cache) as temporary:
-            with tarfile.open(root / 'userland/vendor' / entry['archive']) as archive:
-                archive.extractall(temporary, filter='data')
+            unpack(root / 'userland/vendor' / entry['archive'], temporary, filter='data')
             extracted = Path(temporary) / 'ruby-3.4.7'
             if not (extracted / 'configure').is_file():
                 raise ValueError('The pinned Ruby source archive is incomplete')
@@ -205,7 +205,8 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
-        raise SystemExit(str(error)) from error
+    with project_lock():
+        try:
+            main()
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
+            raise SystemExit(str(error)) from error

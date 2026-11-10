@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build pinned static Clang/LLD for Coast with matching source-built generators."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -162,7 +164,7 @@ def main():
         snapshot = history / (digest(configuration) + '.json')
         if not snapshot.exists():
             shutil.copyfile(configuration, snapshot)
-    configuration.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(configuration, json.dumps(identity, indent=2) + '\n')
     run('configure', [args.cmake, '-S', source / 'llvm', '-B', build, *common, *cross, *compression,
         '-DCMAKE_INSTALL_PREFIX=/usr', '-DCMAKE_C_COMPILER=' + prefix + 'gcc',
         '-DCMAKE_CXX_COMPILER=' + prefix + 'g++', '-DCMAKE_AR=' + prefix + 'ar',
@@ -208,7 +210,7 @@ def main():
                 shutil.copyfile(path, destination)
     inputs = [Path(__file__), SOURCES, PATCH, zlib_pin, ROOT / 'tools/linux_uapi.py',
         ROOT / 'tools/source_archive.py', ROOT / 'tools/source_tree.py']
-    (out / 'BUILD.json').write_text(json.dumps(dict(version=record['version'], source=record,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version=record['version'], source=record,
         files={str(p.relative_to(runtime)): dict(path=str(p), sha256=digest(p),
             mode=0o755 if p.stat().st_mode & 0o111 else 0o644)
             for p in sorted(runtime.rglob('*')) if p.is_file() and not p.is_symlink()}, aliases=aliases,
@@ -220,4 +222,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

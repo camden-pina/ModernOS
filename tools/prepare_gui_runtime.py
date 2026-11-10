@@ -5,6 +5,8 @@ Debian GUI libraries are binary bootstrap inputs, never host executables.
 Their package scripts are not run. glibc, libgcc and libstdc++ come exclusively
 from the supplied source-build receipts. This is not a GTK/NSS source builder.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import io
@@ -162,7 +164,7 @@ def main():
         if missing := set(needed) - available:
             raise ValueError('Missing GUI library dependencies for ' + name + ': ' + ', '.join(sorted(missing)))
         closure[name] = needed
-    (out / 'BUILD.json').write_text(json.dumps(dict(
+    atomic_write(out / 'BUILD.json', json.dumps(dict(
         state='GNU GUI runtime staged; Coast image qualification pending', files=files, aliases=aliases,
         needed=closure, component_build_sha256={name: digest(path) for name, path in receipts.items()},
         bootstrap_manifest_sha256=None if source_build else digest(PINS),
@@ -177,4 +179,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

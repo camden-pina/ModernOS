@@ -5,6 +5,8 @@ Only pinned host GN/Ninja execute. Original sources/build outputs are mounted
 read-only; generated files land in an exact-path private reflinked build view.
 This preparation never builds or launches the guest application.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -33,7 +35,7 @@ def main():
         overlays[source/'v8/src/builtins/x64/builtins-x64.cc']=ROOT/'userland/electron-runtime/v8_builtins_x64.cc'
         overlays[source/'v8/BUILD.gn']=ROOT/'userland/electron-runtime/v8_BUILD.gn'
     baseline={str(path):sha(path) for path in [cached/'electron',cached/'args.gn',*overlays,*overlays.values()]}
-    (out/'BASELINE.json').write_text(json.dumps(baseline,indent=2)+'\n')
+    atomic_write(out/'BASELINE.json', json.dumps(baseline,indent=2)+'\n')
     frozen=out/'source-overlays';frozen.mkdir()
     for target,replacement in list(overlays.items()):
         path=frozen/replacement.name;path.write_bytes(replacement.read_bytes());overlays[target]=path
@@ -78,7 +80,9 @@ def main():
                 host_editor_execution=False,gn_args_sha256=sha(view/'args.gn'),
                 lite_mode=a.lite_mode,drumbrake_explicit_bounds_checks=True,source_overlay_hashes={str(v):sha(v) for v in overlays.values()},
                 plan_sha256=sha(out/'ninja-plan.log'))
-    (out/'PLAN.json').write_text(json.dumps(record,indent=2)+'\n')
+    atomic_write(out/'PLAN.json', json.dumps(record,indent=2)+'\n')
     print('Prepared',len(steps),'steps; compilers',record['compiler_steps'],flush=True)
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

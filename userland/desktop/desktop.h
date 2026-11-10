@@ -35,6 +35,16 @@ typedef enum {
   APP_CHROMIUM,
   APP_COUNT
 } App;
+/* Optional app launchers are present only when included in the image. */
+static inline bool app_available(App app) {
+  const char *path = app == APP_CHROMIUM ? "/bin/chromium-wayland" :
+      app == APP_WORKBENCH ? "/bin/codeoss-wayland" :
+      app == APP_CODE ? "/bin/codeoss-launch" :
+      app == APP_QT ? "/usr/bin/qt6-demo" :
+      app == APP_GAME ? "/bin/doom" : NULL;
+  struct os_stat executable;
+  return !path || stat(path, &executable) == 0;
+}
 /* Applications using the desktop's native copied-pixel window service. */
 static inline bool native_window_app(App app) {
   return app == APP_GAME || app == APP_WORKBENCH || app == APP_QT || app == APP_CHROMIUM;

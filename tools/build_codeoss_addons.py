@@ -6,6 +6,8 @@ Static ELF/ABI checks precede image assembly. Loading the modules inside Coast
 is a separate qualification step. Rust and authentication binaries are outside
 this C/C++ recipe's coverage.
 """
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 import os
@@ -130,7 +132,7 @@ def main():
         modules[name] = dict(version=version, source_sha256=source_hashes, command=command, log_sha256=digest(log))
         print('Built and checked GNU ABI for ' + name, flush=True)
     inputs = [Path(__file__), MODULES, HEADERS, ROOT / 'tools/prepare_electron_host.py', ROOT / 'ports/electron/node-host.json']
-    (out / 'BUILD.json').write_text(json.dumps(dict(
+    atomic_write(out / 'BUILD.json', json.dumps(dict(
         state='C/C++ native modules source compiled; Coast loading qualification pending', files=products, modules=modules,
         application_source_receipt_sha256=digest(source_build / 'SOURCE.json'),
         sdk_receipt_sha256=digest(sdk / 'APPLICATION-SDK.json'), header_archive_sha256=header_pin['sha256'],
@@ -143,4 +145,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

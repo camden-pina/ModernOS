@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Prepare a guest-only Node CLI from a completed, readonly V8 runtime graph."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse,hashlib,json,re,shutil,subprocess
 from pathlib import Path
 
@@ -72,7 +74,9 @@ def main():
             'source_overlays':[{'original':str(original),'frozen':str(frozen),'sha256':sha(frozen)} for original,policy,frozen in overlays],
             'features':{**built['features'],'allocator_zero_segment_contract':True,
                         'standalone_node_child_process':True},'guest_execution_on_host':False}
-    (out/'PLAN.json').write_text(json.dumps(output,indent=2)+'\n')
+    atomic_write(out/'PLAN.json', json.dumps(output,indent=2)+'\n')
     print('Prepared native Node CLI:',len(steps),'steps,',compiler_steps,'compiler steps',flush=True)
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Cross-build the upstream Arch package tools and their OpenPGP dependencies."""
+from source_archive import unpack, unpack_zip
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -96,24 +99,15 @@ def main():
     def source_for(name):
         package = SOURCES[name]
         archive = vendor / package['archive']
-        if not archive.exists():
-            pending = archive.with_suffix(archive.suffix + '.download')
-            try:
-                with urllib.request.urlopen(package['url'], timeout=90) as response, pending.open('wb') as stream:
-                    shutil.copyfileobj(response, stream)
-                assert sha(pending) == package['sha256']
-                pending.replace(archive)
-            finally:
-                pending.unlink(missing_ok=True)
+        from fetch_sources import fetch
+        fetch(package, vendor)
         assert sha(archive) == package['sha256'], name
         source = out / package['source']
         if not source.exists():
             if name == 'meson':
-                with zipfile.ZipFile(archive) as bundle:
-                    bundle.extractall(source)
+                unpack_zip(archive, source)
             else:
-                with tarfile.open(archive) as bundle:
-                    bundle.extractall(out, filter='data')
+                unpack(archive, out, filter='data')
         return source
 
     # Public dependency headers only. Never expose the browser's libc headers.
@@ -212,19 +206,20 @@ def main():
         if name=='libarchive':
             assert '#define ARCHIVE_CRYPTO_SHA256_OPENSSL 1' in (build/'config.h').read_text(),'package-file hashes require a real crypto provider'
         assert {str(p.relative_to(source)): sha(p) for p in source.rglob('*') if p.is_file() and not p.is_symlink()} == snapshot
-        (out / (name + '-SOURCES.json')).write_text(json.dumps(snapshot, indent=2) + '\n')
+        atomic_write(out / (name + '-SOURCES.json'), json.dumps(snapshot, indent=2) + '\n')
     assert {str(p.relative_to(ROOT)): sha(p) for p in inputs} == original, 'Recipe changed during compilation'
     artifacts = {str(p):sha(p) for folder in [out/'install',prefix/'bin',prefix/'lib'] for p in folder.rglob('*')
                  if p.is_file() and not p.is_symlink()}
-    (out / 'COMPILATION.json').write_text(json.dumps(dict(state='compiled; guest validation pending', sources=SOURCES,
+    atomic_write(out / 'COMPILATION.json', json.dumps(dict(state='compiled; guest validation pending', sources=SOURCES,
         source_sha256=original, commands=commands, confinement=confinement, target_host_executed=False,
         dependency_receipt=dict(path=str(dependency_receipt),sha256=sha(dependency_receipt)),
         native_build_sha256=sha(args.native_build/'BUILD.json') if args.native_build else None,
         reused_dependencies=reused), indent=2) + '\n')
     receipt=json.loads((out/'COMPILATION.json').read_text())
     receipt['artifacts']=artifacts
-    (out/'COMPILATION.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    atomic_write(out/'COMPILATION.json', json.dumps(receipt,indent=2)+'\n')
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

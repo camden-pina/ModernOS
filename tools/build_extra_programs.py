@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Cross-build additional upstream programs; never execute a target on the host."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -125,8 +128,7 @@ def main():
         assert sha(archive) == package['sha256'], name
         source, build = out / package['source'], out / (name + '-build')
         if not source.exists():
-            with tarfile.open(archive) as bundle:
-                bundle.extractall(out, filter='data')
+            unpack(archive, out, filter='data')
         before = source_tree(source)
         build.mkdir(exist_ok=True)
         if name in ('ninja', 'zstd', 'lz4'):
@@ -193,7 +195,7 @@ def main():
             assert 'Advanced Micro Devices X86-64' in elf and 'INTERP' not in elf and ' RWE ' not in elf, binary
             copy(binary, 'usr/bin/' + command)
         assert source_tree(source) == before, 'Upstream sources changed: ' + name
-        (out / (name + '-SOURCES.json')).write_text(json.dumps(before, indent=2) + '\n')
+        atomic_write(out / (name + '-SOURCES.json'), json.dumps(before, indent=2) + '\n')
         copy(archive, 'usr/src/coast/extra-programs/' + archive.name)
         for path in sorted(source.rglob('*')):
             if path.is_file() and (path.name.startswith(('COPYING', 'LICENSE')) or path.name == 'Copyright'):
@@ -226,7 +228,7 @@ def main():
                                                         sha256=sha(out / (name + '-SOURCES.json')))
                                               for name in compiled},
                   confinement=confinement, commands=commands, target_host_executed=False)
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     if args.install_runtime:
         for relative, asset in record['files'].items():
             target = ROOT / 'userland/runtime' / relative
@@ -243,4 +245,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

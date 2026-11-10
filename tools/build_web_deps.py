@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Offline static musl libraries for Git HTTPS and native image/font tools."""
+from source_archive import unpack
+from build_state import project_lock
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -69,8 +71,7 @@ def package(archive, configure, env, install='install'):
         return source
     if source.exists():
         shutil.rmtree(source)
-    with tarfile.open(VENDOR / archive) as contents:
-        contents.extractall(SOURCE, filter='data')
+    unpack(VENDOR / archive, SOURCE, filter='data')
     name = directory.replace('/', '-')
     if archive.startswith('expat-'):
         run(source, name + '-autogen', './buildconf.sh', env=env)
@@ -156,4 +157,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Build the real GNU tools and fakeroot needed by upstream makepkg."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -101,8 +104,7 @@ def main():
         if name == 'bash' and not source.exists():
             temporary = out / 'bash-unpack'
             temporary.mkdir(exist_ok=True)
-            with tarfile.open(archive) as bundle:
-                bundle.extractall(temporary, filter='data')
+            unpack(archive, temporary, filter='data')
             (temporary / 'bash-5.3').rename(source)
             for record in bash['patches']:
                 patch_file = ROOT / 'userland/vendor/linux-ports' / record['file']
@@ -112,8 +114,7 @@ def main():
                                     '--bind', str(out), str(out), '--chdir', str(source), '--',
                                     '/usr/bin/patch', '-p0', '--forward'], stdin=stream, check=True, stdout=subprocess.DEVNULL)
         if not source.exists():
-            with tarfile.open(archive) as bundle:
-                bundle.extractall(out, filter='data')
+            unpack(archive, out, filter='data')
         if name=='bash':
             # Keep the upstream descriptor-duplication redirection fallback
             # while using anonymous pipes for process substitution. Native
@@ -174,10 +175,10 @@ def main():
             install_args += ['FILE_COMPILE=/usr/bin/file']
         run(name + '-support-install', install_args, build, source, extra)
         assert {str(p.relative_to(source)): sha(p) for p in source.rglob('*') if p.is_file() and not p.is_symlink()} == snapshot
-        (out / (name + '-SUPPORT-SOURCES.json')).write_text(json.dumps(snapshot, indent=2) + '\n')
+        atomic_write(out / (name + '-SUPPORT-SOURCES.json'), json.dumps(snapshot, indent=2) + '\n')
     assert {str(p.relative_to(ROOT)): sha(p) for p in inputs} == original
     artifacts={str(p):sha(p) for p in install.rglob('*') if p.is_file() and not p.is_symlink()}
-    (out / 'SUPPORT-COMPILATION.json').write_text(json.dumps(dict(state='compiled; guest validation pending', sources=sources,
+    atomic_write(out / 'SUPPORT-COMPILATION.json', json.dumps(dict(state='compiled; guest validation pending', sources=sources,
         source_sha256=original, commands=commands, confinement=confinement,
         target_host_executed=False, shared_musl_sha256=sha(web / 'lib/libc.so'),
         compiler_build_sha256=sha(compiler_receipt) if compiler_receipt else None,
@@ -187,4 +188,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

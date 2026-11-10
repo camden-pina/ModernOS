@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Stage source noVNC and the Coast VM launcher for an explicit fresh runtime."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 from pathlib import Path
@@ -56,7 +58,7 @@ def main():
     files = {str(p.relative_to(runtime)): dict(path=str(p), sha256=digest(p), mode=p.stat().st_mode & 0o777)
              for p in sorted(runtime.rglob('*')) if p.is_file()}
     inputs = [Path(__file__), source_record, ROOT / 'ports/qemu/coast_vm.py', ROOT / 'ports/qemu/coast.html', ROOT / 'LICENSE']
-    (out / 'BUILD.json').write_text(json.dumps(dict(state='source viewer staged; guest qualification pending',
+    atomic_write(out / 'BUILD.json', json.dumps(dict(state='source viewer staged; guest qualification pending',
         target_host_executed=False, files=files, aliases={}, source=pin,
         qemu_build_sha256=digest(args.qemu_build), program_build_sha256=digest(args.program_build),
         source_sha256={str(p.relative_to(ROOT)): digest(p) for p in inputs}), indent=2) + '\n')
@@ -64,4 +66,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

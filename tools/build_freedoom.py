@@ -6,6 +6,9 @@ The explicit --fetch-only mode retrieves missing official source files over HTTP
 inside the build directory; Python/Pillow, autotools, a C compiler, make,
 pkg-config, and libpng development headers are host build prerequisites.
 """
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -118,8 +121,7 @@ def extract_sources(manifests):
         directory = source_root / spec['directory']
         if directory.exists():
             shutil.rmtree(directory)
-        with tarfile.open(VENDOR / spec['archive'], 'r:xz') as archive:
-            archive.extractall(source_root, filter='data')
+        unpack(VENDOR / spec['archive'], source_root, filter='data')
         for item in manifests[name]['files']:
             path = directory / item['path']
             if not path.is_file() or path.is_symlink():
@@ -253,7 +255,7 @@ def main():
             [sys.executable, 'scripts/test-vanilla-compliance', 'levels'], env)
         shutil.copyfile(paths['freedoom'] / 'wads/freedoom2.wad', wad)
         stamp.write_text(key)
-        (BUILD / 'host-build-tools.json').write_text(json.dumps({
+        atomic_write(BUILD / 'host-build-tools.json', json.dumps({
             'python': platform.python_version(), 'pillow': PIL.__version__,
             'deutex': '5.2.3', 'version_argument': 'v0.13.0',
         }, indent=2) + '\n')
@@ -268,11 +270,12 @@ def main():
     if host_tools.exists():
         report['build_tools'] = json.loads(host_tools.read_text())
     package_notices(report)
-    (BUILD / 'freedoom-data.json').write_text(json.dumps(report, indent=2) + '\n')
-    (BUILD / 'freedoom-provenance.json').write_text(json.dumps(report, indent=2) + '\n')
+    atomic_write(BUILD / 'freedoom-data.json', json.dumps(report, indent=2) + '\n')
+    atomic_write(BUILD / 'freedoom-provenance.json', json.dumps(report, indent=2) + '\n')
     print(f'Freedoom Phase 2: {report["map_count"]} maps, {report["lumps"]} lumps, '
           f'{report["bytes"]} bytes; SHA-256 {report["sha256"]}')
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

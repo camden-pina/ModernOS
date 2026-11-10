@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Build pinned NASM for Coast and optionally a separate Linux-host copy."""
+from source_archive import unpack
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -32,8 +35,7 @@ def main():
     fetch(entry)
     source = out / 'nasm-2.16.03'
     if not source.exists():
-        with tarfile.open(ROOT / 'userland/vendor' / entry['archive']) as archive:
-            archive.extractall(out, filter='data')
+        unpack(ROOT / 'userland/vendor' / entry['archive'], out, filter='data')
     build = out / ('host-build' if args.host else 'coast-build')
     build.mkdir(exist_ok=True)
     # NASM's makefile supports VPATH but does not create object subdirectories.
@@ -80,9 +82,10 @@ def main():
         files[relative] = dict(path=str(destination), sha256=sha(destination), mode=0o644)
     record = dict(version='2.16.03', source=entry, files=files, commands=commands,
                   target='linux-host' if args.host else 'coast-x86_64', target_host_executed=False)
-    (out / ('HOST.json' if args.host else 'BUILD.json')).write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / ('HOST.json' if args.host else 'BUILD.json'), json.dumps(record, indent=2) + '\n')
     print('NASM built:', runtime)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

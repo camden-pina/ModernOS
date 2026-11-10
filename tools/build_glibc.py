@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build the pinned GNU application ABI libraries for Coast from Debian sources."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -125,7 +127,7 @@ def main():
             aliases[name] = str(path.readlink())
         elif path.is_file():
             files[name] = dict(path=str(path), sha256=digest(path), mode=0o755 if path.stat().st_mode & 0o111 else 0o644)
-    (out / 'BUILD.json').write_text(json.dumps(dict(version=record['version'], source=record,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version=record['version'], source=record,
         files=files, aliases=aliases, commands=commands,
         source_sha256={str(p.relative_to(ROOT)): digest(p) for p in inputs},
         build_mode='native-coast' if args.native else 'linux-cross', target_host_executed=False,
@@ -134,4 +136,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

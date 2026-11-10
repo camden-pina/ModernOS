@@ -3,6 +3,7 @@
 No downloads, engine/kernel rebuilds, host installs or ISO builds. The desktop
 frontend is built by the normal bin/gui target. See CODEOSS-GRAPHICAL.md.
 """
+from build_state import atomic_write
 from pathlib import Path
 import argparse,hashlib,json,os,shutil,subprocess
 p=argparse.ArgumentParser(description=__doc__)
@@ -36,6 +37,6 @@ shutil.copy2(bundle,resources/'graphical-model.js')
 for name in ['graphical-check.js','graphical-shared-check.js','LICENSE.txt','PORT-STATUS.txt','GRAPHICAL-SOURCES.json']:shutil.copy2(S/'ports/codeoss'/name,resources/name)
 relink=runtime/'usr/lib/codeoss/relink-model';relink.mkdir(parents=True,exist_ok=True)
 for f in objects:shutil.copy2(f,relink/f.name)
-(B/'build-commands.json').write_text(json.dumps(commands,indent=2)+'\n');shutil.copy2(B/'build-commands.json',relink/'build-commands.json')
+atomic_write(B/'build-commands.json', json.dumps(commands,indent=2)+'\n');shutil.copy2(B/'build-commands.json',relink/'build-commands.json')
 record={'state':'built; guest validation separate','upstream_commit':'211a00dbedf7a224e0da0a2db3cf9cb6cb7a4bfb','worker_sha256':sha(worker),'launcher_sha256':sha(launcher),'bundle_sha256':sha(bundle),'engine_rebuilt':False,'kernel_rebuilt':False,'engine_archives':list(map(str,libs)),'relink_objects':list(map(str,objects)),'graphical_text_limit':262144,'sources':{rel:sha(S/rel) for rel in ['userland/codeoss/model-worker.cpp','userland/codeoss/launcher.c','userland/codeoss/file-service.cpp','userland/codeoss/file-service.h','userland/include/codeoss_protocol.h','ports/codeoss/graphical-model.ts','ports/codeoss/native-model.ts']}}
-(B/'build.json').write_text(json.dumps(record,indent=2)+'\n');shutil.copy2(B/'build.json',resources/'graphical-build.json');print(json.dumps(record,indent=2))
+atomic_write(B/'build.json', json.dumps(record,indent=2)+'\n');shutil.copy2(B/'build.json',resources/'graphical-build.json');print(json.dumps(record,indent=2))

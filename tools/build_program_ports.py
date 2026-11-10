@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Cross-build pinned CPython and jq without running target code on the host."""
+from source_archive import unpack, unpack_zip
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import json
@@ -74,7 +77,7 @@ def main():
     configuration = out / 'CONFIGURATION.json'
     if configuration.exists() and json.loads(configuration.read_text()) != identity:
         raise ValueError('Program build inputs changed; choose a fresh output directory')
-    configuration.write_text(json.dumps(identity, indent=2) + '\n')
+    atomic_write(configuration, json.dumps(identity, indent=2) + '\n')
     cross = compiler_receipt.parent / 'cross/bin/x86_64-linux-musl-' if compiler_receipt else ROOT / 'build/compiler/cross/bin/x86_64-linux-musl-'
     assert Path(str(cross) + 'gcc').is_file(), 'Existing Coast musl toolchain required'
     web = Path(dependencies_record['prefix']) if dependency_receipt else ROOT / 'build/web/deps'
@@ -114,8 +117,7 @@ def main():
         fetch(pin, vendor)
         source = out / 'sqlite-amalgamation-3540000'
         if not source.exists():
-            with zipfile.ZipFile(vendor / pin['archive']) as bundle:
-                bundle.extractall(out)
+            unpack_zip(vendor / pin['archive'], out)
         (sqlite / 'lib').mkdir(parents=True, exist_ok=True)
         (sqlite / 'include').mkdir(exist_ok=True)
         if not (sqlite / 'lib/libsqlite3.a').exists():
@@ -131,8 +133,7 @@ def main():
     assert sha(ssl_archive) == '796831ec533bf41998eaaee9d632d921b8a69f57394fa4086ff01a941113d26d'
     ssl_source = out / 'openssl-openssl-3.5.9'
     if not dependency_receipt and not ssl_source.exists():
-        with tarfile.open(ssl_archive) as bundle:
-            bundle.extractall(out, filter='data')
+        unpack(ssl_archive, out, filter='data')
     ssl_build = out / 'openssl-build'
     ssl_build.mkdir(exist_ok=True)
     thread_config = tls / 'include/openssl/configuration.h'
@@ -179,8 +180,7 @@ def main():
         assert sha(archive) == package['sha256'], archive
         source = out / package['source']
         if not source.exists():
-            with tarfile.open(archive) as bundle:
-                bundle.extractall(out, filter='data')
+            unpack(archive, out, filter='data')
         if name == 'python':
             patch = ROOT / 'ports/python/native-vfork.patch'
             stamp = source / '.coast-native-vfork'
@@ -244,7 +244,7 @@ def main():
                 copy(path, 'usr/lib/python3.14/' + path.name)
             copy(source / 'LICENSE', 'usr/share/licenses/python/LICENSE')
             missing = [line for line in (build / 'Modules/Setup.stdlib').read_text().splitlines() if line.startswith('#') and re_module(line)]
-            (out / 'PYTHON-MODULES.json').write_text(json.dumps(dict(module_build_type='static', unavailable_configure_lines=missing), indent=2) + '\n')
+            atomic_write(out / 'PYTHON-MODULES.json', json.dumps(dict(module_build_type='static', unavailable_configure_lines=missing), indent=2) + '\n')
         else:
             if not (build / 'Makefile').exists():
                 run('jq-configure', [source / 'configure', '--build=x86_64-pc-linux-gnu',
@@ -273,7 +273,7 @@ def main():
                   confinement=conf, commands=commands, target_host_executed=False)
     if any(sha(ROOT / name) != expected for name, expected in original.items()):
         raise ValueError('Program sources changed during compilation')
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     if args.install_runtime:
         runtime = ROOT / 'userland/runtime'
         for name, asset in files.items():
@@ -295,4 +295,5 @@ def re_module(line):
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

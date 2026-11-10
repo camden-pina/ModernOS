@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build the Coast Packages client with explicit, optional repository trust."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import importlib.util
 import json
@@ -61,7 +63,7 @@ def main():
     copy(ROOT / 'LICENSE', 'usr/share/licenses/coast-packages/LICENSE')
     config = runtime / 'etc/coast/packages.json'
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(json.dumps(dict(version=1, url=None, signing_fingerprint=None, community_url=None), indent=2) + '\n')
+    atomic_write(config, json.dumps(dict(version=1, url=None, signing_fingerprint=None, community_url=None), indent=2) + '\n')
     keyring = runtime / 'etc/pacman.d/gnupg'
     keyring.mkdir(parents=True)
     configured = None
@@ -90,9 +92,10 @@ def main():
         compiler_build_sha256=digest(compiler_path), program_build_sha256=digest(program_path),
         source_sha256=before, files=files, aliases={}, directories=['etc/coast', 'etc/pacman.d/gnupg'],
         repository=configured, inherited_signing_identity=False, confinement=confinement, commands=[command])
-    (out / 'BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+    atomic_write(out / 'BUILD.json', json.dumps(record, indent=2) + '\n')
     print('Coast Packages staged:', runtime, flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build the standalone guest Node target; never execute it on the host."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse,hashlib,json,os,re,shutil,subprocess,time
 from pathlib import Path
 
@@ -69,7 +71,9 @@ def main():
         'elapsed_seconds':time.monotonic()-started,'guest_execution_on_host':False,
         'minimum_free_gib':args.minimum_free_gib,'maximum_disk_drop_gib':2,
         'scope':'Standalone Node main, compiled readonly jitless, existing R6 explicit-bounds V8; readonly original graph and network-unshared build'}
-    (out/'BUILD.json').write_text(json.dumps(result,indent=2)+'\n')
+    atomic_write(out/'BUILD.json', json.dumps(result,indent=2)+'\n')
     print('Built guest Node CLI:',result['binary_sha256'],result['binary_bytes'],'bytes',flush=True)
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()

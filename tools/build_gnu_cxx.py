@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build GNU ABI libstdc++ and its headers against Coast's source-built glibc."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import fcntl
 import json
@@ -165,7 +167,7 @@ def main():
         shutil.copyfile(source / name, notices / name)
     inputs = [Path(__file__), ROOT / 'userland/vendor/sources.json', ROOT / 'tools/fetch_sources.py',
         ROOT / 'tools/source_archive.py', ROOT / 'tools/source_tree.py']
-    (out / 'BUILD.json').write_text(json.dumps(dict(version='14.2.0', source=record,
+    atomic_write(out / 'BUILD.json', json.dumps(dict(version='14.2.0', source=record,
         glibc_build_sha256=digest(receipt), bootstrap_unwinder_sha256=digest(unwinder),
         libgcc_build_sha256=digest(libgcc_receipt) if libgcc_receipt else None,
         files={str(p.relative_to(runtime)): dict(path=str(p), sha256=digest(p),
@@ -178,4 +180,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

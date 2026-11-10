@@ -66,12 +66,13 @@ def create(payload, records):
 
     def assign(record, default, chooser=None):
         for name in members(record):
-            owners[name] = chooser(name) if chooser else default
+            if name in payload.entries:
+                owners[name] = chooser(name) if chooser else default
 
     binutils = {'addr2line', 'ar', 'as', 'c++filt', 'dwp', 'elfedit', 'gprof', 'ld', 'ld.bfd',
                 'nm', 'objcopy', 'objdump', 'ranlib', 'readelf', 'size', 'strings', 'strip'}
-    assign(records['cli_build'], 'bash')
-    assign(records['compiler_build'], 'gcc', lambda name: 'binutils' if
+    assign(records.get('cli_build', {}), 'bash')
+    assign(records.get('compiler_build', {}), 'gcc', lambda name: 'binutils' if
            (name.startswith('usr/bin/') and PurePosixPath(name).name in binutils) or '/binutils/' in name else 'gcc')
 
     def package_cli(name):
@@ -87,13 +88,13 @@ def create(payload, records):
                 return candidate
         return 'pacman'
 
-    assign(records['packages_build'], 'pacman', package_cli)
+    assign(records.get('packages_build', {}), 'pacman', package_cli)
     for key in ('gui_runtime', 'assets_build'):
-        assign(records[key], 'coast-desktop')
+        assign(records.get(key, {}), 'coast-desktop')
     for name in list(payload.entries):
         if name.startswith(('opt/', 'usr/share/coast-browser/', 'usr/share/coast/codeoss/')):
             owners[name] = 'coast-desktop'
-    assign(records['program_build'], 'python', lambda name: 'jq' if
+    assign(records.get('program_build', {}), 'python', lambda name: 'jq' if
            name == 'usr/bin/jq' or '/jq/' in name or '/jq-' in name else 'python')
 
     tools = {'find': 'findutils', 'xargs': 'findutils', 'locate': 'findutils', 'updatedb': 'findutils',
@@ -128,17 +129,26 @@ def create(payload, records):
                 return candidate
         return 'makepkg-environment'
 
-    assign(records['makepkg_build'], 'makepkg-environment', makepkg)
-    assign(records['frontend_build'], 'coast-packages', lambda name: 'pacman' if name in ('etc/pacman.conf', 'etc/makepkg.conf') else 'coast-packages')
-    assign(records['qt_build'], 'qt6-demo')
-    assign(records['qemu_build'], 'qemu', lambda name: 'qemu-devel' if
+    assign(records.get('makepkg_build', {}), 'makepkg-environment', makepkg)
+    assign(records.get('frontend_build', {}), 'coast-packages', lambda name: 'pacman' if name in ('etc/pacman.conf', 'etc/makepkg.conf') else 'coast-packages')
+    assign(records.get('qt_build', {}), 'qt6-demo')
+    assign(records.get('qemu_build', {}), 'qemu', lambda name: 'qemu-devel' if
            name.startswith(('usr/lib/coast/qemu-sdk/', 'usr/src/', 'usr/share/coast/qemu/')) else 'qemu')
-    assign(records['viewer_build'], 'novnc', lambda name: 'coast-vm' if name.startswith(
+    assign(records.get('viewer_build', {}), 'novnc', lambda name: 'coast-vm' if name.startswith(
            ('usr/bin/coast-vm', 'usr/share/coast/qemu/', 'usr/share/licenses/coast-vm/')) or name == 'usr/share/novnc/coast.html' else 'novnc')
     for name, entry in payload.entries.items():
         if entry['kind'] in (tarfile.REGTYPE, tarfile.SYMTYPE) and not name.startswith(('home/', 'root/', 'tmp/', 'var/lib/pacman/')):
             owner = owners.setdefault(name, 'coast-base')
             packages[owner]['files'].append(name)
+    # An omitted application must never appear as an installed package.
+    retained = {name for name, item in packages.items() if item['files']} | {'coast-base', 'musl'}
+    if 'makepkg_build' in records:
+        retained.add('base-devel')
+    packages = {name: item for name, item in packages.items() if name in retained}
+    provided = set(packages) | {alias.split('=')[0] for item in packages.values() for alias in item['provides']}
+    for name, item in packages.items():
+        if missing := set(item['depends']) - provided:
+            raise ValueError('Installed package dependency missing for ' + name + ': ' + ', '.join(sorted(missing)))
     installed = {}
 
     def escaped(text):

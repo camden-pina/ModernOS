@@ -11,19 +11,42 @@ make run
 
 `make iso` builds Coast: the kernel, desktop/accounts, Chromium, Code OSS,
 GCC/G++, Bash, Python, Coast Packages/makepkg, Qt, QEMU and its Chromium VM
-viewer. Every integration is part of the build. The output is
+viewer by default. Optional apps and their dependencies can be selected below. The output is
 `build/coast/image/Coast.iso`.
 
-The build resumes verified completed stages. `make run` boots the existing ISO
-in QEMU. Run `make iso` again after source changes, then enter `gui` at the guest
-console to open the desktop.
+The build verifies completed components and resumes interrupted stages. `make run` boots the existing ISO
+in QEMU. Enter `gui` at the guest console to open the desktop.
+
+## Build progress and interruption
+
+Each stage shows its number, elapsed time and a live progress bar. Ninja,
+CMake and Git percentages appear when the tool supplies a total. Otherwise,
+the bar shows activity; it does not estimate how long the whole build will take.
+The source sync also shows completed source repositories, downloaded Git bytes
+and transfer speed. Recent tool output appears beside the bar. Redirected output
+receives a status line every 30 seconds instead of terminal animation.
+
+Full stdout and stderr are retained in `ISO_BUILD/logs/<stage>.log`, including
+output from failed commands. To follow the source download in another terminal:
+
+```sh
+tail -f build/coast/logs/electron-sync.log
+```
+
+Press Ctrl+C in the build terminal to stop the current stage and its child
+processes. Verified completed stages can be reused by the next `make iso`.
+Electron source preparation resumes fetch, patches, hooks and overlays from
+its own checkpoint. Partial archive downloads and compiler object trees are
+reused where supported. Changed inputs invalidate dependent outputs; staging
+and assembly retry from verified components. See [recovery and cleanup](repository-cleanup.md)
+for phase granularity, pinned-source changes, full resets and component cleanup.
 
 ## Terminal configuration
 
 `make menuconfig` opens the terminal wizard with the saved `.config`, or defaults
 on the first run. It groups build resources, verification/features, source reuse,
 package trust, VM resources, display/firmware, networking, audio, disks and extra
-arguments. Every OS component stays included.
+arguments, including optional apps and their runtime dependencies.
 
 Use arrow keys to move, Enter to edit, Space to toggle/cycle and Tab to move
 between groups. `?` shows help and `/` searches option names, labels and help.
@@ -67,10 +90,13 @@ make iso JOBS=2
 | Argument | Default | Meaning |
 | --- | --- | --- |
 | `JOBS` | `4` | Component build parallelism, from 1 to 24. Use this to control pipeline workers. |
-| `ISO_BUILD` | `build/coast` | Build directory for receipts, logs and `image/Coast.iso`. Use a fresh directory when changing recorded build inputs or diagnostics. |
+| `ISO_BUILD` | `build/coast` | Build directory for receipts, logs and `image/Coast.iso`. Changed inputs invalidate affected components automatically. |
+| `APPS` | `all` | Apps to install: `all`, `none`, or a space/comma-separated list. Required runtime apps are included automatically. |
+| `WITHOUT` | Empty | Omit apps and apps that require them; the build plan lists the reasons. |
+| `ADD` | Empty | Add apps to the last ISO selection. Does not change `.config`. |
 | `ISO_ARGS` | Empty | Additional builder arguments, listed below. |
 | `DIAGNOSTICS` | `0` | Set to `1` to include Code OSS diagnostics. |
-| `QUALIFY` | `0` | Set to `1` to enable diagnostics and all guest qualification suites after building. |
+| `QUALIFY` | `0` | Set to `1` to enable diagnostics and applicable guest qualification suites after building. |
 | `WITH_MICROSOFT_AUTH` | `0` | Set to `1` to include upstream proprietary Microsoft sign-in helpers. |
 | `ELECTRON_CHECKOUT` | Automatic | Verified source checkout to reuse read-only. |
 | `RUNTIME_BUILD` | Automatic | Matching verified Electron/Node receipt; requires `ELECTRON_CHECKOUT`. |
@@ -83,8 +109,10 @@ Keep the same `ISO_BUILD` and `O` values for `make iso` and `make run`.
 
 | `ISO_ARGS` option | Meaning |
 | --- | --- |
+| `--apps LIST`, `--without LIST`, `--add LIST` | Equivalent app selection flags for direct builder use. |
+| `--build-only`, `--target LIST` | Build selected components and dependencies without assembling an ISO (`make build COMPONENT=...`). |
 | `--plan` | Print every planned stage as JSON without downloading or building. |
-| `--qualify` | Include editor diagnostics and run all guest qualification suites after building; requires the extra test dependencies in [host setup](host-setup.md). |
+| `--qualify` | Include editor diagnostics and run applicable guest qualification suites after building; requires the extra test dependencies in [host setup](host-setup.md). |
 | `--diagnostics` | Include opt-in Code OSS diagnostics without running qualification. |
 | `--electron-checkout PATH` | Reuse a verified Electron source checkout read-only. |
 | `--runtime-build PATH` | Reuse a verified, matching Electron/Node receipt; also requires `--electron-checkout`. |
@@ -96,6 +124,53 @@ Keep the same `ISO_BUILD` and `O` values for `make iso` and `make run`.
 For example, `make iso ISO_ARGS=--plan` prints the plan, and
 `make iso ISO_BUILD=build/qa ISO_ARGS=--qualify` builds Coast with qualification.
 Quote multiple arguments as `ISO_ARGS='--diagnostics --with-microsoft-auth'`.
+
+## Optional applications
+
+`make iso` includes every app unless the saved configuration or command-line
+arguments select otherwise. Set `APPS`/`WITHOUT` in `make menuconfig` to persist a
+selection. Command-line selections apply to that invocation only.
+
+```sh
+make iso WITHOUT='chromium codeoss'
+make iso APPS='qt qemu'
+make build COMPONENT=chromium
+make iso ADD=chromium
+make iso ADD='chromium qemu-viewer'
+make iso ISO_ARGS=--plan
+```
+
+`APPS=none` builds the native core. App selection does not introduce named image
+editions: every selection uses `make iso` and the same output path. To add an app
+later, `make build COMPONENT=app` builds it and its dependencies without changing
+the ISO; `make iso ADD=app` adds it to the last recorded ISO selection and builds
+any missing prerequisites. Assembly creates a fresh image from component
+receipts. It never modifies an old ISO in place. The selection remains available
+after a component build or cleanup invalidates the image manifest. A full reset
+can remove this generated selection; persist preferences in `.config`.
+
+| App | Required installed apps |
+| --- | --- |
+| `chromium` | Shared Electron/Chromium engine, GNU/GUI libraries and display bridge (build components). |
+| `codeoss` | `bash`, plus that same engine/GUI/bridge and the Code OSS application/modules. |
+| `bash`, `gcc`, `python`, `qt`, `qemu` | No other optional app; their build prerequisites are still compiled. |
+| `makepkg` | `gcc`, `python`, `bash`; package/signature/archive tools are included as runtime components. |
+| `packages` | `makepkg`, `python`, and their prerequisites. |
+| `qemu-viewer` | `qemu`, `python`, `chromium`. |
+
+`WITHOUT` excludes required apps: dependent apps are omitted and
+the plan explains why. Explicit `ADD` restores its apps and their runtime
+prerequisites even when saved `WITHOUT` settings omit them. For example, `WITHOUT=chromium` omits the browser and VM
+viewer while retaining Code OSS and its shared engine. Omit both `chromium` and
+`codeoss` to avoid building that engine. `WITHOUT=gcc` also omits makepkg and
+Coast Packages. Qt/QEMU can still require the host cross compiler to build;
+that does not install GCC in the ISO.
+
+The payload omits unselected app files and launcher entries. Its installed
+package database describes the actual files and verifies dependency closure.
+`make iso ISO_ARGS=--plan` reports selected/omitted apps, runtime dependencies,
+shared engine consumers and build components. Guest qualification records suites
+requiring omitted apps as skipped, rather than claiming they passed.
 
 ## Run arguments
 
@@ -144,12 +219,19 @@ specified images with write access; use disposable images for testing.
 | `make check-sources` | Verify cached base sources without downloading. |
 | `make source-check` | Audit publication inputs for generated binaries, downloads and secrets. |
 | `make source-archive` | Export `O/coast-source.tar.xz`, including the source inventory and lwIP for an offline kernel build. |
-| `make clean` | Clean the kernel output, initramfs, ISO file and staging directory. Component caches remain available. Use the same output arguments as the build. |
+| `make clean` | Clean generated component/kernel/userland/image products; retain sources and downloads. Use the build's `ISO_BUILD`/`O`. |
+| `make clean COMPONENT=qt` | Clean selected component/app products and invalidate dependent completion receipts. |
+| `make clean ALL=1` | Full generated reset, including sources and download caches; preserve private/configured service state. |
+| `make clean ALL=1 KEEP="sources downloads toolchains"` | Broad rebuild while retaining expensive prerequisites. |
+| `make clean PREVIEW=1` | List removals, invalidations and affected apps without deleting products. |
+| `make build COMPONENT=app` | Build an app and its runtime/build prerequisites, without assembling an ISO. |
+| `make test-build-lifecycle test-optional-apps` | Check interruption/retry, cleanup protections, app dependencies and selected payloads. |
 | `make userland-clean` | Remove generated `userland/bin`, `obj` and `runtime`. |
 | `make help` | Show the short command reference. |
 | `make test-build-config` | Check saved settings, Make overrides and argument handling without a source build or VM. |
 
-The cache cleaner previews removals with `python3 -B tools/clean_cache.py`;
+Full/selective cleanup options, keep categories and recovery granularity are in
+[recovery and cleanup](repository-cleanup.md). The narrower cache cleaner previews removals with `python3 -B tools/clean_cache.py`;
 `--apply` performs them. See [cache cleanup](repository-cleanup.md) for its
 protection rules and options.
 

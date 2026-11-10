@@ -53,7 +53,7 @@ unexecuted during staging, and no runtime library is committed to Git. Debian
 build-time packaging checks run inside the rootless build container; Coast
 guest qualification remains separate.
 
-## Full desktop build on Linux
+## Build on Linux
 
 ```sh
 make menuconfig
@@ -72,14 +72,24 @@ Its logs live in `build/coast/logs/`. The
 The [command reference](build-system.md) explains optional arguments.
 The terminal wizard saves build and VM settings in `.config`; Make reloads them
 automatically, with command-line assignments taking precedence.
-Use `make iso ISO_ARGS=--plan` to inspect the complete build plan, or
+Use `make iso ISO_ARGS=--plan` to inspect the selected build plan, or
 `make iso ISO_ARGS=--qualify` to build and qualify Coast.
 
-Rerun the same command after interruption. Completed receipts, their source
-identities and artifact hashes are checked before reuse. Changed build inputs
-require a new `ISO_BUILD=build/another-desktop` directory, preserving the
-previous outputs. An interrupted one-shot staging operation is retained under
-that workflow's `failed/` before retrying. No selected image is overwritten.
+Rerun the same command after interruption. Component receipts, source identities
+and artifact hashes are verified before reuse; changed inputs invalidate their
+dependent outputs. Source sync has durable fetch/patch/hooks/overlay checkpoints.
+Make/Ninja work retains compatible object trees; one-shot staging restarts from
+verified inputs. Guest qualification retains passed phases for the same ISO,
+manifest and test sources. [Recovery and cleanup](repository-cleanup.md) covers
+full resets, selective component cleanup, KEEP categories and interrupted work.
+
+The default app selection builds every integration. Use `make menuconfig`,
+`APPS=...` or `WITHOUT=...` to omit apps. `make build COMPONENT=chromium` builds
+the browser and prerequisites separately; `make iso ADD=chromium` adds it to the
+last ISO selection. The [app dependency table](build-system.md#optional-applications)
+explains shared Electron/Chromium use and prerequisites. Build tools can be
+needed without being installed as apps; payload/package dependency checks still
+apply to every selection.
 
 The pipeline first syncs/builds Electron and Node, then builds the GNU ABI,
 GUI libraries, VSCodium application, addon SDK/modules, Rust proxy resolver, admitted kernel,
@@ -89,7 +99,7 @@ The GIO trash helper uses the matching application SDK, so it does not require
 an old QEMU SDK. Assembly checks the exact Electron/Node kernel admission and
 component hashes. It also checks every payload ELF's architecture, libraries
 and GNU ABI requirements against the actual image. Microsoft sign-in is optional. To include its upstream proprietary brokers,
-select `ISO_ARGS=--with-microsoft-auth` on a new build root. The default
+select `WITH_MICROSOFT_AUTH=1`. The default
 source image omits these binaries; the receipt records the choice and the
 remaining prebuilt application helpers.
 
@@ -114,8 +124,8 @@ than claiming an installation from signed packages.
 
 Qt's host generators and target Core/Gui/Widgets libraries are built separately.
 The native Coast QPA demo, source archive and notices enter the image; the
-cross SDK remains in its component output. QEMU uses TCI, its static dependency
-SDK and source-built x86 BIOS/VGA firmware. Its receipt separately identifies
+cross SDK remains in its component output. QEMU uses TCI and source-built x86 BIOS/VGA firmware. Its static dependency
+SDK enters the ISO when the makepkg development environment is also selected. Its receipt separately identifies
 optional release-supplied ROMs. noVNC and the `coast-vm` launcher are source files.
 See [Qt](qt6.md) and [QEMU](qemu.md) for the supported application scope.
 
@@ -172,10 +182,9 @@ native-module/SQLite, Chromium and editor usability suites.
 The boot suite checks UEFI and BIOS at one and four CPUs. QEMU/KVM, OVMF,
 passt, GnuPG, Pillow and Tesseract are additional host prerequisites. The host
 QEMU needs its native passt backend (QEMU 10.1 or newer). Select `--qualify`
-on the initial build: it enables editor diagnostics and changes the build's
-identity. Adding it to a build made with different options requires a fresh
-output directory. The aggregate qualification receipt
-binds every report to the exact ISO hash and verifies that all owned VMs stop.
+when building: it enables editor diagnostics. Adding it later rebuilds the
+affected assembly and reruns qualification; completed source builds are reused. The aggregate qualification receipt
+binds every applicable report to the exact ISO hash and verifies that all owned VMs stop.
 An existing Coast build can be checked with
 `tools/qualify_desktop.py --iso build/coast/image/Coast.iso --output-root PATH`.
 
@@ -188,11 +197,14 @@ performs real signature verification, installation and removal entirely in
 the guest's RAM filesystem. The `coast` Python frontend and makepkg/fakeroot environment are built by
 their corresponding stages in the same pipeline.
 
-The integrated desktop has passed all eleven guest suites, including package
+An integrated desktop source build has passed all eleven guest suites, including package
 transactions, makepkg, Qt input/clipboard and nested QEMU through Chromium.
 All 668 payload ELF checks passed, with 37 source-component package records.
 That qualification reused verified source-built Electron/Node and GNU ABI
 receipts; it did not rebuild the entire Electron graph from an empty checkout.
+The recovery/cleanup and optional-app changes have host/fixture coverage,
+including actual static/dynamic ELF validation and desktop launcher checks;
+they have not had a fresh full Electron build or guest qualification run.
 Independent source-export checks compile the kernel and boot components and
 exercise UEFI/BIOS at one and four CPUs. Report details are in
 [development status](AI-HANDOFF.md).
@@ -283,10 +295,14 @@ native validation.
 python3 -B tools/build_electron_source.py --sync --build --jobs 4
 ```
 
-The builder fetches pinned depot_tools and Electron, resolves upstream DEPS,
+The builder fetches pinned depot_tools and Electron using shallow Git checkouts,
+resolves upstream DEPS with `gclient sync --no-history`,
 checks all 170 repository revisions, applies checksum-pinned patches, installs
 Coast policies, and configures separate Electron and Node builds. Upstream
-hooks supply the host build tools. No private historical JSON/configuration or
+hooks supply the host build tools. The complete source trees, locked commits,
+patches, version override and build arguments are retained. Extra branch heads,
+tags and ancestor history are omitted, and a global Git mirror is disabled for
+this sync so it cannot trigger a full-history download. No private historical JSON/configuration or
 compiled Electron object cache is an input to this recipe. Follow the upstream
 [Electron build prerequisites](https://www.electronjs.org/docs/latest/development/build-instructions-linux)
 and [GN instructions](https://www.electronjs.org/docs/latest/development/build-instructions-gn).

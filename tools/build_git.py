@@ -4,6 +4,8 @@
 All inputs are pinned local archives. Optional network transports are added by
 the web dependency build; the local repository implementation is never mocked.
 """
+from source_archive import unpack
+from build_state import project_lock
 import hashlib
 import os
 from pathlib import Path
@@ -57,8 +59,7 @@ def build():
             directory = BUILD / name.split('.tar.')[0]
             if directory.exists():
                 shutil.rmtree(directory)
-            with tarfile.open(VENDOR / name) as archive:
-                archive.extractall(BUILD, filter='data')
+            unpack(VENDOR / name, BUILD, filter='data')
 
         zlib = BUILD / 'zlib-1.3.2'
         run(zlib, 'zlib-configure', './configure', '--static', '--prefix=' + str(PREFIX), env=env)
@@ -107,4 +108,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

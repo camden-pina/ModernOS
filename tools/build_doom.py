@@ -5,6 +5,8 @@ Only this port's cache is rebuilt, with one compiler process at a time. Sources
 are restored from official per-file HTTPS URLs and checked against both the Git
 blob IDs and SHA-256 manifest before a deterministic source archive is created.
 """
+from source_archive import unpack
+from build_state import project_lock
 import argparse
 import hashlib
 import io
@@ -109,8 +111,7 @@ def engine(archive, manifest):
         if source_root.exists():
             shutil.rmtree(source_root)
         source_root.mkdir()
-        with tarfile.open(archive) as source:
-            source.extractall(source_root, filter='data')
+        unpack(archive, source_root, filter='data')
         official = source_root / manifest['directory']
         for record in manifest['files']:
             check_file((official / record['path']).read_bytes(), record)
@@ -226,7 +227,8 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        raise SystemExit(f'{error}; see {BUILD / "build.log"} for compiler diagnostics') from error
+    with project_lock():
+        try:
+            main()
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            raise SystemExit(f"{error}; see {BUILD / 'build.log'} for compiler diagnostics") from error

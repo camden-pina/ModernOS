@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Fetch pinned font/dictionary data for the desktop without borrowing host fonts."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import json
 from pathlib import Path
@@ -63,10 +65,11 @@ def main():
     put('usr/share/coast-browser/dictionaries/en-US-10-1.bdic', (vendor / dictionary['archive']).read_bytes())
     for name in dictionary['licenses']:
         put('usr/share/licenses/coast-browser-dictionary/' + Path(name).name, (ROOT / name).read_bytes())
-    receipt.write_text(json.dumps(dict(state='pinned desktop data staged', files=files,
+    atomic_write(receipt, json.dumps(dict(state='pinned desktop data staged', files=files,
         source_sha256=identity, host_fonts_used=False, executable_payloads=False), indent=2) + '\n')
     print('Pinned desktop assets staged:', out)
 
 
 if __name__ == '__main__':
-    main()
+    with project_lock():
+        main()

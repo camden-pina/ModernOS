@@ -5,6 +5,7 @@ Sources are vendored and verified, so rebuilding never requires a network.
 Coast supplies the x86-64 syscall ABI. Linux virtual-console extensions are
 disabled; curses uses its embedded VT100/xterm descriptions, not host files.
 """
+from source_archive import unpack
 import hashlib
 import os
 from pathlib import Path
@@ -55,8 +56,7 @@ if not stamp.exists() or stamp.read_text() != key or not binary.exists():
         target = BUILD / name
         if target.exists():
             shutil.rmtree(target)
-        with tarfile.open(VENDOR / filename) as source:
-            source.extractall(BUILD, filter='data')
+        unpack(VENDOR / filename, BUILD, filter='data')
 
     jobs = str(min(os.cpu_count() or 1, 8))
     env = os.environ.copy()

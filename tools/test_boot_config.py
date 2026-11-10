@@ -165,7 +165,13 @@ resolution = "1280x720"
             source = str(ROOT / "arch/x86/boot/efi")
             self.assertNotIn(f'rm -rf "{source}', result.stdout)
             self.assertNotIn(f"rm -rf {source}", result.stdout)
-            self.assertIn(source + "/coast.efi", result.stdout)
+            if target == 'efi-clean':
+                self.assertIn(source + "/coast.efi", result.stdout)
+            else:
+                self.assertIn('tools/clean_project.py', result.stdout)
+                self.assertIn("--kernel-output '" + str(ROOT) + "'", result.stdout)
+                from clean_project import kernel_paths
+                self.assertIn(ROOT / 'arch/x86/boot/efi', kernel_paths(ROOT, ROOT))
 
     def test_switching_loaders_replaces_staging(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Overlay development package-security tools on a preserved QA image."""
+from build_state import project_lock
+from build_state import atomic_write
 import argparse
 import hashlib
 import io
@@ -33,7 +35,7 @@ def main():
     pacman=(ROOT/'userland/packages/config/pacman.conf').read_text().replace('file:///var/lib/coast/repository/coast/os/$arch','http://10.0.2.2:8765/repo/$arch')
     (out/'pacman.conf').write_text(pacman);files['etc/pacman.conf']=out/'pacman.conf'
     config=json.loads((ROOT/'build/local-repository-r20/generated/etc/coast/packages.json').read_text());config['community_url']='http://10.0.2.2:8770'
-    (out/'packages.json').write_text(json.dumps(config,indent=2)+'\n');files['etc/coast/packages.json']=out/'packages.json'
+    atomic_write(out/'packages.json', json.dumps(config,indent=2)+'\n');files['etc/coast/packages.json']=out/'packages.json'
     if a.fixtures_only:files={name:path for name,path in files.items() if name.startswith('usr/bin/package-')}
     archive=out/'package-security-qa.tar'
     with tarfile.open(archive,'w') as tar:
@@ -53,7 +55,9 @@ def main():
         kernel_sha256=sha(a.kernel),base_iso=str(a.base_iso.resolve()),base_sha256=sha(a.base_iso),
         files={name:dict(source=str(path.resolve()),sha256=sha(path)) for name,path in files.items()},
         target_host_executed=False,host_partitions_modified=False)
-    (out/'BUILD.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    atomic_write(out/'BUILD.json', json.dumps(manifest,indent=2)+'\n')
 
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with project_lock():
+        main()
