@@ -10,5 +10,5 @@ fetch-sources: doom-sources
 check-sources: doom-check-sources
 test-doom-host:
 	python3 $(srctree)/tools/test_doom_host.py
-test-doom: iso
+test-doom: _iso-staged
 	python3 $(srctree)/tools/test_doom.py --iso $(ISO_IMAGE) --cpus $(SMP) --accel $(QEMU_ACCEL)

@@ -9,7 +9,7 @@ vendored musl archive in an independent `build/dynamic-linker/` cache.
 
 ```sh
 make dynamic-linker
-make iso
+make iso PROFILE=staged
 ```
 
 Inside Coast, compile a position-independent C executable or shared library:

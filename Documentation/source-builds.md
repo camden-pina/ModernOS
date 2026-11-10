@@ -1,5 +1,7 @@
 # Building Coast from source
 
+Repository: https://github.com/camden-pina/ModernOS.git
+
 Git contains Coast sources and pinned dependency recipes. The local Coast
 package server also distributes an offline source kit and native development
 dependencies. Build outputs, downloaded archives and signing keys are not Git
@@ -29,14 +31,13 @@ inputs.
 | Wider source desktop | Python, Coast Packages/makepkg, Qt, QEMU and noVNC source receipts | Fresh assembly passed all eleven guest suites, including actual package builds, Qt USB/clipboard and Chromium-operated nested Coast |
 | Fresh Chromium/Code OSS ISO | `tools/build_desktop.py` and explicit component receipts | Fresh source-GUI assembly passed boot, Bash, native C/C++, signed packages, addons/SQLite/proxy, browser and editor guest suites |
 
-A kernel rebuild is a complete native compilation. The new desktop pipeline
-connects the public component recipes without importing an older ISO. The
-core target supplies BusyBox commands, Bash/Readline, native GCC/G++ and
-standalone pacman/GnuPG tools. The optional wider target also connects Python,
-Coast Packages, the makepkg/fakeroot environment, Qt and QEMU to fresh source
-assembly. Other selected-image tools and full native browser build kits remain
+A kernel rebuild is a complete native compilation. The desktop pipeline
+connects the public component recipes without importing an older ISO. Plain
+`make iso` includes BusyBox commands, Bash/Readline, native GCC/G++, standalone
+pacman/GnuPG tools, Python, Coast Packages, the makepkg/fakeroot environment,
+Qt and QEMU. `PROFILE=core` omits the Python/makepkg/Qt/QEMU integrations.
+Additional development ports and full native browser build kits remain
 separate components.
-Older image-overlay experiments remain historical workflows.
 
 `tools/build_gui_sources.py` fetches the pinned Debian sources/patches for all
 76 source packages supplying the 93 GUI runtime packages. Rootless Podman
@@ -56,26 +57,26 @@ guest qualification remains separate.
 ## Full desktop build on Linux
 
 ```sh
-make desktop-iso DESKTOP_JOBS=4
-make desktop-iso DESKTOP_ARGS=--plan
-make desktop-wide-iso DESKTOP_JOBS=4
-make desktop-wide-iso DESKTOP_BUILD=build/desktop-wide-qa DESKTOP_ARGS=--qualify
-make desktop-iso DESKTOP_BUILD=build/desktop-qa DESKTOP_ARGS=--qualify
+make iso
+make run
 ```
 
-Choose a build command; the examples are alternatives, not a required sequence.
-The core output is `build/desktop-source/image/Coast-desktop.iso`. Host setup remains
+The output is `build/desktop-source-wide/image/Coast-desktop.iso`. Host setup remains
 a prerequisite: the native-image tools below, rootless Podman, Bubblewrap,
 CMake, Ninja, pkg-config, ncurses host utilities, Autotools/Bison/Gettext tools and
 Electron's upstream Linux build dependencies. The workflow installs no host
 packages. It downloads pinned Rust host tools into its own output directory.
-Its logs live in `build/desktop-source/logs/`. The
-[README](../README.md) supplies explicit Ubuntu host setup, GitHub ZIP handling
-and launch commands for a fresh checkout.
+Its logs live in `build/desktop-source-wide/logs/`. The
+[README](../README.md) supplies the short build sequence;
+[host setup](host-setup.md) describes `make setup-host` and its checks.
+The [command reference](build-system.md) explains all profiles and optional
+arguments. Use `make iso ISO_ARGS=--plan` to inspect the complete build plan,
+or `make iso ISO_BUILD=build/desktop-qa ISO_ARGS=--qualify` to build and qualify
+a separate image.
 
 Rerun the same command after interruption. Completed receipts, their source
 identities and artifact hashes are checked before reuse. Changed build inputs
-require a new `DESKTOP_BUILD=build/another-desktop` directory, preserving the
+require a new `ISO_BUILD=build/another-desktop` directory, preserving the
 previous outputs. An interrupted one-shot staging operation is retained under
 that workflow's `failed/` before retrying. No selected image is overwritten.
 
@@ -86,10 +87,12 @@ tools, Bash/Readline, Wayland bridge and pinned font/dictionary assets.
 The GIO trash helper uses the matching application SDK, so it does not require
 an old QEMU SDK. Assembly checks the exact Electron/Node kernel admission and
 component hashes. It also checks every payload ELF's architecture, libraries
-and GNU ABI requirements against the actual image. Proprietary Microsoft sign-in brokers are omitted by
-default; see the README for the explicit inclusion option.
+and GNU ABI requirements against the actual image. Microsoft sign-in is optional. To include its upstream proprietary brokers,
+select `ISO_ARGS=--with-microsoft-auth` on a new build root. The default
+source image omits these binaries; the receipt records the choice and the
+remaining prebuilt application helpers.
 
-`make desktop-wide-iso` selects `--with-integrations` and defaults to
+`make iso` selects `--with-integrations` and defaults to
 `build/desktop-source-wide/image/Coast-desktop.iso`. Six additional explicit
 receipts supply Python/jq, makepkg support, Coast Packages, Qt, QEMU and its
 source viewer. All use the source-built POSIX musl compiler; no legacy
@@ -195,7 +198,7 @@ verified source-built Electron/Node and GNU ABI receipts; it did not rebuild
 the entire Electron graph from an empty checkout. A separate source-only export,
 without ignored caches, rebuilt the kernel/native ISO and passed all four
 UEFI/BIOS CPU cases. Exact hashes and report paths are in
-[the November 9 passoff](PASSOFF-2026-11-09.md).
+[development status](AI-HANDOFF.md).
 
 ## Linux host
 
@@ -205,12 +208,12 @@ python3 -B tools/build_desktop_kernel.py --output-root build/my-kernel --jobs 4
 python3 -B tools/build_native_gui.py --output-root build/my-desktop
 make nasm
 make limine
-make native-iso
+make iso PROFILE=native
 ```
 
 `make limine` compiles Limine's boot programs instead of downloading the
 upstream binary bundle. It uses Clang/LLVM and mtools, and can build a separate
-host NASM automatically. `make native-iso` uses the GCC/binutils bootloader path
+host NASM automatically. `make iso PROFILE=native` uses the GCC/binutils bootloader path
 and compiles musl/BusyBox for the native shell tools. It requires mtools and
 xorriso on Linux. This image is independent of existing ISOs and contains the
 native desktop; the full Chromium/Code OSS runtime remains separate. Host OVMF firmware is discovered from the Linux
@@ -381,9 +384,8 @@ ripgrep and the sandbox helper. WASM and extension build artifacts also remain
 explicit coverage limits. The image manifest lists remaining prebuilt ELF files.
 
 Loading the modules in Coast, packaging them with rebuilt Electron and
-qualifying the combined image remain separate steps. `make desktop-iso` runs
-these source-build stages and the fresh assembler. The historical overlay
-builders remain separate.
+qualifying the combined image remain separate steps. `make iso` runs
+these source-build stages and the fresh assembler.
 
 ## Source-only publication and package snapshots
 

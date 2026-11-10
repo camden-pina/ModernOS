@@ -108,7 +108,7 @@ coverage is tracked separately in [source-builds.md](source-builds.md).
 
 ## Fresh source desktop
 
-`make desktop-wide-iso` includes QEMU, its dependency SDK, source-built x86 BIOS
+`make iso` includes QEMU, its dependency SDK, source-built x86 BIOS
 firmware, source noVNC and `coast-vm` without importing a prior image or package
 server. The builder takes an explicit source-built POSIX musl compiler:
 
@@ -117,7 +117,7 @@ python3 -B tools/build_qemu.py --compiler-build build/my-desktop/compiler/BUILD.
   --output-root build/my-qemu --jobs 4
 ```
 
-The full wider image's `--qualify` checks the installed emulator/SDK and operates
+`make iso ISO_ARGS=--qualify` checks the installed emulator/SDK and operates
 a nested native Coast desktop through Chromium, WebSocket VNC and USB input.
 This complements the native-in-Coast rebuild workflow above. The fresh image
 contains the runtime and SDK; the larger native build kit remains separately

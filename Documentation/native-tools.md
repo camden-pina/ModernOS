@@ -196,7 +196,7 @@ further porting, and `-flto` is outside this compiler profile. The optional
 
 ## Reproducible offline build
 
-`make iso` invokes `tools/build_nano.py` for musl/ncurses, then
+`make iso PROFILE=staged` invokes `tools/build_nano.py` for musl/ncurses, then
 `tools/build_native_ports.py` for editors/utilities, `tools/build_gawk.py` for
 GNU awk, `tools/build_gcc.py` for
 the static compiler SDK and `tools/package_sdk.py` for corresponding sources.
@@ -236,7 +236,7 @@ build-machine executable aliases are never copied into Coast.
 
 ## Rebuild GCC inside Coast
 
-Start QEMU with sufficient memory (`make run MEMORY=8G`) and run:
+Start QEMU with sufficient memory (`make run PROFILE=staged MEMORY=8G`) and run:
 
 ```text
 bootstrap-toolchain --help
@@ -344,7 +344,7 @@ the backing-file metadata needed to fault those pages with SIGBUS.
 MAP_SHARED/coherent file mappings remain unsupported. CPU clocks, times,
 getrusage and wait4 expose actual sampled user/kernel CPU time; untracked
 resource fields remain zero. IPv4 sockets, hardware getrandom, random devices
-and eventfd support Git/curl/NetSurf; see [browser-network.md](browser-network.md).
+and eventfd support Git/curl and the desktop runtimes; see [networking and userland](kernel-userland.md).
 
 Remaining ABI gaps include coherent filesystem-backed shared mmap, mknod/FIFOs,
 hard links, unlinking open files, replacing occupied FAT targets,

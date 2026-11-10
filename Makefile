@@ -372,11 +372,23 @@ export KBUILD_CPPFLAGS KBUILD_CFLAGS KBUILD_AFLAGS KBUILD_LDFLAGS LWIP_ROOT
 
 KERNEL_IMAGE := $(objtree)/vmlinux
 TARGET_KERNEL := $(KERNEL_IMAGE)
-ISO_IMAGE ?= $(objtree)/os.iso
+# One public ISO command; smaller and development images are explicit profiles.
+PROFILE ?= full
+ifneq ($(words $(PROFILE)),1)
+$(error PROFILE must select exactly one of full, core, native, or staged)
+endif
+ifeq ($(filter full core native staged,$(PROFILE)),)
+$(error Unsupported PROFILE=$(PROFILE); choose full, core, native, or staged)
+endif
+JOBS ?= 4
+ISO_BUILD ?= $(if $(filter native,$(PROFILE)),$(BUILD_DIR)/native-image,$(if $(filter core,$(PROFILE)),$(BUILD_DIR)/desktop-source,$(BUILD_DIR)/desktop-source-wide))
+ISO_IMAGE ?= $(if $(filter staged,$(PROFILE)),$(objtree)/os.iso,$(if $(filter native,$(PROFILE)),$(ISO_BUILD)/Coast-native.iso,$(ISO_BUILD)/image/Coast-desktop.iso))
+ISO_ARGS ?=
+REPACK ?= 0
 ISO_ROOT := $(objtree)/iso_root
 INITRAMFS := $(objtree)/initramfs.tar
 # Guest checks without an explicit --iso must boot the selected O= image.
-export COAST_ISO := $(abspath $(ISO_IMAGE))
+export COAST_ISO = $(abspath $(ISO_IMAGE))
 export COAST_INITRAMFS := $(INITRAMFS)
 BOOT_DIR := $(srctree)/arch/x86/boot
 BOOT_CONFIG ?= $(BOOT_DIR)/boot.conf
@@ -397,7 +409,7 @@ include $(srctree)/arch/x86/boot/efi/Makefile
 include $(srctree)/scripts/bootloaders/$(BOOTLOADER).mk
 AUDIO_FIRMWARE ?= $(wildcard /lib/firmware/aw88399_acf.bin)
 
-.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso iso-image clean \
+.PHONY: all kernel vmlinux prepare kernel-build userland initramfs iso _iso-staged _iso-image clean \
 	userland-clean help test-boot-config FORCE
 all: vmlinux
 kernel vmlinux: $(KERNEL_IMAGE)
@@ -449,16 +461,19 @@ nasm:
 	$(Q)python3 -B "$(srctree)/tools/build_assembler.py"
 limine:
 	$(Q)python3 -B "$(srctree)/tools/build_limine.py"
-.PHONY: native-iso desktop-iso desktop-wide-iso image-tools
-DESKTOP_BUILD ?= $(BUILD_DIR)/desktop-source
-DESKTOP_JOBS ?= 4
-DESKTOP_ARGS ?=
-desktop-iso:
-	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root "$(DESKTOP_BUILD)" --jobs "$(DESKTOP_JOBS)" $(DESKTOP_ARGS)
-desktop-wide-iso:
-	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root "$(DESKTOP_BUILD)-wide" --jobs "$(DESKTOP_JOBS)" --with-integrations $(DESKTOP_ARGS)
-native-iso:
-	$(Q)python3 -B "$(srctree)/tools/build_native_iso.py" --output-root "$(BUILD_DIR)/native-image"
+.PHONY: setup-host image-tools
+HOST_ARGS ?=
+setup-host:
+	$(Q)python3 -B "$(srctree)/tools/setup_host.py" --install $(if $(filter native,$(PROFILE)),--native) $(HOST_ARGS)
+ifeq ($(PROFILE),staged)
+iso: _iso-staged
+else ifeq ($(PROFILE),native)
+iso:
+	$(Q)python3 -B "$(srctree)/tools/build_native_iso.py" --output-root "$(ISO_BUILD)" --jobs "$(JOBS)" $(ISO_ARGS)
+else
+iso:
+	$(Q)python3 -B "$(srctree)/tools/build_desktop.py" --output-root "$(ISO_BUILD)" --jobs "$(JOBS)" $(if $(filter full,$(PROFILE)),--with-integrations) $(ISO_ARGS)
+endif
 image-tools:
 	$(Q)python3 -B "$(srctree)/tools/build_image_tools.py"
 
@@ -486,11 +501,13 @@ initramfs: userland
 		--wallpapers $(srctree)/userland/desktop/assets/wallpapers \
 		$(if $(AUDIO_FIRMWARE),--audio-firmware "$(AUDIO_FIRMWARE)")
 
-iso: vmlinux initramfs $(BOOTLOADER_DEPS)
-	$(Q)$(MAKE) --no-print-directory iso-image
+_iso-staged: override PROFILE=staged
+_iso-staged: vmlinux $(if $(filter 1,$(REPACK)),,initramfs) $(BOOTLOADER_DEPS)
+	$(Q)$(MAKE) --no-print-directory _iso-image PROFILE=staged
 
 # Package existing userland without rebuilding the large shared port caches.
-iso-image: vmlinux $(BOOTLOADER_DEPS) $(BOOT_CONFIG) $(BOOT_TEMPLATE)
+_iso-image: override PROFILE=staged
+_iso-image: vmlinux $(BOOTLOADER_DEPS) $(BOOT_CONFIG) $(BOOT_TEMPLATE)
 	$(Q)python3 "$(srctree)/tools/build_boot_iso.py" --bootloader "$(BOOTLOADER)" \
 		--config "$(BOOT_CONFIG)" --kernel "$(KERNEL_IMAGE)" --initramfs "$(INITRAMFS)" \
 		--template "$(BOOT_TEMPLATE)" \
@@ -515,36 +532,22 @@ userland-clean:
 
 help:
 	@printf '%s\n' \
-		'  make [-jN]                 Build the kernel (build/vmlinux)' \
-		'  make O=out                 Build kernel objects and images under out/' \
-		'  make V=1                   Show full compiler and linker commands' \
-		'  make CROSS_COMPILE=prefix- Use a GCC cross toolchain' \
-		'  make LLVM=1                Use clang, ld.lld, and llvm-ar' \
-		'  make iso BOOTLOADER=limine  Build the default BIOS/UEFI Limine ISO' \
-		'  make iso BOOTLOADER=grub    Build an x86-64 UEFI GRUB 2 ISO' \
-		'  make iso BOOTLOADER=refind  Build an x86-64 UEFI rEFInd ISO' \
-		'  BOOT_CONFIG= / BOOT_TEMPLATE=  Select shared TOML / native loader template' \
-		'  BOOT_ASSETS=               Extra GUEST_PATH=HOST_PATH files for templates' \
-		'  make iso-image             Package the selected loader and existing initramfs' \
-		'  make test-boot-config      Check shared config and loader selection/staging' \
-		'  make fetch-sources         Download/verify pinned upstream source archives' \
-		'  make check-sources         Verify cached sources without network access' \
-		'  make browser-host          Prepare the browser host-tool cache explicitly' \
-		'  make source-check          Reject generated binaries, downloads and secrets in Git' \
+		'  make setup-host            Install Ubuntu/Debian host prerequisites' \
+		'  make iso                   Build the complete Coast desktop and integrations' \
+		'  make run                   Boot that ISO in QEMU without rebuilding' \
+		'' \
+		'  Build options: PROFILE=full|core|native|staged JOBS=4 ISO_BUILD=path' \
+		'                 ISO_ARGS="--plan" (full/core; print the build plan)' \
+		'  Run options:   MEMORY=16G SMP=4 QEMU_ACCEL=kvm|tcg QEMU_DISPLAY=gtk,gl=off' \
+		'                 ISO_IMAGE=path FIRMWARE=bios|uefi QEMU_EXTRA_ARGS="..."' \
+		'  Use the same PROFILE / ISO_BUILD / O= values for iso and run.' \
+		'  make -n run                Print the QEMU command without launching' \
+		'' \
+		'  make [-jN]                 Build only the kernel (build/vmlinux)' \
+		'  make source-check          Audit sources for publication' \
 		'  make source-archive        Export the offline kernel source kit' \
-		'  make desktop-kernel        Build the checked-in Chromium ABI profile' \
-		'  make nasm / limine         Compile assembler / BIOS and UEFI boot files' \
-		'  make native-iso            Build the native desktop ISO from source' \
-		'  make desktop-iso           Build the Chromium/Code OSS desktop from pinned sources' \
-		'  make desktop-wide-iso      Also include Coast Packages/makepkg, Qt and QEMU' \
-		'  make test-source-tree      Test source publication and deterministic archives' \
-		'  make run / run-image       Boot a rebuilt / existing ISO in QEMU' \
-		'  make run-codeoss           Boot the selected Code OSS image (2 CPUs, 16G)' \
-		'  make run-browser           Boot the selected Chromium browser image (2 CPUs, 16G)' \
-		'  make chromium-browser      Build Chromium frontend with the cached Coast Electron runtime' \
-		'  make clean                 Clean kernel/images in selected output' \
-		'  make userland-clean        Also remove shared generated userland' \
-		'  See Documentation/build-system.md for layout and build details.'
+		'  make clean                 Clean the selected kernel/image output' \
+		'  Optional arguments and developer commands: Documentation/build-system.md'
 
 FORCE:
 

@@ -32,7 +32,7 @@ Perl, make and Bubblewrap are required:
 
 ```sh
 make program-ports
-make iso
+make iso PROFILE=staged
 ```
 
 The builder downloads only the pinned official Python/jq archives when missing

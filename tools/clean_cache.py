@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove known retired-browser and failed-test caches; preserve selected builds.
+"""Preview or remove regenerable caches while retaining source build products.
 
 Print a dry-run inventory by default. --apply removes only the listed generated
 paths. Toolchains, signing keys, selected images and package services are kept.
@@ -7,43 +7,85 @@ paths. Toolchains, signing keys, selected images and package services are kept.
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import shutil
+
+from source_tree import files
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def candidates(root=ROOT):
+def candidates(root=ROOT, intermediates=False):
+    root = Path(root).resolve()
     build = root / 'build'
+    if not build.is_dir():
+        return
     protected = {p.resolve() for p in build.iterdir() if p.is_symlink()}
-    candidates = set()
-    for pattern in ['modern-browser/webcore-*', 'coast-repository-qemu-r*',
-                    'qemu/test-r[1-5]', 'qemu/debug', 'coast-repository-server-r4',
-                    'coast-repository-server-r6', 'limine-source-preview', 'modern-browser/ffmpeg-*',
-                    'electron-wasm-runtime-r[5-7]-*/cached-view',
-                    'node-native-r[1-4]-*/cached-view', 'coast-electron-r3/cached-view',
-                    'coast-node-r1/cached-view']:
-        candidates.update(build.glob(pattern))
-    # Historical Chromium candidates never supply a base image to the active
-    # builder. Keep their small manifests/reports while deleting obsolete ISOs.
-    for directory in build.glob('coast-chromium*'):
-        for image in directory.glob('*.iso'):
-            if image.resolve() not in protected:
-                candidates.add(image)
-    for name in ['userland/vendor/netsurf-all-3.11.tar.gz',
-                 'userland/vendor/ffmpeg-9.0.2.tar.xz',
-                 'userland/vendor/licenses/netsurf-COPYING.txt',
-                 'userland/vendor/licenses/webcore-NOTICES.txt',
-                 'userland/vendor/licenses/ffmpeg-NOTICES.txt']:
-        path = root / name
-        if path.exists():
-            candidates.add(path)
-    for directory in ['tools', 'ports', 'userland/packages']:
-        candidates.update((root / directory).rglob('__pycache__'))
-    for path in sorted(candidates):
+    tracked = [root / name for name in files(root)]
+    selected = set()
+    private = {'private-keys-v1.d', 'openpgp-revocs.d', 'coast-signing-keys',
+               'state', 'credentials', 'local-notes', 'cleanup-records'}
+    skip = private | {'.git', 'node_modules', 'checkout', 'src', 'sources', 'upstream', 'vendor'}
+    for base in (build, root / 'tools', root / 'ports', root / 'userland/packages'):
+        if not base.is_dir():
+            continue
+        for current, directories, _ in os.walk(base, followlinks=False):
+            current = Path(current)
+            if any(current == p or current.is_relative_to(p) for p in protected):
+                directories[:] = []
+                continue
+            for name in list(directories):
+                path = current / name
+                if path.is_symlink() or name in skip:
+                    directories.remove(name)
+                elif name in {'__pycache__', '.pytest_cache', 'npm-cache', 'thinlto-cache'}:
+                    selected.add(path)
+                    directories.remove(name)
+    if intermediates:
+        from build_desktop import verify_receipt
+        for directory in build.glob('electron-source-*'):
+            receipt = directory / 'BUILD.json'
+            if not receipt.is_file():
+                continue
+            record = verify_receipt(receipt)
+            products = record.get('products', {})
+            if not {'electron', 'node'}.issubset(products) or any(
+                    not isinstance(products[name], dict)
+                    or not products[name].get('path') or not products[name].get('sha256')
+                    for name in ('electron', 'node')):
+                continue
+            references = []
+
+            def paths(value):
+                if isinstance(value, dict):
+                    for child in value.values():
+                        paths(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        paths(child)
+                elif isinstance(value, str) and value.startswith(str(directory)):
+                    path = Path(value)
+                    if path.exists():
+                        references.append(path.resolve())
+
+            paths(record)
+            for product in ('electron', 'node'):
+                for pattern in ('obj', 'thinlto-cache', '*-dwo'):
+                    for path in (directory / product).glob(pattern):
+                        if path.is_dir() and not any(p == path or p.is_relative_to(path) for p in references):
+                            selected.add(path)
+    for path in sorted(selected):
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             continue
-        if any(p == path.resolve() or p.is_relative_to(path.resolve()) for p in protected):
+        if any(p == path or p.is_relative_to(path) or path.is_relative_to(p) for p in protected):
+            continue
+        if any(p == path or p.is_relative_to(path) for p in tracked):
+            continue
+        if any(p.name in private for p in path.parents):
+            continue
+        if any(p.name in private or p.name in {'secring.gpg', 'id_rsa', 'id_ed25519', '.env'}
+               for p in path.rglob('*')):
             continue
         yield path
 
@@ -51,10 +93,11 @@ def candidates(root=ROOT):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--intermediates', action='store_true', help='also prune verified Electron/Node object and split-debug caches')
     args = parser.parse_args()
     before = shutil.disk_usage(ROOT).free
     records = []
-    for path in candidates():
+    for path in candidates(intermediates=args.intermediates):
         size = sum(p.stat().st_size for p in path.rglob('*') if p.is_file() and not p.is_symlink()) if path.is_dir() else path.stat().st_size
         records.append(dict(path=str(path.relative_to(ROOT)), bytes=size))
         if args.apply:

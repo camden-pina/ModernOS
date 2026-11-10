@@ -49,8 +49,8 @@ def cxx_wrapper_text(build, prefix, cross, low_memory=False):
                ' -L' + shlex.quote(str(prefix / 'lib64')))
     if not low_memory:
         return '#!/bin/sh\nexec ' + command + ' "$@"\n'
-    # Collector parameters do not change generated code. The isolated WebCore
-    # build further shards these expensive TUs. Keep every codegen/feature/ABI
+    # Collector parameters do not change generated code. The component build
+    # further shards these expensive TUs. Keep every codegen/feature/ABI
     # flag in the original argument vector, including the Release -O3 setting.
     return '''#!/bin/sh
 gc_expand=5

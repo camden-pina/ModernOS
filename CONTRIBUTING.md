@@ -1,5 +1,7 @@
 # Contributing
 
+Repository: https://github.com/camden-pina/ModernOS.git
+
 Keep generated programs, downloaded archives and private signing state out of
 Git. Run `make source-check` before committing; it checks tracked files as well
 as new files, including files force-added despite `.gitignore`.

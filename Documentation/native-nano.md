@@ -48,7 +48,7 @@ console input automatically.
 
 ## Offline build and sources
 
-Run `make iso`. The normal userland build invokes `tools/build_nano.py`, which
+Run `make iso PROFILE=staged`. The normal userland build invokes `tools/build_nano.py`, which
 verifies the bundled archives against pinned SHA-256 hashes, builds musl and
 ncurses, and links the upstream nano executable. A stamp caches successful
 builds and is invalidated when the script, source hashes or build root change.
@@ -86,7 +86,7 @@ After this build, small additional native ports can use:
 ```sh
 build/native-musl/bin/musl-gcc -O2 -static -no-pie \
   -fno-stack-protector -mno-avx -mno-avx2 program.c -o userland/bin/program
-make iso
+make iso PROFILE=staged
 ```
 
 Compile static ET_EXEC images and validate every OS dependency. Nano's success
@@ -141,7 +141,7 @@ Dynamic linking, pthreads/futexes, public PTY device paths, controlling
 terminal/session APIs, job control, signal stacks, editable signal ucontexts,
 automatic SIGPIPE and shared-address-space threads remain unavailable.
 Hardware random devices and IPv4 sockets are now implemented; see
-[browser-network.md](browser-network.md). For nano's external commands use
+[kernel-userland.md](kernel-userland.md). For nano's external commands use
 `env SHELL=/bin/ash nano FILE`, selecting the real POSIX shell.
 Avoid its suspension command: the upstream prompt
 mentions `fg`, but Coast cannot suspend/resume jobs and provides no `fg`.

@@ -85,7 +85,7 @@ repository's private signing key. No host administrator privileges are needed.
 Keep this terminal running while using the repository. In another terminal:
 
 ```sh
-make run-codeoss
+make run ISO_IMAGE=build/Coast-codeoss.iso SMP=2
 ```
 
 The VM needs its usual user network (`-nic user,model=e1000e`). No disk is

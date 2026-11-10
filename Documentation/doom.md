@@ -68,8 +68,8 @@ continues silently.
 Use the existing QEMU audio configuration, or select HDA explicitly:
 
 ```sh
-make run-image
-make run-image QEMU_AUDIO='-audiodev sdl,id=audio0 -device ich9-intel-hda -device hda-duplex,audiodev=audio0'
+make run PROFILE=staged
+make run PROFILE=staged QEMU_AUDIO='-audiodev sdl,id=audio0 -device ich9-intel-hda -device hda-duplex,audiodev=audio0'
 ```
 
 Configuration and savegames live under `/home/user/.doom`; the guest root is
@@ -83,10 +83,10 @@ the native backing buffer has a fixed layout.
 ## Build and preserve source
 
 ```sh
-make doom-sources        # restore/verify pinned source archives
-make doom-check-sources  # offline checksum verification
-make doom                # engine + Freedoom data; one compiler process at a time
-make iso                 # include the resulting program/data in a complete image
+make doom-sources         # restore/verify pinned source archives
+make doom-check-sources   # offline checksum verification
+make doom                 # engine + Freedoom data; one compiler process at a time
+make iso PROFILE=staged   # include the resulting program/data in the staged image
 make test-doom-host
 make test-doom           # QEMU gameplay + recorded PCM; rebuilds the ISO first
 ```
@@ -94,7 +94,7 @@ make test-doom           # QEMU gameplay + recorded PCM; rebuilds the ISO first
 `tools/build_doom.py --engine-only` builds the game binary using the existing
 static musl toolchain without rebuilding unrelated programs. Its log is
 `build/doom/build.log`. The data builder is `tools/build_freedoom.py`; its cache
-is separate under `build/doom-freedoom`. `make iso` includes Doom automatically.
+is separate under `build/doom-freedoom`. `make iso PROFILE=staged` includes Doom automatically.
 
 Doomgeneric is pinned at commit
 `e257a09527062bfb986b6e5e0780839b6cbd5b71` from

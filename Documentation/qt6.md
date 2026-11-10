@@ -34,7 +34,7 @@ authorization; background commands remain denied.
 
 ## Fresh source desktop
 
-`make desktop-wide-iso` builds this port with the source pipeline's POSIX musl
+`make iso` builds this port with the source pipeline's POSIX musl
 compiler and includes its binary, source archive and notices in the fresh image.
 It does not need an existing `build/modern-browser` C++ prefix. Its Qt SDK and
 host generators remain in the selected component output. A standalone fresh
@@ -45,7 +45,8 @@ python3 -B tools/build_qt6.py --compiler-build build/my-desktop/compiler/BUILD.j
   --output-root build/my-qt --jobs 4
 ```
 
-The earlier development commands below retain their legacy defaults.
+The development commands below use the existing Coast musl/GCC toolchain and
+install into the staged userland.
 
 ## Build
 
@@ -54,7 +55,7 @@ C++ runtime available:
 
 ```sh
 make qt6
-make iso
+make iso PROFILE=staged
 ```
 
 The Qt target needs CMake, Ninja and Bubblewrap. It downloads QtBase from the

@@ -4,7 +4,7 @@ Coast uses the full hardware-enabled ACPICA 20260930 runtime, pinned to
 upstream commit `e85aa3bebaae81ed1e6d163511ac7e1eafe732cf` from
 <https://github.com/open-acpica/acpica/tree/20260930>. Runtime sources are
 vendored in `lib/acpica`; no interpreter download is needed during a kernel
-build. The old LAI interpreter and its host entry points are removed.
+build. The OS services are implemented in `drivers/acpi/osl.c`.
 
 ## Initialization and interfaces
 
@@ -50,8 +50,7 @@ fallback, and SCI installation/removal. ACPICA uses its local object cache and
 binary semaphores for mutexes. Its freestanding C-library symbols are prefixed
 so that they cannot replace kernel string or formatting implementations.
 
-The kernel formatter formerly stored inside the LAI directory is retained
-independently in `lib/vsnprintf.c`; its original MIT notice is preserved.
+The kernel formatter lives independently in `lib/vsnprintf.c` with its MIT notice.
 
 ## Build
 
@@ -59,7 +58,7 @@ The existing commands are unchanged:
 
 ```sh
 make -j4
-make iso
+make iso PROFILE=staged
 make LLVM=1 O=build/clang -j4
 ```
 

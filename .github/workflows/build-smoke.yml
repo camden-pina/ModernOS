@@ -18,9 +18,10 @@ jobs:
         run: |
           make source-check test-source-tree test-source-fetch test-desktop-assembly test-electron-admission test-runtime-fixture test-acpi-host test-power-host test-efi-loader test-boot-config
           python3 -B tools/test_package_configuration.py
+          python3 -B tools/test_build_workflows.py
       - name: Compile the kernel and native desktop from a fresh checkout
         run: |
           make -j2
           make -C userland bin/gui -j2
-          python3 -B tools/build_native_iso.py --output-root build/native-image --jobs 2
+          make iso PROFILE=native JOBS=2
           make source-check
