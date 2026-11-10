@@ -1,0 +1,669 @@
+# This file is used by GN for building, which is NOT the build system used for
+# building official binaries.
+# Please take a look at node.gyp if you are making changes to build system.
+
+import("node.gni")
+import("$node_v8_path/gni/snapshot_toolchain.gni")
+import("$node_v8_path/gni/v8.gni")
+
+# The actual configurations are put inside a template in unofficial.gni to
+# prevent accidental edits from contributors.
+template("node_gn_build") {
+  config("node_features") {
+    defines = []
+    if (is_component_build) {
+      defines += [
+        "USING_UV_SHARED",
+        "USING_V8_SHARED",
+      ]
+    }
+    if (node_use_openssl) {
+      defines += [ "HAVE_OPENSSL=1" ]
+    } else {
+      defines += [ "HAVE_OPENSSL=0" ]
+    }
+    if (node_use_sqlite) {
+      defines += [ "HAVE_SQLITE=1" ]
+    } else {
+      defines += [ "HAVE_SQLITE=0" ]
+    }
+    if (node_use_amaro) {
+      defines += [ "HAVE_AMARO=1" ]
+    } else {
+      defines += [ "HAVE_AMARO=0" ]
+    }
+    # node_mksnapshot is a host tool, but the values node_constants.cc
+    # compiles in end up in the snapshot the target deserializes. arm and
+    # arm64 Linux override three open(2) flags, so tell it what it targets.
+    if (is_linux && current_toolchain == v8_snapshot_toolchain &&
+        current_cpu != target_cpu &&
+        (target_cpu == "arm" || target_cpu == "arm64")) {
+      defines += [ "NODE_SNAPSHOT_TARGET_LINUX_ARM=1" ]
+    }
+    # Embedded in Electron, gin/Chromium owns the V8 platform (node must not
+    # init its own -> stub V8Platform). But the standalone node_mksnapshot
+    # host tool MUST own the platform or SnapshotBuilder gets a null
+    # platform, and the snapshot it produces bakes this macro's effects
+    # (config.hasTracing, the trace_events builtin) into the heap the
+    # shipped libnode deserializes -- so every toolchain must agree on it.
+    # Electron never initializes Node's platform (kNoInitializeNodeV8Platform).
+    if (node_use_v8_platform || node_use_node_snapshot) {
+      defines += [ "NODE_USE_V8_PLATFORM=1" ]
+    } else {
+      defines += [ "NODE_USE_V8_PLATFORM=0" ]
+    }
+    if (node_use_perfetto_sdk) {
+      defines += [ "NODE_USE_PERFETTO_SDK=1" ]
+    } else {
+      defines += [ "NODE_USE_PERFETTO_SDK=0" ]
+    }
+    if (node_enable_inspector) {
+      defines += [ "HAVE_INSPECTOR=1" ]
+    } else {
+      defines += [ "HAVE_INSPECTOR=0" ]
+    }
+    if (node_use_node_code_cache) {
+      defines += [ "NODE_USE_NODE_CODE_CACHE=1"]
+    }
+    if (v8_enable_i18n_support) {
+      defines += [ "NODE_HAVE_I18N_SUPPORT=1" ]
+    }
+  }
+
+  config("node_external_config") {
+    include_dirs = [
+      target_gen_dir,
+      "src",
+    ]
+    defines = [
+      "NODE_WANT_INTERNALS=1",
+      "NODE_EMBEDDER_MODULE_VERSION=$node_module_version",
+    ]
+    configs = [
+      ":node_features",
+      "$node_v8_path:external_config",
+    ]
+  }
+
+  config("node_internal_config") {
+    visibility = [
+      ":*",
+      "src/inspector:*",
+    ]
+    configs = [ ":node_external_config" ]
+    libs = []
+    cflags = [ "-Wno-microsoft-include" ]
+    cflags_cc = [
+      "-Wno-deprecated-declarations",
+      "-Wno-extra-semi",
+      "-Wno-implicit-fallthrough",
+      "-Wno-macro-redefined",
+      "-Wno-missing-braces",
+      "-Wno-range-loop-bind-reference",
+      "-Wno-return-type",
+      "-Wno-shadow",
+      "-Wno-sometimes-uninitialized",
+      "-Wno-string-plus-int",
+      "-Wno-string-conversion",
+      "-Wno-unreachable-code",
+      "-Wno-unreachable-code-break",
+      "-Wno-unreachable-code-return",
+      "-Wno-unused-label",
+      "-Wno-unused-private-field",
+      "-Wno-unused-variable",
+      "-Wno-unused-function",
+    ]
+
+    if (target_cpu == "x86") {
+      node_arch = "ia32"
+    } else {
+      node_arch = target_cpu
+    }
+    if (target_os == "win") {
+      node_platform = "win32"
+    } else if (target_os == "mac") {
+      node_platform = "darwin"
+    } else {
+      node_platform = target_os
+    }
+    defines = [
+      "NODE_ARCH=\"$node_arch\"",
+      "NODE_PLATFORM=\"$node_platform\"",
+      "NODE_REPORT"
+    ]
+
+    if (is_win) {
+      defines += [
+        "NOMINMAX",
+        "_UNICODE=1",
+      ]
+    } else {
+      defines += [ "__POSIX__" ]
+    }
+    if (node_tag != "") {
+      defines += [ "NODE_TAG=\"$node_tag\"" ]
+    }
+    if (node_v8_options != "") {
+      defines += [ "NODE_V8_OPTIONS=\"$node_v8_options\"" ]
+    }
+    if (node_release_urlbase != "") {
+      defines += [ "NODE_RELEASE_URLBASE=\"$node_release_urlbase\"" ]
+    }
+    if (node_use_openssl) {
+      defines += [
+        "NODE_OPENSSL_SYSTEM_CERT_PATH=\"$node_openssl_system_ca_path\"",
+      ]
+    }
+  }
+
+  gypi_values = exec_script("./tools/gypi_to_gn.py",
+                            [ rebase_path("node.gyp"),
+                              "--replace=<@(node_builtin_shareable_builtins)=" ],
+                            "scope",
+                            [ "node.gyp" ])
+
+  source_set("libnode") {
+    configs += [
+      ":node_internal_config",
+      "$node_v8_path:v8_tracing_config",
+      "//build/config/compiler:no_exit_time_destructors"
+    ]
+    public_configs = [
+      ":node_external_config",
+      "deps/googletest:googletest_config",
+      ":zstd_include_config"
+    ]
+    public_deps = [
+      "deps/ada",
+      "deps/uv",
+      "//electron:electron_js2c",
+      "deps/simdjson",
+      "$node_v8_path",
+
+      # node_builtins.h includes base/dcheck_is_on.h, which needs this generated
+      # header; public so that everything compiling against node's headers is
+      # ordered after it too.
+      "//base:debugging_buildflags",
+    ]
+    deps = [
+      ":run_node_js2c",
+      "deps/cares",
+      "deps/histogram",
+      "deps/llhttp",
+      "deps/merve",
+      "deps/nbytes",
+      "deps/nghttp2",
+      "deps/postject",
+      "deps/uvwasi",
+      "//third_party/zlib",
+      "//third_party/brotli:dec",
+      "//third_party/brotli:enc",
+      "//third_party/zstd:decompress",
+      "//third_party/zstd:headers",
+      "$node_simdutf_path",
+      "$node_v8_path:v8_libplatform",
+      "$node_v8_path:v8_tracing",
+    ]
+
+    cflags_cc = [
+      "-Wno-unguarded-availability-new",
+      "-Wno-return-stack-address"
+    ]
+
+    sources = [
+      # GetEmbeddedSnapshotData() is NOT defined here -- every libnode consumer
+      # links exactly one provider of it (":node_snapshot" or
+      # ":node_snapshot_stub"), so the symbol is never duplicated (which Windows
+      # lld-link cannot resolve via weak override).
+      "$root_gen_dir/electron_natives.cc",
+      "$target_gen_dir/node_javascript.cc",
+    ] + gypi_values.node_sources
+
+    if (is_win) {
+      libs = [ "psapi.lib" ]
+    }
+    if (is_mac) {
+      frameworks = [
+        "CoreFoundation.framework",
+        "Security.framework",
+      ]
+
+      # Fix for MacOSX26 SDK headers included twice due to usage of clang
+      # modules. Included once as a C header and again as C++.
+      use_libcxx_modules = false
+    }
+    if (is_posix) {
+      configs -= [ "//build/config/gcc:symbol_visibility_hidden" ]
+      configs += [ "//build/config/gcc:symbol_visibility_default" ]
+    }
+    if (use_system_llhttp) {
+      libs += [ "llhttp" ]
+    } else {
+      deps += [ "deps/llhttp" ]
+    }
+    if (use_system_histogram) {
+      libs += [ "hdr_histogram" ]
+      include_dirs += [ "/usr/include/hdr" ]
+    } else {
+      deps += [ "deps/histogram" ]
+    }
+    if (v8_enable_i18n_support) {
+      deps += [ "//third_party/icu" ]
+    }
+    if (node_use_openssl) {
+      deps += [ "deps/ncrypto" ]
+      public_deps += [ "//third_party/boringssl" ]
+      sources += gypi_values.node_crypto_sources
+    }
+    if (node_use_sqlite) {
+      deps += [ "deps/sqlite" ]
+      sources += gypi_values.node_sqlite_sources
+    }
+    if (node_enable_inspector) {
+      deps += [
+        "$node_inspector_protocol_path:crdtp",
+        "src/inspector:node_protocol_generated_sources",
+        "src/inspector:v8_inspector_compress_protocol_json",
+      ]
+      include_dirs = [
+        "$target_gen_dir/src",
+        "$target_gen_dir/src/inspector",
+        "$node_inspector_protocol_path",
+      ]
+      node_inspector = exec_script(
+          "./tools/gypi_to_gn.py",
+          [ rebase_path("src/inspector/node_inspector.gypi"),
+            "--replace=<(SHARED_INTERMEDIATE_DIR)=$target_gen_dir" ],
+          "scope",
+          [ "src/inspector/node_inspector.gypi" ])
+      sources += node_inspector.node_inspector_sources +
+                 node_inspector.node_inspector_generated_sources
+    }
+    if (is_linux) {
+      import("//build/config/linux/pkg_config.gni")
+        if (use_system_cares) {
+          pkg_config("cares") {
+            packages = [ "libcares" ]
+          }
+        }
+      if (use_system_nghttp2) {
+        pkg_config("nghttp2") {
+          packages = [ "libnghttp2" ]
+        }
+      }
+    }
+  }
+
+  config("zstd_include_config") {
+    include_dirs = [ "//third_party/zstd/src/lib" ]
+  }
+
+  executable(target_name) {
+    forward_variables_from(invoker, "*")
+
+    sources = [ "src/node_main.cc" ]
+    deps = [
+      ":libnode",
+      ":node_snapshot_stub",
+      "//third_party/zstd:compress",
+      "//base/allocator/partition_allocator:partition_alloc",
+      "//build/win:default_exe_manifest",
+    ]
+    # Electron: the snapshot stub vs generated node_snapshot.cc is now handled
+    # in the libnode source_set above (toolchain-conditional), so the standalone
+    # node CLI just links it from there.
+    output_name = "node"
+
+    if (is_apple) {
+      # Default optimization on apple adds "-dead_strip" to ldflags, which would
+      # strip exported V8 and NAPI symbols, has to remove it to make native
+      # modules work.
+      # There is almost no performance penalty since we are only removing
+      # optimization on the node_main.cc.
+      configs -= [ "//build/config/compiler:default_optimization" ]
+    }
+  }
+
+  if (node_use_node_snapshot) {
+    if (current_toolchain == v8_snapshot_toolchain) {
+      executable("node_mksnapshot") {
+        # Host tool, not shipped Chromium code — it bit-rotted while
+        # node_use_node_snapshot was off; treat as non-chromium code like
+        # other V8 host tools (avoids node-header -Wexit-time-destructors).
+        configs += [
+          ":node_internal_config",
+          ":disable_icf",
+          "//build/config/compiler:no_chromium_code",
+
+          # Electron's V8 uses external startup data, so the snapshot
+          # creator must extend the V8 startup snapshot (it cannot build
+          # the heap from scratch — that needs V8's full setup-isolate
+          # delegate which only V8's own mksnapshot links). This config +
+          # the --electron-v8-snapshot-blob arg below mirror how
+          # v8_context_snapshot_generator builds its snapshot.
+          "$node_v8_path:external_startup_data",
+        ]
+        configs -= [ "//build/config/compiler:chromium_code" ]
+        # GetEmbeddedSnapshotData() comes from ":node_snapshot_stub" in deps
+        # (the no-op stub is fine for the generator — it produces a snapshot,
+        # it doesn't consume one).
+        sources = [ "tools/snapshot/node_mksnapshot.cc" ]
+        deps = [
+          ":libnode",
+          # node_mksnapshot produces a snapshot, it doesn't consume one, so the
+          # no-op stub is the right provider (and ":node_snapshot" would cycle).
+          ":node_snapshot_stub",
+          # libnode only deps zstd :decompress/:headers; the zstd binding
+          # also needs the compression symbols when linked standalone.
+          "//third_party/zstd:compress",
+        ]
+      }
+
+      # This config disables a link time optimization "ICF", which may merge
+      # different functions into one if the function signature and body of them are
+      # identical.
+      #
+      # ICF breaks 1:1 mappings of the external references for V8 snapshot, so we
+      # disable it while taking a V8 snapshot.
+      config("disable_icf") {
+        visibility = [ ":*" ]  # Only targets in this file can depend on this.
+        if (is_win) {
+          ldflags = [ "/OPT:NOICF" ]  # link.exe, but also lld-link.exe.
+        } else if (is_apple && !use_lld) {
+          ldflags = [ "-Wl,-no_deduplicate" ]  # ld64.
+        } else if (use_lld) {
+          ldflags = [ "-Wl,--icf=none" ]
+        }
+      }
+    }
+
+    # One run per build: every toolchain's ":node_snapshot" compiles this file,
+    # so the browser js2c code-cache tool (v8_snapshot_toolchain) is keyed to
+    # the exact snapshot the framework ships (two runs need not be identical).
+    if (current_toolchain == default_toolchain) {
+      action("run_node_mksnapshot") {
+        deps = [
+          ":node_mksnapshot($v8_snapshot_toolchain)",
+
+          # The V8 startup snapshot node_mksnapshot extends.
+          "$node_v8_path:run_mksnapshot_default",
+        ]
+        script = "$node_v8_path/tools/run.py"
+        sources = []
+        data = []
+
+        mksnapshot_dir =
+            get_label_info(":node_mksnapshot($v8_snapshot_toolchain)",
+                           "root_out_dir")
+
+        outputs = [ "$target_gen_dir/node_snapshot.cc" ]
+        args = [
+          "./" +
+              rebase_path(mksnapshot_dir + "/node_mksnapshot", root_build_dir),
+          rebase_path("$target_gen_dir/node_snapshot.cc", root_build_dir),
+
+          # Electron's V8 has external startup data, so node_mksnapshot must
+          # load the V8 startup snapshot and extend it rather than build the
+          # heap from scratch (node_mksnapshot.cc parses this flag before
+          # InitializeOncePerProcess).
+          "--electron-v8-snapshot-blob=" +
+              rebase_path("$root_out_dir/snapshot_blob.bin", root_build_dir),
+        ]
+      }
+    }
+  }
+
+  # The no-snapshot fallback GetEmbeddedSnapshotData(), as its own source_set so
+  # libnode doesn't carry it. Linked by libnode consumers that do NOT link
+  # ":node_snapshot" and don't already compile the stub themselves:
+  # node_mksnapshot (linking ":node_snapshot" would cycle through
+  # run_node_mksnapshot), the standalone node CLI, and the js2c code-cache tool.
+  # (node_cctest/node_embedtest compile the stub directly in their own sources.)
+  # A strong symbol -- no target links it alongside another provider, so it is
+  # never duplicated (Windows-safe; lld-link can't fold duplicate weak symbols).
+  source_set("node_snapshot_stub") {
+    configs += [
+      ":node_internal_config",
+      "$node_v8_path:v8_tracing_config",
+      "//build/config/compiler:no_exit_time_destructors",
+    ]
+    if (is_clang || !is_win) {
+      cflags_cc = [ "-Wno-exit-time-destructors" ]
+    }
+    public_configs = [ ":zstd_include_config" ]
+    deps = [
+      "//base:debugging_buildflags",
+      "deps/ada",
+      "deps/simdjson",
+      "deps/uv",
+      "//third_party/zstd:headers",
+      "$node_v8_path",
+      "$node_v8_path:v8_libplatform",
+    ]
+    sources = [ "src/node_snapshot_stub.cc" ]
+  }
+
+  # The embedded Node startup snapshot, providing the real
+  # SnapshotBuilder::GetEmbeddedSnapshotData(). Linked by the shipped Electron
+  # framework and the snapshot code-cache tool. NOT linked by node_mksnapshot
+  # (that would cycle: this -> run_node_mksnapshot -> node_mksnapshot ->
+  # libnode). When node_use_node_snapshot is off it falls back to the stub, so
+  # consumers always get exactly one definition.
+  source_set("node_snapshot") {
+    configs += [
+      ":node_internal_config",
+      "$node_v8_path:v8_tracing_config",
+      # Auto-generated; node headers it pulls in use exit-time destructors.
+      "//build/config/compiler:no_exit_time_destructors",
+    ]
+    if (is_clang || !is_win) {
+      cflags_cc = [ "-Wno-exit-time-destructors" ]
+    }
+    public_configs = [ ":zstd_include_config" ]
+    deps = [
+      "//base:debugging_buildflags",
+      "deps/uv",
+      "deps/ada",
+      "deps/simdjson",
+      "//third_party/zstd:headers",
+      "$node_v8_path",
+      "$node_v8_path:v8_libplatform",
+    ]
+    if (node_use_node_snapshot) {
+      _run_node_mksnapshot = ":run_node_mksnapshot($default_toolchain)"
+      sources = [ get_label_info(_run_node_mksnapshot, "target_gen_dir") +
+                  "/node_snapshot.cc" ]
+      deps += [ _run_node_mksnapshot ]
+      if (is_clang || !is_win) {
+        # The generated node_snapshot.cc is huge auto-generated C++.
+        cflags_cc += [
+          "-Wno-c++11-narrowing",
+          "-Wno-shadow",
+        ]
+      }
+    } else {
+      # No snapshot in this config: provide the same fallback as
+      # ":node_snapshot_stub" so consumers of ":node_snapshot" still get one
+      # definition of GetEmbeddedSnapshotData().
+      sources = [ "src/node_snapshot_stub.cc" ]
+    }
+  }
+
+  action("generate_config_gypi") {
+    deps = [ "$node_v8_path:v8_generate_features_json" ]
+    script = "tools/generate_config_gypi.py"
+    outputs = [ "$target_gen_dir/config.gypi" ]
+    depfile = "$target_gen_dir/$target_name.d"
+    args = rebase_path(outputs, root_build_dir) + [
+      "--out-dir", rebase_path(root_build_dir, root_build_dir),
+      "--dep-file", rebase_path(depfile, root_build_dir),
+      "--node-gn-path", node_path,
+    ]
+  }
+
+  executable("node_js2c") {
+    defines = []
+    deps = [
+      "deps/uv",
+      "$node_simdutf_path",
+    ]
+    sources = [
+      "tools/js2c.cc",
+      "tools/executable_wrapper.h",
+      "src/embedded_data.cc",
+      "src/embedded_data.h",
+      "src/builtin_info.cc",
+      "src/builtin_info.h",
+    ]
+    include_dirs = [ "src", "tools" ]
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+
+    # Fix for MacOSX26 SDK headers included twice due to usage of clang modules.
+    # Included once as a C header and again as C++.
+    if (is_mac) {
+      use_libcxx_modules = false
+    }
+
+    if (!is_win) {
+      defines += [ "NODE_JS2C_USE_STRING_LITERALS" ]
+    }
+  }
+
+  node_deps_files = gypi_values.deps_files + node_builtin_shareable_builtins
+  node_library_files = exec_script("./tools/search_files.py",
+                                    [ rebase_path(".", root_build_dir),
+                                      rebase_path("lib", root_build_dir),
+                                      "js" ],
+                                    "list lines")
+
+  fs_files = [
+    "lib/internal/fs/cp/cp-sync.js",
+    "lib/internal/fs/cp/cp.js",
+    "lib/internal/fs/dir.js",
+    "lib/internal/fs/glob.js",
+    "lib/internal/fs/promises.js",
+    "lib/internal/fs/read/context.js",
+    "lib/internal/fs/recursive_watch.js",
+    "lib/internal/fs/rimraf.js",
+    "lib/internal/fs/streams.js",
+    "lib/internal/fs/sync_write_stream.js",
+    "lib/internal/fs/utils.js",
+    "lib/internal/fs/watchers.js",
+    "lib/fs.js",
+    "lib/fs/promises.js"
+  ]
+
+  original_fs_files = []
+  foreach(file, fs_files) {
+    original_fs_files += [string_replace(string_replace(string_replace(file, "internal/fs/", "internal/original-fs/"), "lib/fs.js", "lib/original-fs.js"), "lib/fs/", "lib/original-fs/")]
+  }
+
+  copy("node_js2c_inputs") {
+    sources = node_deps_files + node_library_files
+    outputs = [
+      "$target_gen_dir/js2c_inputs/{{source_target_relative}}",
+    ]
+  }
+
+  action("node_js2c_original_fs") {
+    script = "//electron/script/node/generate_original_fs.py"
+    inputs = fs_files
+    deps = [ ":node_js2c_inputs" ]
+
+    outputs = []
+    foreach(file, original_fs_files) {
+      outputs += ["$target_gen_dir/js2c_inputs/$file"]
+    }
+
+    args = [rebase_path("$target_gen_dir/js2c_inputs")] + fs_files
+  }
+
+  action("run_node_js2c") {
+    script = "//electron/build/run-in-dir.py"
+    deps = [
+      ":node_js2c_original_fs",
+      ":node_js2c($host_toolchain)",
+      ":generate_config_gypi",
+    ]
+
+    config_gypi = [ "$target_gen_dir/config.gypi" ]
+    inputs = node_library_files +
+             node_deps_files +
+             get_target_outputs(":node_js2c_original_fs") +
+             config_gypi
+    outputs = [ "$target_gen_dir/node_javascript.cc" ]
+
+    # Get the path to node_js2c executable of the host toolchain.
+    if (host_os == "win") {
+      host_executable_suffix = ".exe"
+    } else {
+      host_executable_suffix = ""
+    }
+    node_js2c_path =
+        get_label_info(":node_js2c($host_toolchain)", "root_out_dir") + "/" +
+        get_label_info(":node_js2c($host_toolchain)", "name") +
+        host_executable_suffix
+
+    args = [ rebase_path("$target_gen_dir/js2c_inputs"),
+             rebase_path(node_js2c_path),
+             rebase_path("$target_gen_dir/node_javascript.cc")] +
+             rebase_path(config_gypi) + node_deps_files +
+             original_fs_files + node_library_files
+  }
+
+  executable("node_cctest") {
+    testonly = true
+    configs += [ ":node_internal_config" ]
+
+    deps = [
+      ":libnode",
+      "deps/googletest",
+      "deps/googletest:gtest_main",
+      "deps/nbytes",
+      "$node_simdutf_path",
+    ]
+
+    sources = [ "src/node_snapshot_stub.cc" ]
+    sources += exec_script("./tools/search_files.py",
+                           [ rebase_path(".", root_build_dir),
+                             rebase_path("test/cctest", root_build_dir),
+                             "cc" ],
+                           "list lines")
+
+    if (node_use_openssl) {
+      deps += [ "deps/ncrypto" ]
+    } else {
+      sources -= gypi_values.node_cctest_openssl_sources
+    }
+    if (node_enable_inspector) {
+      deps += [ "src/inspector:crdtp" ]
+      include_dirs = [
+        "$target_gen_dir/src",
+        "$target_gen_dir/src/inspector",
+      ]
+    } else {
+      sources -= gypi_values.node_cctest_inspector_sources
+    }
+  }
+
+  executable("node_embedtest") {
+    output_name = "embedtest"
+    testonly = true
+    deps = [ ":libnode" ]
+    include_dirs = [ "tools" ]
+    sources = [
+      "src/node_snapshot_stub.cc",
+      "test/embedding/embedtest.cc",
+    ]
+  }
+
+  executable("overlapped_checker") {
+    output_name = "overlapped-checker"
+    testonly = true
+    if (is_win) {
+      sources = [ "test/overlapped-checker/main_win.c" ]
+    } else {
+      sources = [ "test/overlapped-checker/main_unix.c" ]
+    }
+  }
+}

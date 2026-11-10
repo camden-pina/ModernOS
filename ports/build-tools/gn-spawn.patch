@@ -1,0 +1,121 @@
+--- a/src/gn/exec_process.cc
++++ b/src/gn/exec_process.cc
+@@ -23,6 +23,11 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <signal.h>
++#if defined(COAST_NATIVE)
++#include <spawn.h>
++#include <time.h>
++extern char** environ;
++#endif
+ #include <sys/select.h>
+ #include <sys/time.h>
+ #include <sys/wait.h>
+@@ -184,23 +189,75 @@
+ 
+   int out_fd[2], err_fd[2];
+   pid_t pid;
++#if !defined(COAST_NATIVE)
+   base::InjectiveMultimap fd_shuffle1, fd_shuffle2;
++#endif
+   std::unique_ptr<char*[]> argv_cstr(new char*[argv.size() + 1]);
+ 
++#if !defined(COAST_NATIVE)
+   fd_shuffle1.reserve(3);
+   fd_shuffle2.reserve(3);
+-
++#endif
++
++#if defined(COAST_NATIVE)
++  if (pipe2(out_fd, O_CLOEXEC) < 0)
++#else
+   if (pipe(out_fd) < 0)
++#endif
+     return false;
+   base::ScopedFD out_read(out_fd[0]), out_write(out_fd[1]);
+ 
++#if defined(COAST_NATIVE)
++  if (pipe2(err_fd, O_CLOEXEC) < 0)
++#else
+   if (pipe(err_fd) < 0)
++#endif
+     return false;
+   base::ScopedFD err_read(err_fd[0]), err_write(err_fd[1]);
+ 
+   if (out_read.get() >= FD_SETSIZE || err_read.get() >= FD_SETSIZE)
+     return false;
+ 
++#if defined(COAST_NATIVE)
++  // Spawn may run on GN worker threads. Coast admits musl's temporary
++  // CLONE_VM/CLONE_VFORK child without duplicating the threaded address space.
++  for (size_t i = 0; i < argv.size(); ++i)
++    argv_cstr[i] = const_cast<char*>(argv[i].c_str());
++  argv_cstr[argv.size()] = nullptr;
++  posix_spawn_file_actions_t actions;
++  int error = posix_spawn_file_actions_init(&actions);
++  if (error)
++    return false;
++  error = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO,
++                                          "/dev/null", O_RDONLY, 0);
++  if (!error)
++    error = posix_spawn_file_actions_adddup2(&actions, out_write.get(), STDOUT_FILENO);
++  if (!error)
++    error = posix_spawn_file_actions_adddup2(&actions, err_write.get(), STDERR_FILENO);
++  for (int fd : {out_read.get(), out_write.get(), err_read.get(), err_write.get()}) {
++    if (!error && fd > STDERR_FILENO)
++      error = posix_spawn_file_actions_addclose(&actions, fd);
++  }
++  if (!error)
++    error = posix_spawn_file_actions_addchdir_np(&actions, startup_dir.value().c_str());
++  if (!error) {
++    // A sibling can temporarily pin protected kernel work. Wait for a safe
++    // spawn window without relaxing Coast's peer-freeze predicate.
++    for (unsigned attempt = 0;; ++attempt) {
++      error = posix_spawnp(&pid, argv_cstr[0], &actions, nullptr,
++                           argv_cstr.get(), environ);
++      if (error != EAGAIN || attempt == 2999)
++        break;
++      const timespec delay = {0, 10000000};
++      nanosleep(&delay, nullptr);
++    }
++  }
++  posix_spawn_file_actions_destroy(&actions);
++  if (error) {
++    errno = error;
++    return false;
++  }
++#else
+   switch (pid = fork()) {
+     case -1:  // error
+       return false;
+@@ -258,6 +315,7 @@
+       break;
+     }
+     default:  // parent
++#endif
+     {
+       // Close our writing end of pipe now. Otherwise later read would not
+       // be able to detect end of child's output (in theory we could still
+@@ -269,8 +327,8 @@
+       while (out_open || err_open) {
+         fd_set read_fds;
+         FD_ZERO(&read_fds);
+-        FD_SET(out_read.get(), &read_fds);
+-        FD_SET(err_read.get(), &read_fds);
++        if (out_open) FD_SET(out_read.get(), &read_fds);
++        if (err_open) FD_SET(err_read.get(), &read_fds);
+         int res =
+             HANDLE_EINTR(select(std::max(out_read.get(), err_read.get()) + 1,
+                                 &read_fds, nullptr, nullptr, nullptr));
+@@ -284,7 +342,9 @@
+ 
+       return WaitForExit(pid, exit_code);
+     }
+-  }
++#if !defined(COAST_NATIVE)
++  }
++#endif
+ 
+   return false;
+ }

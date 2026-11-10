@@ -238,9 +238,9 @@ def main():
             # observed READY for this exact new window from the guest log.
             vm.log.flush()
             ready = re.compile(rb'DESKTOP BROWSER_READY window=' + str(window).encode() +
-                               rb' workspace=\d+ ModernOS Browser\r?\n')
+                               rb' workspace=\d+ Coast Browser\r?\n')
             if not ready.search(Path(vm.log.name).read_bytes()):
-                desktop.expect('BROWSER_READY', 'ModernOS Browser')
+                desktop.expect('BROWSER_READY', 'Coast Browser')
             left = (desktop.width - 840) // 2 + (window - 1) % 5 * 16
             top = (desktop.height - 42 - 560) // 2 + (window - 1) % 5 * 16
             desktop.click(left + 840 - 43, top + 20)

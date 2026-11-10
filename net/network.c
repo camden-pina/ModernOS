@@ -3,10 +3,12 @@
  * File descriptions/refcounts are owned by the existing VFS (VFS -> network).
  */
 #include <net/network.h>
+#include <power.h>
 #include <net/e1000.h>
 #include <net/igc.h>
 #include <sched.h>
 #include <fs/unix_socket.h>
+#include <credentials.h>
 #include <mm/pmm.h>
 #include <random.h>
 #include <string.h>
@@ -46,7 +48,10 @@ static long ethernet_receive(void *frame, size_t length) {
     return igc_present() ? igc_receive(frame, length) : e1000_receive(frame, length);
 }
 
-#define RX_SIZE 65536u
+#define RX_SIZE (1024u * 1024u)
+#define TCP_RX_BUFFERS 128u
+#define UDP_RX_BYTES 65536u
+_Static_assert(RX_SIZE >= TCP_WND, "TCP window must fit the receive ring");
 #define UDP_QUEUE 32u
 #define ACCEPT_QUEUE 16u
 #define IO_LIMIT (16u * 1024u * 1024u)
@@ -89,6 +94,9 @@ static struct netif ethernet;
 static bool ready, have_ethernet;
 static uint64_t received_packets, transmitted_packets, dropped_packets;
 static uint32_t written_dns[2];
+/* network_mutex owns this finite 128 MiB receive pool, including sockets
+ * whose PCB has already closed after an asynchronous connection failure. */
+static unsigned tcp_rx_buffers;
 
 uint32_t sys_now(void) {
     return tsc_uptime_us() / 1000;
@@ -159,7 +167,7 @@ static err_t link_output(struct netif *netif, struct pbuf *packet) {
 static err_t interface_init(struct netif *netif) {
     netif->name[0] = 'e';
     netif->name[1] = 'n';
-    netif->hostname = "modernos";
+    netif->hostname = "coast";
     netif->mtu = 1500;
     netif->hwaddr_len = 6;
     ethernet_mac(netif->hwaddr);
@@ -198,6 +206,7 @@ static void write_resolver(uint32_t addresses[2]) {
 static void worker(void *argument) {
     (void)argument;
     for (;;) {
+        power_transaction_begin();
         uint32_t servers[2] = {0};
         mutex_lock(&network_mutex);
         if (have_ethernet) {
@@ -209,7 +218,7 @@ static void worker(void *argument) {
                     netif_set_link_down(&ethernet);
             }
             uint8_t bytes[1514];
-            for (unsigned i = 0; i < 64; i++) {
+            for (unsigned i = 0; i < 256; i++) {
                 long length = ethernet_receive(bytes, sizeof(bytes));
                 if (length < 0)
                     break;
@@ -239,6 +248,7 @@ static void worker(void *argument) {
         /* VFS is acquired only after releasing network_mutex. */
         if (memcmp(servers, written_dns, sizeof(servers)))
             write_resolver(servers);
+        power_transaction_end();
         sched_sleep(1000);
     }
 }
@@ -325,7 +335,7 @@ static void udp_received(void *argument, struct udp_pcb *pcb, struct pbuf *packe
     (void)pcb;
     struct net_socket *socket = argument;
     if (socket->read_shutdown || socket->queued == UDP_QUEUE ||
-        packet->tot_len > RX_SIZE - socket->queued_bytes) {
+        packet->tot_len > UDP_RX_BYTES - socket->queued_bytes) {
         pbuf_free(packet);
         return;
     }
@@ -341,6 +351,7 @@ static struct net_socket *allocate_socket(int type, struct tcp_pcb *accepted) {
         return NULL;
     socket->type = type;
     if (type == 1) {
+        if (tcp_rx_buffers >= TCP_RX_BUFFERS) { kfree(socket); return NULL; }
         socket->bytes = kmalloc(RX_SIZE);
         socket->tcp = accepted ? accepted : tcp_new_ip_type(IPADDR_TYPE_V4);
         if (!socket->bytes || !socket->tcp) {
@@ -354,6 +365,7 @@ static struct net_socket *allocate_socket(int type, struct tcp_pcb *accepted) {
         tcp_recv(socket->tcp, tcp_received);
         tcp_err(socket->tcp, tcp_error);
         socket->connected = accepted != NULL;
+        tcp_rx_buffers++;
     } else {
         socket->udp = udp_new_ip_type(IPADDR_TYPE_V4);
         if (!socket->udp) {
@@ -383,6 +395,7 @@ static void destroy_socket(struct net_socket *socket) {
         pbuf_free(socket->datagrams[(socket->first + i) % UDP_QUEUE].data);
     for (unsigned i = 0; i < socket->accept_count; i++)
         destroy_socket(socket->accepted[(socket->accept_first + i) % ACCEPT_QUEUE]);
+    if (socket->bytes) tcp_rx_buffers--;
     kfree(socket->bytes);
     kfree(socket);
 }
@@ -483,8 +496,16 @@ static long receive_data(struct file *file, void *data, size_t size, unsigned fl
             if (!(flags & MSG_PEEK)) {
                 socket->tail = (socket->tail + count) % RX_SIZE;
                 socket->count -= count;
-                if (socket->tcp)
-                    tcp_recved(socket->tcp, count);
+                if (socket->tcp) {
+                    /* lwIP's credit API takes u16_t even with scaled windows.
+                       A large read must return every byte without truncation. */
+                    size_t credit = count;
+                    while (credit) {
+                        unsigned part = min(credit, (size_t)UINT16_MAX);
+                        tcp_recved(socket->tcp, part);
+                        credit -= part;
+                    }
+                }
             }
             if (from && socket->tcp)
                 *from = (struct inet_address){
@@ -891,7 +912,7 @@ static long socket_option(struct task *task, struct net_socket *socket, register
         if (set && value <= 0)
             error = -E_INVAL;
         /* Bounded fixed buffers: getsockopt always reports the actual size. */
-        value = RX_SIZE;
+        value = socket->type == 2 ? UDP_RX_BYTES : option == 7 ? TCP_SND_BUF : RX_SIZE;
     } else if (level == 1 && (option == 2 || option == 6 || option == 9)) {
         struct ip_pcb *pcb =
             socket->type == 2 ? (struct ip_pcb *)socket->udp : (struct ip_pcb *)socket->tcp;
@@ -1016,7 +1037,7 @@ static long transfer_call(struct task *task, struct file *file, register_t *regi
     if (file->socket->type == 2 && send && total > 65507)
         return -E_MSGSIZE;
 
-    size_t capacity = min(total, (size_t)65535);
+    size_t capacity = min(total, (size_t)(!send && file->socket->type == 1 ? RX_SIZE : 65535));
     uint8_t *buffer = kmalloc(capacity ? capacity : 1);
     if (!buffer)
         return -E_NOMEM;
@@ -1089,6 +1110,8 @@ long network_syscall(void *task_pointer, void *register_pointer) {
     if (call == SYS_socketpair)
         return unix_socketpair(task, registers);
     if (call == SYS_socket) {
+        if(registers->rdi==1 || (registers->rdi==2 && credentials_restricted(task) &&
+           !credentials_native_network(task)))return unix_stream_socket(task,registers);
         if (!ready)
             return -E_NETDOWN;
         if (registers->rdi != 2)
@@ -1121,6 +1144,9 @@ long network_file_syscall(void *task_pointer, void *register_pointer, struct fil
         return -E_NETDOWN;
     if (!file->socket)
         return -E_NOTSOCK;
+    /* Inheriting/passing a global descriptor must not give a confined
+       editor process access to the native network stack. */
+    if(credentials_restricted(task) && !credentials_native_network(task))return -E_PERM;
     struct net_socket *socket = file->socket;
     switch (call) {
     case SYS_connect:
@@ -1128,6 +1154,8 @@ long network_file_syscall(void *task_pointer, void *register_pointer, struct fil
         struct inet_address address;
         int error = read_address(task, registers->rsi, registers->rdx, &address,
                                  call == SYS_connect && socket->type == 2);
+        if(!error && call==SYS_bind && credentials_restricted(task) &&
+           address.port && lwip_ntohs(address.port)<1024)return -E_ACCES;
         return error                 ? error
                : call == SYS_connect ? connect_socket(file, &address)
                                      : bind_socket(socket, &address);
@@ -1204,4 +1232,18 @@ size_t network_info(char *out, size_t capacity) {
         (unsigned long long)transmitted_packets, (unsigned long long)dropped_packets);
     mutex_unlock(&network_mutex);
     return count < 0 ? 0 : min((size_t)count, capacity - 1);
+}
+
+bool network_power_ready(void) {
+    /* igc's PHY/semaphore/DMA stop sequence is not validated in this milestone. */
+    return !igc_present();
+}
+
+int network_power_stop(void) {
+    if (!network_power_ready())
+        return -E_NOTSUP;
+    mutex_lock(&network_mutex);
+    int error = e1000_power_stop();
+    mutex_unlock(&network_mutex);
+    return error;
 }

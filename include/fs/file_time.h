@@ -1,5 +1,5 @@
-#ifndef MODERNOS_FILE_TIME_H
-#define MODERNOS_FILE_TIME_H
+#ifndef COAST_FILE_TIME_H
+#define COAST_FILE_TIME_H
 #include <stdint.h>
 #include <stdbool.h>
 

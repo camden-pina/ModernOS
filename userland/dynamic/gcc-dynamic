@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep the installed GCC's static default; opt this invocation into shared musl.
+exec /usr/bin/gcc -specs=/usr/lib/coast-dynamic.specs -fPIE "$@" -Wl,-z,max-page-size=4096,-z,relro,-z,now,-z,noexecstack

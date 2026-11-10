@@ -1,0 +1,14 @@
+.PHONY: dynamic-linker test-dynamic-linker test-dynamic-linker-host
+dynamic-linker:
+	$(MAKE) -C $(srctree)/userland dynamic-linker
+test-dynamic-linker: iso
+	python3 -u $(srctree)/tools/test_dynamic_linker.py --cpus 1 4 --iso $(ISO_IMAGE)
+test-dynamic-linker-host:
+	python3 $(srctree)/tools/test_dynamic_loader.py
+	python3 $(srctree)/tools/test_dynamic_rpath.py
+
+.PHONY: dynamic-cpp test-dynamic-cpp
+dynamic-cpp:
+	$(MAKE) -C $(srctree)/userland dynamic-cpp
+test-dynamic-cpp: iso
+	python3 -u $(srctree)/tools/test_dynamic_cpp.py --cpus 1 4 --iso $(ISO_IMAGE)

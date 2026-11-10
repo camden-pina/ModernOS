@@ -2,7 +2,7 @@
 EFI_CC ?= clang
 EFI_LD ?= lld-link
 EFI_TEST_CC ?= cc
-EFI_IMAGE := $(objtree)/arch/x86/boot/efi/modernos.efi
+EFI_IMAGE := $(objtree)/arch/x86/boot/efi/coast.efi
 EFI_OBJDIR := $(dir $(EFI_IMAGE))
 EFI_SOURCES := $(srctree)/arch/x86/boot/efi
 EFI_CFLAGS := --target=x86_64-pc-win32-coff -ffreestanding -fshort-wchar \

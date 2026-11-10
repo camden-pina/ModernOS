@@ -1,6 +1,6 @@
 # Native compilers, editors and build utilities
 
-ModernOS ships GCC/G++ 14.2.0, GNU binutils 2.37, Vim 9.2.0000, BusyBox 1.37.0,
+Coast ships GCC/G++ 14.2.0, GNU binutils 2.37, Vim 9.2.0000, BusyBox 1.37.0,
 GNU make 4.4.1 and GNU awk 5.4.0,
 linked statically with the existing musl 1.2.5/ncurses 6.5 toolchain. They execute
 in native ring-3 processes and use the real OS filesystem, pipes and terminals.
@@ -76,6 +76,11 @@ xz/unxz/xzcat, sleep, uname, true, false and yes. Xz is decompression only.
 `busybox --list` is authoritative; options and invalid-argument messages come
 from the actual program. `help COMMAND` gives an OS usage page for major tools.
 
+The image also provides `less`, `nl`, `tac`, `rev`, `paste`, `comm`, `fold`,
+`base64`, `split`, and standalone `clear`/`which`. The
+[everyday terminal tools guide](unix-tools.md) covers pager keys, examples,
+console `cd -`, and the focused command/PTY regression.
+
 `awk` and `gawk` run the actual statically linked GNU awk 5.4.0. BusyBox's awk
 remains explicitly accessible as `busybox awk`. GCC's option generators require
 GNU replacement escaping: BusyBox silently removes the backslashes needed to
@@ -84,7 +89,7 @@ explicitly selects GNU awk and checks this behavior before configuring. Dynamic
 extensions, persistent-memory allocation and MPFR arithmetic are disabled;
 ordinary programs, regex, arrays, input/output and generator scripts are upstream.
 
-`/bin/sh` is now the real POSIX ash implementation. `/bin/modernos-sh` retains
+`/bin/sh` is now the real POSIX ash implementation. `/bin/coast-sh` retains
 the OS command console and desktop-terminal interface. `#!` scripts execute
 through their actual interpreter, with checked recursion and argument handling.
 
@@ -111,21 +116,22 @@ are included. Drivers default to `-static -no-pie`: the loader accepts static
 ET_EXEC, validated static TLS and W^X-separated load segments. C++ containers,
 exceptions and the static standard library are included; pthreads are disabled.
 
-Examples are installed at `/usr/src/modernos/examples`:
+Examples are installed at `/usr/src/coast/examples`:
 
 ```text
-build-sh -c 'mkdir /tmp/example; cp -R /usr/src/modernos/examples/. /tmp/example/; cd /tmp/example; make -j2 check'
+build-sh -c 'mkdir /tmp/example; cp -R /usr/src/coast/examples/. /tmp/example/; cd /tmp/example; make -j2 check'
 ```
 
 `make check` also compiles and runs the ABI example. Copy the examples
 recursively to retain its `include/memory_usage.h` protocol header.
 
 The target triplet is `x86_64-linux-musl`, selecting x86-64 ELF and musl's
-Linux-numbered syscall wrappers. ModernOS implements the explicitly documented
+Linux-numbered syscall wrappers. Coast implements the explicitly documented
 subset itself; no Linux kernel/service is installed or assumed. Unsupported
-interfaces still return real errors. Arbitrary Linux/glibc, dynamic, shared-memory
-or threaded software needs further porting. `-shared`, PIE and `-flto` output
-are outside the supported native execution profile.
+interfaces still return real errors. Arbitrary Linux/glibc software needs
+further porting, and `-flto` is outside this compiler profile. The optional
+`gcc-dynamic` driver supports musl PIE and shared C libraries; see
+[dynamic-linking.md](dynamic-linking.md) for its ABI, search paths and tests.
 
 ## Implemented kernel dependencies
 
@@ -226,9 +232,9 @@ optional sanitizer/OpenMP libraries and NLS. Its build selects the upstream
 read/malloc fallback instead of mmap/madvise optimizations; the kernel also
 supports the private file mappings described below.
 A source-built musl cross seed builds static native C/C++ tools and runtimes;
-build-machine executable aliases are never copied into ModernOS.
+build-machine executable aliases are never copied into Coast.
 
-## Rebuild GCC inside ModernOS
+## Rebuild GCC inside Coast
 
 Start QEMU with sufficient memory (`make run MEMORY=8G`) and run:
 
@@ -237,7 +243,7 @@ bootstrap-toolchain --help
 bootstrap-toolchain --work /tmp/toolchain --prefix /tmp/toolchain/install -j4
 ```
 
-The script verifies `/usr/src/modernos/SHA256SUMS`, extracts GCC/binutils and
+The script verifies `/usr/src/coast/SHA256SUMS`, extracts GCC/binutils and
 GMP/MPFR/MPC, configures the actual static target, builds native binutils,
 GCC/G++, libgcc and libstdc++, then compiles/runs C and C++ proofs using the new
 drivers. It installs into a separate prefix, preserves the running compiler,
@@ -281,7 +287,7 @@ or put that `bin` directory first in the build shell's `PATH`:
 build-sh -c 'mkdir -p /tmp/toolchain/install; tar -xzf /mnt/nvme1n1p1/native-toolchain.tar.gz -C /tmp/toolchain/install; /tmp/toolchain/install/bin/gcc --version'
 ```
 
-Substitute the actual writable mount. The archive depends on ModernOS's bundled
+Substitute the actual writable mount. The archive depends on Coast's bundled
 musl headers/libraries and preserves the configured assembler/linker prefix;
 it is not a standalone replacement for a different OS's toolchain.
 
@@ -299,7 +305,7 @@ python3 -u tools/test_toolchain_rebuild.py --cpus 8 --memory 8G --resume build/r
 `--restart` reruns the checked native rebuild script after a failed build;
 resuming a build still running needs no restart. Checkpoint files are local test
 artifacts; this does not provide production filesystem persistence. Actual
-source files, generators and rebuilt binaries still execute entirely in ModernOS.
+source files, generators and rebuilt binaries still execute entirely in Coast.
 
 `make test-rebuilt-toolchain REBUILD_CHECKPOINT=build/runtime-tests/native-rebuild-gawk.state`
 restores a completed checkpoint, compiles/runs the examples and compiler ABI
@@ -314,7 +320,7 @@ the exact checkpoint boot kernel's debug information; it neither patches guest
 memory nor replaces guest filesystem operations with host execution.
 
 The completed 8-CPU/8-GiB UEFI run rebuilt binutils, GCC/G++, libgcc and libstdc++
-entirely inside ModernOS, in approximately 4.5 hours under TCG. The exported
+entirely inside Coast, in approximately 4.5 hours under TCG. The exported
 build log contains both `REBUILT_GCC_RUN_OK` and `REBUILT_GXX_RUN_OK`.
 Restored-guest validation then compiled and executed C, C++17 exceptions and
 containers, and C++20 `span` with the new drivers and their own rebuilt runtime
@@ -340,12 +346,12 @@ getrusage and wait4 expose actual sampled user/kernel CPU time; untracked
 resource fields remain zero. IPv4 sockets, hardware getrandom, random devices
 and eventfd support Git/curl/NetSurf; see [browser-network.md](browser-network.md).
 
-Remaining ABI gaps include dynamic linking, shared mmap, mknod/FIFOs,
+Remaining ABI gaps include coherent filesystem-backed shared mmap, mknod/FIFOs,
 hard links, unlinking open files, replacing occupied FAT targets,
 controlling sessions/process groups, suspension, pthreads/futexes,
 editable signal ucontexts, IPv6, Unix sockets and unsupported network drivers. Use `build-sh SCRIPT`
-for the explicit build environment; kernel execution supports static ELF and
-bounded shebang scripts.
+for the explicit build environment; kernel execution supports static ELF,
+the documented musl dynamic profile and bounded shebang scripts.
 Writable ext filesystems and FAT power-loss transactions are also absent.
 No general Linux/POSIX compatibility is claimed.
 
@@ -353,7 +359,7 @@ No general Linux/POSIX compatibility is claimed.
 
 | Sources | Responsibility |
 | --- | --- |
-| `tools/build_native_ports.py`, `tools/build_gawk.py`, `userland/vendor/busybox-modernos.config`, bundled archives/licenses | Verified upstream builds, target configuration and explicit source patches |
+| `tools/build_native_ports.py`, `tools/build_gawk.py`, `userland/vendor/busybox-coast.config`, bundled archives/licenses | Verified upstream builds, target configuration and explicit source patches |
 | `tools/build_gcc.py`, `tools/package_sdk.py`, `userland/sdk/`, `sdk-tool.c` | Source-built static compiler/binutils/SDK, verified source bundle, native rebuild and correct-prefix launch aliases |
 | `userland/build-sh.c`, `applet.c`, `runtime/usr/share/vim/vimrc`, `sh.c`, `env.c` | Build environment, real multicall execution, editor defaults, help and checked limits |
 | `userland/Makefile`, root `Makefile`, `tools/mkinitramfs.py` | Build registration, executable aliases, runtime/notice packaging and ISO |

@@ -1,6 +1,8 @@
+#include <pidns.h>
 #include <descriptor_tables/gdt.h>
 #include <sched.h>
 #include <string.h>
+#include <seccomp.h>
 
 /* Linux x86-64 signal context layout, with kernel-owned saved registers.
    Keeping the authoritative return frame in the task prevents forged selectors,
@@ -18,6 +20,8 @@ struct signal_frame {
 };
 
 bool signal_pending(struct task *t) {
+    if (__atomic_load_n(&t->context->stop_requested, __ATOMIC_ACQUIRE))
+        return true;
     /* An ignored timer signal can still have a latched bit. Discard it before
        deciding to interrupt a blocking operation, rather than spuriously
        returning EINTR or retaining a temporary wait mask. */
@@ -28,7 +32,7 @@ bool signal_pending(struct task *t) {
         if (handler != 1 && (handler || (sig != 17 && sig != 18 && sig != 28)))
             return true;
         uint64_t bit = 1ULL << (sig - 1);
-        __atomic_fetch_and(&t->signal_pending, ~bit, __ATOMIC_ACQ_REL);
+        if(!pidns_signal_drop(t,sig))__atomic_fetch_and(&t->signal_pending,~bit,__ATOMIC_ACQ_REL);
         available &= ~bit;
     }
     return false;
@@ -51,7 +55,7 @@ long signal_suspend(struct task *t, uint64_t mask) {
 }
 
 static bool deliver(struct task *t, register_t *r, bool restart, uint64_t return_mask, unsigned sig,
-                    int code, uint64_t address) {
+                    int code, uint64_t address,bool seccomp,unsigned data,const struct pidns_signal_info *provenance) {
     uint64_t bit = 1ULL << (sig - 1);
     uint64_t irq = irq_save();
     struct os_sigaction a = t->signal_actions[sig - 1];
@@ -60,6 +64,12 @@ static bool deliver(struct task *t, register_t *r, bool restart, uint64_t return
     irq_restore(irq);
 
     if (a.handler == 1 || (!a.handler && (sig == 17 || sig == 18 || sig == 28))) {
+        return true;
+    }
+    /* Default job-control stops are serialized with SIGCONT by the caller's
+       scheduler lock. No kernel stack is abandoned here. */
+    if (!a.handler && (sig == 19 || sig == 20 || sig == 21 || sig == 22)) {
+        task_stop_request_locked(t, sig);
         return true;
     }
     if (!a.handler || t->signal_depth == 4 || !a.restorer) {
@@ -105,6 +115,14 @@ static bool deliver(struct task *t, register_t *r, bool restart, uint64_t return
     ((int *)f.info)[0] = sig;
     ((int *)f.info)[2] = code;
     memcpy(f.info + 16, &address, sizeof(address));
+    if(provenance && provenance->valid) {
+        unsigned uid=userns_uid_view(t,provenance->uid);
+        memcpy(f.info+16,&provenance->pid,4);memcpy(f.info+20,&uid,4);memcpy(f.info+24,&provenance->status,4);
+    }
+    if(seccomp) {
+        int nr=(int)r->rax;uint32_t arch=0xc000003e;
+        memcpy(f.info+4,&data,4);memcpy(f.info+24,&nr,4);memcpy(f.info+28,&arch,4);
+    }
 
     unsigned depth = t->signal_depth;
     t->signal_frames[depth].frame = *r;
@@ -117,6 +135,7 @@ static bool deliver(struct task *t, register_t *r, bool restart, uint64_t return
         __atomic_store_n(&t->kill_signal, 11, __ATOMIC_RELEASE);
         return false;
     }
+    seccomp_frame_tag(t,depth,seccomp);
 
     if (restart && (a.flags & SA_RESTART)) {
         t->signal_frames[depth].frame.rip -= 2;
@@ -142,8 +161,9 @@ bool signal_deliver(struct task *t, register_t *r, bool restart, uint64_t return
     if (!available)
         return true;
     unsigned sig = __builtin_ctzll(available) + 1;
-    __atomic_fetch_and(&t->signal_pending, ~(1ULL << (sig - 1)), __ATOMIC_ACQ_REL);
-    return deliver(t, r, restart, return_mask, sig, 0, 0);
+    struct pidns_signal_info provenance;
+    if(!pidns_signal_take(t,sig,&provenance))__atomic_fetch_and(&t->signal_pending,~(1ULL<<(sig-1)),__ATOMIC_ACQ_REL);
+    return deliver(t,r,restart,return_mask,sig,provenance.valid?provenance.code:0,0,false,0,&provenance);
 }
 
 bool signal_fault(struct task *t, register_t *r, unsigned sig, int code, uint64_t address) {
@@ -153,7 +173,12 @@ bool signal_fault(struct task *t, register_t *r, unsigned sig, int code, uint64_
     if (!sig || sig > 64 || task_pending_signal(t) || t->signal_actions[sig - 1].handler <= 1 ||
         (t->signal_mask & (1ULL << (sig - 1))))
         return false;
-    return deliver(t, r, false, t->signal_mask, sig, code, address);
+    return deliver(t, r, false, t->signal_mask, sig, code, address,false,0,NULL);
+}
+
+bool signal_seccomp(struct task *t,register_t *r,unsigned data) {
+    if(task_pending_signal(t) || t->signal_actions[30].handler<=1 || (t->signal_mask&(1ULL<<30)))return false;
+    return deliver(t,r,false,t->signal_mask,31,1,r->rip,true,data,NULL);
 }
 
 long signal_return(struct task *t, register_t *r) {
@@ -161,11 +186,19 @@ long signal_return(struct task *t, register_t *r) {
         return -E_INVAL;
     }
     unsigned depth = t->signal_depth - 1;
+    bool seccomp=seccomp_frame_tagged(t,depth);uint64_t value=0;
     if (r->user_rsp != t->signal_frames[depth].stack + 8) {
+        if(seccomp)__atomic_store_n(&t->kill_signal,31,__ATOMIC_RELEASE);
         return -E_INVAL;
+    }
+    if(seccomp && !user_copy_in(&t->space,&value,t->signal_frames[depth].stack+
+            offsetof(struct signal_frame,context.registers[13]),sizeof(value))) {
+        __atomic_store_n(&t->kill_signal,31,__ATOMIC_RELEASE);return -E_FAULT;
     }
     t->signal_mask = t->signal_frames[depth].mask;
     *r = t->signal_frames[depth].frame;
+    if(seccomp)r->rax=value;
+    seccomp_frame_tag(t,depth,false);
     __asm__ volatile("fxrstor64 %0" ::"m"(t->signal_frames[depth].fpu));
     t->signal_depth--;
     return r->rax;

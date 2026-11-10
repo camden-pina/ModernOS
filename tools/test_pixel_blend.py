@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Test the actual renderer's scalar/SSE2 paths against independent arithmetic,
-including inaccessible guard pages, then compile/run them inside ModernOS.
+including inaccessible guard pages, then compile/run them inside Coast.
 """
 import argparse
 import shlex

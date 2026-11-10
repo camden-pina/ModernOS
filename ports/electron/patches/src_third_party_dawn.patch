@@ -1,0 +1,735 @@
+diff --git a/src/dawn/native/Device.cpp b/src/dawn/native/Device.cpp
+index 9d38791df..4b431c05b 100644
+--- a/src/dawn/native/Device.cpp
++++ b/src/dawn/native/Device.cpp
+@@ -668,14 +668,8 @@ void DeviceBase::HandleError(std::unique_ptr<ErrorData> error,
+         AppendDeviceLostMessage(error.get());
+     }
+ 
+-    // If ErrorInjectorEnabled() then this may be an injected DeviceLost, not a real one.
+-    bool deviceDefinitelyStopped = type == InternalErrorType::DeviceLost && !ErrorInjectorEnabled();
+-    if (deviceDefinitelyStopped) {
+-        // If the device was lost naturally, the backend device has already stopped.
+-        mState = State::Disconnected;
+-    }
+-
+     InternalErrorType allowedErrors = InternalErrorType::Validation | additionalAllowedErrors;
++
+     if (!(allowedErrors & type)) {
+         // If we receive an error which we did not explicitly allow, assume the backend can't
+         // recover and lose the device now. Cleanup for the device will be deferred until the last
+@@ -684,9 +678,14 @@ void DeviceBase::HandleError(std::unique_ptr<ErrorData> error,
+                              allowedErrors);
+ 
+         // Handle the remainder of this error as if it caused a device lost.
++        type = InternalErrorType::DeviceLost;
++    }
++
++    if (type == InternalErrorType::DeviceLost) {
++        // Transition to a non-alive state if we are currently alive so that the application can no
++        // longer use the device.
+         State prev = State::Alive;
+         mState.compare_exchange_strong(prev, State::BeingDisconnected, std::memory_order::acq_rel);
+-        type = InternalErrorType::DeviceLost;
+     }
+ 
+     // Re-enable validation on device loss or OOM to avoid unpredictable behaviors afterwards.
+diff --git a/src/dawn/native/Device.h b/src/dawn/native/Device.h
+index 5d4a5cbe8..1689ea283 100644
+--- a/src/dawn/native/Device.h
++++ b/src/dawn/native/Device.h
+@@ -344,7 +344,7 @@ class DeviceBase : public ErrorSink,
+     //   - Alive: the device is usable and might have work happening on the GPU timeline.
+     //   - BeingDisconnected: the device is no longer usable because we are waiting for all
+     //     work on the GPU timeline to finish. (this is to make validation prevent the
+-    //     application from adding more work during the transition from Available to
++    //     application from adding more work during the transition from Alive to
+     //     Disconnected)
+     //   - Disconnected: there is no longer work happening on the GPU timeline and the CPU data
+     //     structures can be safely destroyed without additional synchronization.
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+index 6c1f9387e..ea6b3f482 100644
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -805,6 +805,10 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
+       "Reject NPOT depth/stencil textures with mipLevelCount > 1. Workaround for mip level "
+       "miscomputation in PowerVR proprietary driver.",
+       "https://crbug.com/540087398", ToggleStage::Device}},
++    {Toggle::VulkanSleepAfterLostDeviceWait,
++     {"vulkan_sleep_after_lost_device_wait",
++      "Insert an arbitrary sleep after WaitIdle functions on device loss.",
++      "https://crbug.com/500417361", ToggleStage::Device}},
+     {Toggle::WaitIsThreadSafe,
+      {"wait_is_thread_safe",
+       "WaitFor* functions are thread-safe and can be called without the device-lock if implicit "
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+index 6110f00c4..1aa52072c 100644
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -192,6 +192,7 @@ enum class Toggle {
+     D3D12UseHLSL2021,
+     MetalFixU32DivMod,
+     VulkanDisallowNPOTDepthStencilMipmaps,
++    VulkanSleepAfterLostDeviceWait,
+ 
+     // Once all backends have been updated to be thread safe for waiting, we can remove this toggle.
+     WaitIsThreadSafe,
+diff --git a/src/dawn/native/vulkan/DescriptorSetAllocator.cpp b/src/dawn/native/vulkan/DescriptorSetAllocator.cpp
+index ad097a673..f6354828b 100644
+--- a/src/dawn/native/vulkan/DescriptorSetAllocator.cpp
++++ b/src/dawn/native/vulkan/DescriptorSetAllocator.cpp
+@@ -30,6 +30,8 @@
+ #include <algorithm>
+ #include <utility>
+ 
++#include "src/dawn/common/GPUInfo.h"
++#include "src/dawn/native/PhysicalDevice.h"
+ #include "src/dawn/native/Queue.h"
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+ #include "src/dawn/native/vulkan/FencedDeleter.h"
+@@ -183,15 +185,25 @@ MaybeError DescriptorSetAllocator::AllocateDescriptorPool(VkDescriptorSetLayout
+     allocateInfo.pSetLayouts = AsVkArray(layouts.data());
+ 
+     std::vector<VkDescriptorSet> sets(mMaxSets);
+-    MaybeError result =
+-        CheckVkSuccess(mDevice->fn.AllocateDescriptorSets(mDevice->GetVkDevice(), &allocateInfo,
+-                                                          AsVkArray(sets.data())),
+-                       "AllocateDescriptorSets");
++    VkResult vkResult = VkResult::WrapUnsafe(
++        INJECT_ERROR_OR_RUN(mDevice->fn.AllocateDescriptorSets(
++                                mDevice->GetVkDevice(), &allocateInfo, AsVkArray(sets.data())),
++                            VK_FAKE_ERROR_FOR_TESTING));
++    MaybeError result = CheckVkSuccessImpl(vkResult, "AllocateDescriptorSets");
+     if (result.IsError()) {
+-        // On an error we can destroy the pool immediately because no command references it.
+-        mDevice->fn.DestroyDescriptorPool(mDevice->GetVkDevice(), descriptorPool, nullptr);
+-        DAWN_TRY(std::move(result));
++        // TODO(crbug.com/549311485): On Imagination (PowerVR) drivers, when AllocateDescriptorSets
++        // fails with host or device OOM, the driver's chunk allocation path publishes the chunk
++        // before allocation and fails to unpublish on error. Calling vkDestroyDescriptorPool
++        // dereferences the dangling freed meminfo pointer and crashes (UAF read / wild free).
++        bool isCorruptedImaginationPool =
++            gpu_info::IsImgTec(mDevice->GetPhysicalDevice()->GetVendorId()) &&
++            (vkResult == VK_ERROR_OUT_OF_HOST_MEMORY || vkResult == VK_ERROR_OUT_OF_DEVICE_MEMORY);
++        if (!isCorruptedImaginationPool) {
++            // On an error we can destroy the pool immediately because no command references it.
++            mDevice->fn.DestroyDescriptorPool(mDevice->GetVkDevice(), descriptorPool, nullptr);
++        }
+     }
++    DAWN_TRY(std::move(result));
+ 
+     std::vector<SetIndex> freeSetIndices;
+     freeSetIndices.reserve(mMaxSets);
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+index 02c5f50fc..bb7aa15e3 100644
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -1086,6 +1086,10 @@ void PhysicalDevice::SetupBackendDeviceToggles(dawn::platform::Platform* platfor
+         // instructions as matrix elements instead of a source/dest pointee elements.
+         // See crbug.com/460209126
+         deviceToggles->Default(Toggle::VulkanCooperativeMatrixStrideIsMatrixElements, true);
++
++        // dawn:500417361
++        // TODO: Add details once available.
++        deviceToggles->Default(Toggle::VulkanSleepAfterLostDeviceWait, true);
+     }
+ 
+     if (IsAndroidSamsung() || IsAndroidQualcomm() || IsAndroidHuawei()) {
+diff --git a/src/dawn/native/vulkan/QueueVk.cpp b/src/dawn/native/vulkan/QueueVk.cpp
+index deb4a8995..e5d683ddd 100644
+--- a/src/dawn/native/vulkan/QueueVk.cpp
++++ b/src/dawn/native/vulkan/QueueVk.cpp
+@@ -49,6 +49,7 @@
+ #include "src/dawn/native/vulkan/VulkanError.h"
+ #include "src/dawn/platform/metrics/HistogramMacros.h"
+ #include "src/dawn/platform/tracing/TraceEvent.h"
++#include "src/dawn/utils/SystemUtils.h"
+ #include "src/utils/compiler.h"
+ 
+ namespace dawn::native::vulkan {
+@@ -177,8 +178,12 @@ MaybeError Queue::WaitForIdleForDestructionImpl() {
+     // Ignore the result of QueueWaitIdle: it can return OOM which we can't really do anything
+     // about, Device lost, which means workloads running on the GPU are no longer accessible
+     // (so they are as good as waited on) or success.
+-    [[maybe_unused]] VkResult waitIdleResult =
+-        VkResult::WrapUnsafe(device->fn.QueueWaitIdle(mQueue));
++    VkResult waitIdleResult = VkResult::WrapUnsafe(device->fn.QueueWaitIdle(mQueue));
++
++    if (waitIdleResult == VK_ERROR_DEVICE_LOST &&
++        GetDevice()->IsToggleEnabled(Toggle::VulkanSleepAfterLostDeviceWait)) {
++        dawn::utils::USleep(1000);
++    }
+ 
+     DAWN_TRY(WaitForQueueSerial(GetLastSubmittedCommandSerial(),
+                                 std::numeric_limits<Nanoseconds>::max()));
+diff --git a/src/dawn/tests/end2end/ComputeFlowControlTests.cpp b/src/dawn/tests/end2end/ComputeFlowControlTests.cpp
+index d29b228d1..cf9ebccc7 100644
+--- a/src/dawn/tests/end2end/ComputeFlowControlTests.cpp
++++ b/src/dawn/tests/end2end/ComputeFlowControlTests.cpp
+@@ -513,6 +513,47 @@ fn main() {
+     RunTest(shader, inputs, expected);
+ }
+ 
++// This is a regression test for a crash in MTLCompilerService on macOS (crbug.com/508638064).
++TEST_P(ComputeFlowControlTests, SwitchReturnMTLCompilerServiceCrash) {
++    const char* shader = R"(
++@group(0) @binding(0) var<uniform> u: i32;
++@group(0) @binding(1) var<storage, read_write> s: i32;
++
++fn foo(){
++    switch (s) {
++        case 0i: {}
++        case 2i: {
++            return;
++        }
++        case 4i: {}
++        default: {
++            s = s / u;
++        }
++    }
++    switch (s) {
++        case 0i: {
++            s = 0;
++        }
++        case 1i: {}
++        case 4i: {}
++        default: {
++            s = 0;
++        }
++    }
++}
++
++@compute @workgroup_size(1)
++fn main() {
++    foo();
++    foo();
++}
++)";
++
++    wgpu::ComputePipelineDescriptor csDesc;
++    csDesc.compute.module = utils::CreateShaderModule(device, shader);
++    device.CreateComputePipeline(&csDesc);
++}
++
+ DAWN_INSTANTIATE_TEST(ComputeFlowControlTests,
+                       D3D11Backend(),
+                       D3D12Backend(),
+diff --git a/src/tint/lang/msl/writer/raise/BUILD.bazel b/src/tint/lang/msl/writer/raise/BUILD.bazel
+index ad4537656..d8b1bb889 100644
+--- a/src/tint/lang/msl/writer/raise/BUILD.bazel
++++ b/src/tint/lang/msl/writer/raise/BUILD.bazel
+@@ -54,6 +54,7 @@ cc_library(
+     "raise.cc",
+     "shader_io.cc",
+     "simd_ballot.cc",
++    "switch_return.cc",
+     "validate_subgroup_matrix.cc",
+   ],
+   hdrs = [
+@@ -68,6 +69,7 @@ cc_library(
+     "raise.h",
+     "shader_io.h",
+     "simd_ballot.h",
++    "switch_return.h",
+     "validate_subgroup_matrix.h",
+   ],
+   deps = [
+@@ -114,6 +116,7 @@ cc_library(
+     "module_scope_vars_test.cc",
+     "shader_io_test.cc",
+     "simd_ballot_test.cc",
++    "switch_return_test.cc",
+     "validate_subgroup_matrix_test.cc",
+   ],
+   deps = [
+diff --git a/src/tint/lang/msl/writer/raise/BUILD.cmake b/src/tint/lang/msl/writer/raise/BUILD.cmake
+index d3772cac7..db2ac9dc4 100644
+--- a/src/tint/lang/msl/writer/raise/BUILD.cmake
++++ b/src/tint/lang/msl/writer/raise/BUILD.cmake
+@@ -63,6 +63,8 @@ tint_add_target(tint_lang_msl_writer_raise lib
+   lang/msl/writer/raise/shader_io.h
+   lang/msl/writer/raise/simd_ballot.cc
+   lang/msl/writer/raise/simd_ballot.h
++  lang/msl/writer/raise/switch_return.cc
++  lang/msl/writer/raise/switch_return.h
+   lang/msl/writer/raise/validate_subgroup_matrix.cc
+   lang/msl/writer/raise/validate_subgroup_matrix.h
+ )
+@@ -116,6 +118,7 @@ tint_add_target(tint_lang_msl_writer_raise_test test
+   lang/msl/writer/raise/module_scope_vars_test.cc
+   lang/msl/writer/raise/shader_io_test.cc
+   lang/msl/writer/raise/simd_ballot_test.cc
++  lang/msl/writer/raise/switch_return_test.cc
+   lang/msl/writer/raise/validate_subgroup_matrix_test.cc
+ )
+ 
+diff --git a/src/tint/lang/msl/writer/raise/BUILD.gn b/src/tint/lang/msl/writer/raise/BUILD.gn
+index bb7d507d3..85f27b8cd 100644
+--- a/src/tint/lang/msl/writer/raise/BUILD.gn
++++ b/src/tint/lang/msl/writer/raise/BUILD.gn
+@@ -67,6 +67,8 @@ if (tint_build_msl_writer) {
+       "shader_io.h",
+       "simd_ballot.cc",
+       "simd_ballot.h",
++      "switch_return.cc",
++      "switch_return.h",
+       "validate_subgroup_matrix.cc",
+       "validate_subgroup_matrix.h",
+     ]
+@@ -113,6 +115,7 @@ if (tint_build_unittests) {
+         "module_scope_vars_test.cc",
+         "shader_io_test.cc",
+         "simd_ballot_test.cc",
++        "switch_return_test.cc",
+         "validate_subgroup_matrix_test.cc",
+       ]
+       deps = [
+diff --git a/src/tint/lang/msl/writer/raise/raise.cc b/src/tint/lang/msl/writer/raise/raise.cc
+index a34bf1e3e..9a5d27208 100644
+--- a/src/tint/lang/msl/writer/raise/raise.cc
++++ b/src/tint/lang/msl/writer/raise/raise.cc
+@@ -72,6 +72,7 @@
+ #include "src/tint/lang/msl/writer/raise/module_scope_vars.h"
+ #include "src/tint/lang/msl/writer/raise/shader_io.h"
+ #include "src/tint/lang/msl/writer/raise/simd_ballot.h"
++#include "src/tint/lang/msl/writer/raise/switch_return.h"
+ #include "src/tint/lang/msl/writer/raise/validate_subgroup_matrix.h"
+ 
+ namespace tint::msl::writer {
+@@ -305,6 +306,8 @@ Result<RaiseResult> Raise(core::ir::Module& module, const Options& options) {
+         options.workarounds.disable_module_constant_f16};
+     TINT_CHECK_RESULT(raise::ModuleConstant(module, module_const_config));
+ 
++    TINT_CHECK_RESULT(raise::SwitchReturn(module));
++
+     // These transforms need to be run last as various transforms introduce terminator arguments,
+     // naming conflicts, and expressions that need to be explicitly not inlined.
+     TINT_CHECK_RESULT(core::ir::transform::RemoveTerminatorArgs(module));
+diff --git a/src/tint/lang/msl/writer/raise/switch_return.cc b/src/tint/lang/msl/writer/raise/switch_return.cc
+new file mode 100644
+index 000000000..10ac49dbb
+--- /dev/null
++++ b/src/tint/lang/msl/writer/raise/switch_return.cc
+@@ -0,0 +1,91 @@
++// Copyright 2026 The Dawn & Tint Authors
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are met:
++//
++// 1. Redistributions of source code must retain the above copyright notice, this
++//    list of conditions and the following disclaimer.
++//
++// 2. Redistributions in binary form must reproduce the above copyright notice,
++//    this list of conditions and the following disclaimer in the documentation
++//    and/or other materials provided with the distribution.
++//
++// 3. Neither the name of the copyright holder nor the names of its
++//    contributors may be used to endorse or promote products derived from
++//    this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++#include "src/tint/lang/msl/writer/raise/switch_return.h"
++
++#include "src/tint/lang/core/ir/builder.h"
++#include "src/tint/lang/core/ir/module.h"
++#include "src/tint/lang/core/ir/validator.h"
++#include "src/tint/lang/core/type/u32.h"
++#include "src/tint/lang/msl/ir/builtin_call.h"
++
++namespace tint::msl::writer::raise {
++
++namespace {
++
++/// PIMPL state for the transform.
++struct State {
++    /// The IR module.
++    core::ir::Module& ir;
++
++    /// The IR builder.
++    core::ir::Builder b{ir};
++
++    /// The type manager.
++    core::type::Manager& ty{ir.Types()};
++
++    /// Process the module.
++    void Process() {
++        // Find all return instructions inside switches.
++        Vector<core::ir::Return*, 8> returns_to_wrap;
++
++        for (auto* fn : ir.functions) {
++            fn->ForEachUseSorted([&](const core::ir::Usage& usage) {
++                if (auto* ret = usage.instruction->As<core::ir::Return>()) {
++                    auto* parent = ret->Block()->Parent();
++                    if (parent && parent->Is<core::ir::Switch>()) {
++                        returns_to_wrap.Push(ret);
++                    }
++                }
++            });
++        }
++
++        // Wrap return in volatile zero conditional to work around a driver bug
++        // (crbug.com/508638064).
++        for (auto* ret : returns_to_wrap) {
++            b.InsertBefore(ret, [&] {
++                auto* zero = b.Call<msl::ir::BuiltinCall>(ty.u32(), msl::BuiltinFn::kVolatileZero);
++                auto* cond = b.If(b.Equal(zero, b.Constant(core::u32(0))));
++                b.Exit(ret->Block()->Parent());
++                ret->Remove();
++                cond->True()->Append(ret);
++            });
++        }
++    }
++};
++
++}  // namespace
++
++Result<SuccessType> SwitchReturn(core::ir::Module& ir) {
++    core::ir::AssertValid(ir, "before msl.SwitchReturn");
++
++    State{ir}.Process();
++
++    return Success;
++}
++
++}  // namespace tint::msl::writer::raise
+diff --git a/src/tint/lang/msl/writer/raise/switch_return.h b/src/tint/lang/msl/writer/raise/switch_return.h
+new file mode 100644
+index 000000000..3d06f846e
+--- /dev/null
++++ b/src/tint/lang/msl/writer/raise/switch_return.h
+@@ -0,0 +1,49 @@
++// Copyright 2026 The Dawn & Tint Authors
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are met:
++//
++// 1. Redistributions of source code must retain the above copyright notice, this
++//    list of conditions and the following disclaimer.
++//
++// 2. Redistributions in binary form must reproduce the above copyright notice,
++//    this list of conditions and the following disclaimer in the documentation
++//    and/or other materials provided with the distribution.
++//
++// 3. Neither the name of the copyright holder nor the names of its
++//    contributors may be used to endorse or promote products derived from
++//    this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++#ifndef SRC_TINT_LANG_MSL_WRITER_RAISE_SWITCH_RETURN_H_
++#define SRC_TINT_LANG_MSL_WRITER_RAISE_SWITCH_RETURN_H_
++
++#include "src/tint/utils/result.h"
++
++// Forward declarations
++namespace tint::core::ir {
++class Module;
++}  // namespace tint::core::ir
++
++namespace tint::msl::writer::raise {
++
++/// SwitchReturn is a transform that wraps early returns inside switches with a local
++/// volatile conditional block, to bypass a flow analyzer crash in Apple's MTLCompilerService
++/// (crbug.com/508638064).
++/// @param module the module to transform
++/// @returns success or failure
++Result<SuccessType> SwitchReturn(core::ir::Module& ir);
++
++}  // namespace tint::msl::writer::raise
++
++#endif  // SRC_TINT_LANG_MSL_WRITER_RAISE_SWITCH_RETURN_H_
+diff --git a/src/tint/lang/msl/writer/raise/switch_return_test.cc b/src/tint/lang/msl/writer/raise/switch_return_test.cc
+new file mode 100644
+index 000000000..ca6f943cd
+--- /dev/null
++++ b/src/tint/lang/msl/writer/raise/switch_return_test.cc
+@@ -0,0 +1,152 @@
++// Copyright 2026 The Dawn & Tint Authors
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are met:
++//
++// 1. Redistributions of source code must retain the above copyright notice, this
++//    list of conditions and the following disclaimer.
++//
++// 2. Redistributions in binary form must reproduce the above copyright notice,
++//    this list of conditions and the following disclaimer in the documentation
++//    and/or other materials provided with the distribution.
++//
++// 3. Neither the name of the copyright holder nor the names of its
++//    contributors may be used to endorse or promote products derived from
++//    this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++#include "src/tint/lang/msl/writer/raise/switch_return.h"
++
++#include <utility>
++
++#include "src/tint/lang/core/fluent_types.h"
++#include "src/tint/lang/core/ir/transform/helper_test.h"
++
++using namespace tint::core::fluent_types;     // NOLINT
++using namespace tint::core::number_suffixes;  // NOLINT
++
++namespace tint::msl::writer::raise {
++namespace {
++
++using MslWriter_SwitchReturnTest = core::ir::transform::TransformTest;
++
++TEST_F(MslWriter_SwitchReturnTest, ReturnInsideSwitch) {
++    auto* func = b.Function("foo", ty.void_());
++    b.Append(func->Block(), [&] {
++        auto* sw = b.Switch(1_i);
++        b.Append(b.Case(sw, {b.Constant(0_i)}), [&] { b.Return(func); });
++        b.Append(b.DefaultCase(sw), [&] { b.ExitSwitch(sw); });
++        b.Return(func);
++    });
++
++    auto* src = R"(
++%foo = func():void {
++  $B1: {
++    switch 1i [c: (0i, $B2), c: (default, $B3)] {  # switch_1
++      $B2: {  # case
++        ret
++      }
++      $B3: {  # case
++        exit_switch  # switch_1
++      }
++    }
++    ret
++  }
++}
++)";
++    EXPECT_EQ(src, str());
++
++    auto* expect = R"(
++%foo = func():void {
++  $B1: {
++    switch 1i [c: (0i, $B2), c: (default, $B3)] {  # switch_1
++      $B2: {  # case
++        %2:u32 = msl.volatile_zero
++        %3:bool = eq %2, 0u
++        if %3 [t: $B4] {  # if_1
++          $B4: {  # true
++            ret
++          }
++        }
++        exit_switch  # switch_1
++      }
++      $B3: {  # case
++        exit_switch  # switch_1
++      }
++    }
++    ret
++  }
++}
++)";
++
++    Run(SwitchReturn);
++
++    EXPECT_EQ(expect, str());
++}
++
++TEST_F(MslWriter_SwitchReturnTest, ReturnValueInsideSwitch) {
++    auto* func = b.Function("foo", ty.i32());
++    b.Append(func->Block(), [&] {
++        auto* sw = b.Switch(1_i);
++        b.Append(b.Case(sw, {b.Constant(0_i)}), [&] { b.Return(func, 42_i); });
++        b.Append(b.DefaultCase(sw), [&] { b.ExitSwitch(sw); });
++        b.Return(func, 0_i);
++    });
++
++    auto* src = R"(
++%foo = func():i32 {
++  $B1: {
++    switch 1i [c: (0i, $B2), c: (default, $B3)] {  # switch_1
++      $B2: {  # case
++        ret 42i
++      }
++      $B3: {  # case
++        exit_switch  # switch_1
++      }
++    }
++    ret 0i
++  }
++}
++)";
++    EXPECT_EQ(src, str());
++
++    auto* expect = R"(
++%foo = func():i32 {
++  $B1: {
++    switch 1i [c: (0i, $B2), c: (default, $B3)] {  # switch_1
++      $B2: {  # case
++        %2:u32 = msl.volatile_zero
++        %3:bool = eq %2, 0u
++        if %3 [t: $B4] {  # if_1
++          $B4: {  # true
++            ret 42i
++          }
++        }
++        exit_switch  # switch_1
++      }
++      $B3: {  # case
++        exit_switch  # switch_1
++      }
++    }
++    ret 0i
++  }
++}
++)";
++
++    Run(SwitchReturn);
++
++    EXPECT_EQ(expect, str());
++}
++
++}  // namespace
++}  // namespace tint::msl::writer::raise
+diff --git a/test/tint/switch/switch.wgsl.expected.msl b/test/tint/switch/switch.wgsl.expected.msl
+index a85fb4af9..96ce133e5 100644
+--- a/test/tint/switch/switch.wgsl.expected.msl
++++ b/test/tint/switch/switch.wgsl.expected.msl
+@@ -1,6 +1,8 @@
+ #include <metal_stdlib>
+ using namespace metal;
+ 
++volatile constexpr constant uint tint_volatile_zero = 0u;
++
+ [[max_total_threads_per_threadgroup(1)]]
+ kernel void a() {
+   int a_1 = 0;
+@@ -11,7 +13,10 @@ kernel void a() {
+     }
+     case 1:
+     {
+-      return;
++      if (( tint_volatile_zero == 0u)) {
++        return;
++      }
++      break;
+     }
+     default:
+     {
+diff --git a/test/tint/switch/switch_multi_selector.wgsl.expected.msl b/test/tint/switch/switch_multi_selector.wgsl.expected.msl
+index 20c9f4a55..a8e5df9e0 100644
+--- a/test/tint/switch/switch_multi_selector.wgsl.expected.msl
++++ b/test/tint/switch/switch_multi_selector.wgsl.expected.msl
+@@ -1,6 +1,8 @@
+ #include <metal_stdlib>
+ using namespace metal;
+ 
++volatile constexpr constant uint tint_volatile_zero = 0u;
++
+ [[max_total_threads_per_threadgroup(1)]]
+ kernel void a() {
+   int a_1 = 0;
+@@ -14,7 +16,10 @@ kernel void a() {
+     case 1:
+     default:
+     {
+-      return;
++      if (( tint_volatile_zero == 0u)) {
++        return;
++      }
++      break;
+     }
+   }
+ }
+diff --git a/test/tint/switch/switch_nested.wgsl.expected.msl b/test/tint/switch/switch_nested.wgsl.expected.msl
+index 4c56821f0..5ef2009be 100644
+--- a/test/tint/switch/switch_nested.wgsl.expected.msl
++++ b/test/tint/switch/switch_nested.wgsl.expected.msl
+@@ -1,6 +1,8 @@
+ #include <metal_stdlib>
+ using namespace metal;
+ 
++volatile constexpr constant uint tint_volatile_zero = 0u;
++
+ [[max_total_threads_per_threadgroup(1)]]
+ kernel void a() {
+   int a_1 = 0;
+@@ -28,10 +30,16 @@ kernel void a() {
+             }
+             default:
+             {
+-              return;
++              if (( tint_volatile_zero == 0u)) {
++                return;
++              }
++              break;
+             }
+           }
+-          return;
++          if (( tint_volatile_zero == 0u)) {
++            return;
++          }
++          break;
+         }
+       }
+       break;
+@@ -39,7 +47,10 @@ kernel void a() {
+     case 1:
+     default:
+     {
+-      return;
++      if (( tint_volatile_zero == 0u)) {
++        return;
++      }
++      break;
+     }
+   }
+ }
+diff --git a/test/tint/switch/switch_only_default.wgsl.expected.msl b/test/tint/switch/switch_only_default.wgsl.expected.msl
+index bf98158d2..ceed55988 100644
+--- a/test/tint/switch/switch_only_default.wgsl.expected.msl
++++ b/test/tint/switch/switch_only_default.wgsl.expected.msl
+@@ -1,13 +1,18 @@
+ #include <metal_stdlib>
+ using namespace metal;
+ 
++volatile constexpr constant uint tint_volatile_zero = 0u;
++
+ [[max_total_threads_per_threadgroup(1)]]
+ kernel void a() {
+   int a_1 = 0;
+   switch(a_1) {
+     default:
+     {
+-      return;
++      if (( tint_volatile_zero == 0u)) {
++        return;
++      }
++      break;
+     }
+   }
+   /* unreachable */

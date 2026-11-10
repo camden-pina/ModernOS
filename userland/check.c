@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
 
     struct os_utsname os;
     CHECK(!call1(SYS_uname,&os));
-    CHECK(!strcmp(os.sysname,"ModernOS"));
+    CHECK(!strcmp(os.sysname,"Coast"));
     CHECK(call1(SYS_uname,1)==-E_FAULT);
     CHECK(call0(SYS_gettid)==call0(SYS_getpid));
     CHECK(call0(SYS_getuid)==0);

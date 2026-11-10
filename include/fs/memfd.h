@@ -1,9 +1,12 @@
-#ifndef MODERNOS_MEMFD_H
-#define MODERNOS_MEMFD_H
+#ifndef COAST_MEMFD_H
+#define COAST_MEMFD_H
 #include <fs/vfs.h>
 
 struct memory_object;
 struct memory_account;
+/* RAMFS shared pages use the SAME bounded global backing allowance. */
+bool memfd_backing_charge(void);
+void memfd_backing_uncharge(void);
 void memfd_account_release(struct memory_account *);
 struct memory_object *memfd_create(unsigned flags, unsigned domain);
 void memfd_release(struct memory_object *);

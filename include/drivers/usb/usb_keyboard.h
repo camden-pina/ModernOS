@@ -2,6 +2,7 @@
 #define USB_KEYBOARD_H
 
 #include <drivers/usb/usb.h>
+#include <uapi/keyboard.h>
 
 #define USB_MOD_LEFT_CTRL (1u << 0)
 #define USB_MOD_LEFT_SHIFT (1u << 1)
@@ -25,6 +26,7 @@ typedef struct {
 bool usb_keyboard_read_event(usb_keyboard_event_t *out);
 uint32_t usb_keyboard_count(void);
 uint32_t usb_keyboard_dropped_events(void);
+void usb_keyboard_snapshot(struct os_keyboard_snapshot *);
 
 /* USB core/class binding interface, not additional kernel initialization calls. */
 typedef struct {

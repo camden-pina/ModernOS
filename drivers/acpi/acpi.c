@@ -9,12 +9,18 @@
 #include <acpi/tables.h>
 #include <printk.h>
 #include <panic.h>
-#include <lai/core.h>
+#include <acpica.h>
+#include <acpi/osl.h>
+#include <acpi/power.h>
+#include <power.h>
 #include <mm/pmm.h>
 #include <mm/user.h>
 #include <mm/vmem_io.h>
-#include <drivers/pci/pci.h>
-#include <tsc.h>
+
+_Static_assert(offsetof(_acpi_fadt_t, x_firmware_ctrl) == offsetof(ACPI_TABLE_FADT, XFacs),
+               "kernel FADT must match ACPICA FACS offsets");
+_Static_assert(offsetof(_acpi_fadt_t, x_dsdt) == offsetof(ACPI_TABLE_FADT, XDsdt),
+               "kernel FADT must match ACPICA DSDT offsets");
 
 /* Firmware table addresses are physical, while all kernel pointers are
    in the shared higher half. Validate and map each table before accessing it. */
@@ -29,6 +35,8 @@ void *acpi_phys_table(uint64_t phys) {
     _acpi_sdt_hdr_t *hdr = phys_ptr(phys);
     if (hdr->len < sizeof(*hdr) || hdr->len > 1024 * 1024)
         return NULL;
+    if (!acpi_os_mark_firmware_memory(phys, hdr->len))
+        return NULL;
     uint64_t end = (phys + hdr->len + 4095) & ~4095ULL;
     for (uint64_t p = head_end; p < end; p += 4096)
         if (!vmem_map_page_in_root(root, p + hhdm, p))
@@ -40,18 +48,6 @@ void *acpi_phys_table(uint64_t phys) {
 static _acpi_sdt_hdr_t *root_table;
 static size_t root_entry_size;
 struct _acpi_fadt_t *fadt = NULL;
-
-// ACPI variables (for power management, etc.)
-static unsigned int acpi_smi_cmd;
-static unsigned char acpi_enable;
-static unsigned char acpi_disable;
-static unsigned int acpi_pm1a_cnt;
-static unsigned int acpi_pm1b_cnt;
-static unsigned short acpi_slp_typ_a;
-static unsigned short acpi_slp_typ_b;
-static unsigned short acpi_slp_en;
-static unsigned short acpi_sci_en;
-static unsigned char acpi_pm1_cnt_len;
 
 // Calculate checksum for an ACPI table.
 // Returns nonzero (true) if the table's bytes sum to zero.
@@ -102,17 +98,6 @@ void *acpi_locate_table(const char *table) {
 
 // Initialize ACPI using the provided RSDP pointer.
 _Bool acpi_init(unsigned long long *rsdp_ptr) {
-    acpi_smi_cmd = 0;
-    acpi_enable = 0;
-    acpi_disable = 0;
-    acpi_pm1a_cnt = 0;
-    acpi_pm1b_cnt = 0;
-    acpi_slp_typ_a = 0;
-    acpi_slp_typ_b = 0;
-    acpi_slp_en = 0;
-    acpi_sci_en = 0;
-    acpi_pm1_cnt_len = 0;
-
     root_table = NULL;
     fadt = NULL;
 
@@ -157,177 +142,114 @@ _Bool acpi_init(unsigned long long *rsdp_ptr) {
     if (!dsdt_ptr || !acpi_checksum(dsdt_ptr))
         PANIC("ACPI Init: Invalid DSDT Checksum");
 
-    // Initialize the LAI library for AML interpretation.
-    lai_set_acpi_revision(rsdp->rev ? 2 : 1);
-    lai_create_namespace();
+    /* Table discovery is needed by HPET/APIC/PCI before the event subsystem
+     * can be enabled. AML initialization follows those controllers. */
+    uint64_t physical_rsdp;
+    if (!vmem_translate((uintptr_t)rsdp, &physical_rsdp))
+        PANIC("ACPI Init: RSDP is not mapped");
+    /* The ACPICA table manager temporarily maps both legacy and extended
+     * FACS addresses while parsing the FADT, before choosing either one. */
+    if (fadt->firmware_ctl && !acpi_os_mark_firmware_memory(fadt->firmware_ctl, 64))
+        panic("ACPICA: invalid legacy FACS physical range");
+    if (fadt->hdr.len >= offsetof(_acpi_fadt_t, x_firmware_ctrl) +
+                         sizeof(fadt->x_firmware_ctrl) && fadt->x_firmware_ctrl &&
+        !acpi_os_mark_firmware_memory(fadt->x_firmware_ctrl, 64))
+        panic("ACPICA: invalid extended FACS physical range");
+    acpi_os_set_root_pointer(physical_rsdp);
+    /* Register every validated SDT, including entries after the FADT. */
+    for (size_t i = 0; i < acpi_table_count(); i++)
+        (void)acpi_table_at(i);
+    ACPI_STATUS status = AcpiInitializeSubsystem();
+    if (ACPI_FAILURE(status))
+        panic("ACPICA subsystem: %s", AcpiFormatException(status));
+    status = AcpiInitializeTables(NULL, 32, FALSE);
+    if (ACPI_FAILURE(status))
+        panic("ACPICA tables: %s", AcpiFormatException(status));
 
-    kprintf("ACPI initialization complete.\n\r");
+    kprintf("ACPICA %08x: table manager initialized.\n\r", ACPI_CA_VERSION);
     return 1;
 }
 
-// =====================================================
-// LAI Host Functions
-// (These functions allow the LAI library to interface with your OS.)
-// They are currently stubs and should be filled with real implementations.
-// =====================================================
 
-void *laihost_malloc(size_t sz) {
-    return kmalloc(sz);
+/* Firmware power requests are reported until a system-wide shutdown policy
+ * exists. The fixed event is acknowledged by ACPICA before LAPIC EOI. */
+static UINT32 power_button(void *context) {
+    (void)context;
+    power_button_event();
+    pr_info("ACPICA: fixed power button event received\n");
+    return ACPI_INTERRUPT_HANDLED;
 }
 
-void *laihost_realloc(void *ptr, size_t newsize, size_t oldsize) {
-    return krealloc(ptr, newsize);
+static ACPI_STATUS count_device(ACPI_HANDLE object, UINT32 level, void *context,
+                                void **result) {
+    (void)object;
+    (void)level;
+    (void)result;
+    ++*(unsigned *)context;
+    return AE_OK;
 }
 
-void laihost_free(void *ptr, size_t sz) {
-    kfree(ptr);
-}
+bool acpi_start(void) {
+    if (!fadt)
+        return false;
+    /* GPE block creation discovers namespace _Lxx/_Exx methods, so load
+     * AML before initializing event blocks. */
+    ACPI_STATUS status = AcpiLoadTables();
+    if (ACPI_FAILURE(status))
+        panic("ACPICA namespace: %s", AcpiFormatException(status));
+    status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
+    if (ACPI_FAILURE(status))
+        panic("ACPICA hardware/events: %s", AcpiFormatException(status));
+    if (!acpi_os_prepare_gpes())
+        panic("ACPICA: cannot reserve boot GPE topology admission");
 
-void laihost_log(int level, const char *message) {
-    kprintf("[%d] %s", level, message);
-}
+    /* Firmware can own the FACS global lock when boot AML acquires it.
+     * Its release completes through the SCI, so allow interrupts now that
+     * the SCI/global-lock handlers are installed. The LAPIC timer stays
+     * masked until sched_start(); deferred AML remains queued for workers.
+     * Keep SCI available for later boot consumers such as audio _CRS too.
+     * kernel_main restores CLI before setting up the scheduler and APs. */
+    __asm__ volatile("sti" ::: "memory");
+    uint64_t boot_irq_flags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(boot_irq_flags));
+    if (!(boot_irq_flags & 0x200))
+        panic("ACPICA: SCI interrupts disabled before boot AML");
+    pr_info("ACPICA: boot AML SCI interrupts enabled (IF=1)\n");
 
-void laihost_panic(const char *message) {
-    panic("%s", message);
-}
+    /* APIC routing is active. Inform AML which interrupt model the OS uses;
+     * absence of _PIC is valid, but failure of a present method is reported. */
+    ACPI_OBJECT pic = {.Integer = {.Type = ACPI_TYPE_INTEGER, .Value = 1}};
+    ACPI_OBJECT_LIST arguments = {1, &pic};
+    status = AcpiEvaluateObject(NULL, "\\_PIC", &arguments, NULL);
+    if (ACPI_FAILURE(status) && status != AE_NOT_FOUND)
+        pr_warn("ACPICA: _PIC(1) failed: %s\n", AcpiFormatException(status));
 
-void *laihost_scan(char *signature, size_t index) {
-    kprintf("laihost_scan() [%s], [%llu]\n", signature, index);
-    // Special-case: DSDT must be obtained from the FADT.
-    if (memcmp(signature, "DSDT", 4) == 0) {
-        if (!fadt) {
-            kprintf("laihost_scan: FADT not found, cannot locate DSDT.\n");
-            return NULL;
-        }
-        void *dsdt_ptr = acpi_dsdt();
-        if (dsdt_ptr && acpi_checksum(dsdt_ptr)) {
-            kprintf("laihost_scan: DSDT found.\n");
-            return dsdt_ptr;
-        } else {
-            kprintf("laihost_scan: DSDT checksum failed or not found.\n");
-            return NULL;
-        }
-    }
-    void *ptr = NULL;
-    acpi_status_t status = acpi_table_find(&ptr, signature, index);
-    if (status == ACPI_SUCCESS) {
-        kprintf("laihost_scan: ACPI table %4.4s found at index %llu\n", signature, index);
-        return ptr;
-    } else {
-        kprintf("laihost_scan: Failed to find ACPI table %4.4s at index %llu\n", signature, index);
-        return NULL;
-    }
-}
+    status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
+    if (ACPI_FAILURE(status))
+        panic("ACPICA objects: %s", AcpiFormatException(status));
+    if (!acpi_os_prepare_runtime())
+        panic("ACPICA: runtime preparation failed");
+    status = AcpiUpdateAllGpes();
+    if (ACPI_FAILURE(status))
+        panic("ACPICA runtime GPEs: %s", AcpiFormatException(status));
+    unsigned devices = 0;
+    status = AcpiWalkNamespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
+                               count_device, NULL, &devices, NULL);
+    if (ACPI_FAILURE(status))
+        panic("ACPICA namespace walk: %s", AcpiFormatException(status));
+    pr_info("ACPICA: namespace initialized, %u devices; _REG/_STA/_INI pass finished (individual firmware errors reported separately)\n", devices);
 
-void *laihost_map(size_t address, size_t size) {
-    /* Firmware SystemMemory fields include the real ACPI NVS variables used
-     * by _CRS. Map them and device regions as supervisor-only MMIO. */
-    if (!size || size > 16 * 1024 * 1024)
-        return NULL;
-    return vmem_map_mmio(address, size);
-}
-
-void laihost_unmap(void *addr, size_t size) {
-    /* MMIO mappings use the shared higher-half direct map; they are borrowed
-     * rather than allocated virtual ranges. Other drivers may retain them. */
-    (void)addr;
-    (void)size;
-}
-
-void laihost_outb(uint16_t port, uint8_t value) {
-    __asm__ volatile("outb %0,%1" ::"a"(value), "Nd"(port) : "memory");
-}
-
-void laihost_outw(uint16_t port, uint16_t value) {
-    __asm__ volatile("outw %0,%1" ::"a"(value), "Nd"(port) : "memory");
-}
-
-void laihost_outd(uint16_t port, uint32_t value) {
-    __asm__ volatile("outl %0,%1" ::"a"(value), "Nd"(port) : "memory");
-}
-
-uint8_t laihost_inb(uint16_t port) {
-    uint8_t value;
-    __asm__ volatile("inb %1,%0" : "=a"(value) : "Nd"(port) : "memory");
-    return value;
-}
-
-uint16_t laihost_inw(uint16_t port) {
-    uint16_t value;
-    __asm__ volatile("inw %1,%0" : "=a"(value) : "Nd"(port) : "memory");
-    return value;
-}
-
-uint32_t laihost_ind(uint16_t port) {
-    uint32_t value;
-    __asm__ volatile("inl %1,%0" : "=a"(value) : "Nd"(port) : "memory");
-    return value;
-}
-
-void laihost_pci_writeb(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                        uint16_t offset, uint8_t value) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    if (config && offset < 4096)
-        *(volatile uint8_t *)(config + offset) = value;
-}
-
-uint8_t laihost_pci_readb(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                          uint16_t offset) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    return config && offset < 4096 ? *(volatile uint8_t *)(config + offset) : UINT8_MAX;
-}
-
-void laihost_pci_writew(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                        uint16_t offset, uint16_t value) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    if (config && offset <= 4094 && !(offset & 1))
-        *(volatile uint16_t *)(config + offset) = value;
-}
-
-uint16_t laihost_pci_readw(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                           uint16_t offset) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    return config && offset <= 4094 && !(offset & 1) ? *(volatile uint16_t *)(config + offset)
-                                                     : UINT16_MAX;
-}
-
-void laihost_pci_writed(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                        uint16_t offset, uint32_t value) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    if (config && offset <= 4092 && !(offset & 3))
-        *(volatile uint32_t *)(config + offset) = value;
-}
-
-uint32_t laihost_pci_readd(uint16_t segment, uint8_t bus, uint8_t slot, uint8_t function,
-                           uint16_t offset) {
-    uint8_t *config = pci_config_space(segment, bus, slot, function);
-    return config && offset <= 4092 && !(offset & 3) ? *(volatile uint32_t *)(config + offset)
-                                                     : UINT32_MAX;
-}
-
-void laihost_sleep(uint64_t duration) {
-    uint64_t us = duration > UINT64_MAX / 1000 ? UINT64_MAX : duration * 1000,
-             start = tsc_uptime_us();
-    while (tsc_uptime_us() - start < us)
-        __asm__ volatile("pause");
-}
-
-uint64_t laihost_timer(void) {
-    return tsc_uptime_us() * 10; /* ACPI Timer() units are 100 ns. */
-}
-
-int laihost_sync_wait(struct lai_sync_state *state, unsigned int val, int64_t deadline) {
-    return 0;
-}
-
-void laihost_sync_wake(struct lai_sync_state *state) {
-    // TODO: Implement synchronization wake.
-}
-
-void laihost_handle_amldebug(lai_variable_t *variable) {
-    // TODO: Implement AML debugging functionality.
-}
-
-void laihost_handle_global_notify(lai_nsnode_t *node, int event) {
-    // TODO: Implement global notify handling.
+    UINT8 a, b;
+    status = AcpiGetSleepTypeData(ACPI_STATE_S5, &a, &b);
+    if (ACPI_SUCCESS(status))
+        pr_info("ACPICA: _S5 evaluated, sleep types %u/%u\n", a, b);
+    else
+        pr_info("ACPICA: S5 unavailable: %s\n", AcpiFormatException(status));
+    status = AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON, power_button, NULL);
+    if (ACPI_FAILURE(status))
+        pr_warn("ACPICA: fixed power button unavailable: %s\n", AcpiFormatException(status));
+    pr_info("ACPICA: hardware, SCI and AML initialization complete\n");
+    acpi_power_init();
+    acpi_selftest_init();
+    return true;
 }

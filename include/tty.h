@@ -13,5 +13,7 @@ int tty_set_config(const struct os_termios *config, bool flush);
 unsigned tty_available(void);
 void tty_transfer_foreground(unsigned from, unsigned to);
 void tty_reset_config(unsigned pid);
+unsigned tty_job_foreground(void);
+void tty_job_restore(unsigned from, unsigned to, const struct os_termios *);
 void input_task(void *arg);
 #endif

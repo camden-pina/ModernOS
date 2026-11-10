@@ -1,0 +1,14 @@
+--- a/src/subprocess-posix.cc
++++ b/src/subprocess-posix.cc
+@@ -100,8 +100,9 @@
+ 
+   if (!use_console_) {
+     // Put the child in its own process group, so ctrl-c won't reach it.
+-    flags |= POSIX_SPAWN_SETPGROUP;
+-    // No need to posix_spawnattr_setpgroup(&attr, 0), it's the default.
++    // Coast allows terminal-free sessions without granting terminal authority.
++    // setsid also makes pid the process-group id used by Ninja's signal path.
++    flags |= POSIX_SPAWN_SETSID;
+ 
+     // Open /dev/null over stdin.
+     err = posix_spawn_file_actions_addopen(&action, 0, "/dev/null", O_RDONLY,

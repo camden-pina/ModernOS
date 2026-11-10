@@ -1,4 +1,9 @@
-# ModernOS continuation handoff — 2026-10-11
+# Coast continuation handoff — 2026-10-11
+
+> Latest handoff for `/home/camdenp/Desktop/ModernOS`:
+> [PASSOFF-2026-11-09.md](PASSOFF-2026-11-09.md). Source-build work is in progress.
+> This October document is historical; its browser and image selections are
+> superseded.
 
 The user requested a next-session prompt before stopping for the night.
 Read this file alongside the current source; do not infer that every
@@ -545,7 +550,7 @@ saved native screenshots; the diagnostic runner waits for the visible widget.
 No support message was sent. 600010 is still a generic rejection, not a cause.
 
 Host DNS observed brunhild.challenges.cloudflare.com as IPv6-only; the host
-only had link-local IPv6 and TCP failed with errno101, while ModernOS is IPv4-
+only had link-local IPv6 and TCP failed with errno101, while Coast is IPv4-
 only. This explains the unusable-address error, not Cloudflare rejection.
 Evidence is `exception-diagnostic33/host-ipv6-probe.json`. Do not guess that this,
 missing graphics/audio/database APIs or the intentional upstream Version/60.5
@@ -637,7 +642,7 @@ OSDev `cf_clearance`, Soup **stored** it, and the next genuine navigation
 it does not identify the underlying rejection cause. HTTP identity stays
 consistent on top/foreign documents and requests, including Fetch Metadata.
 The odd `Version/60.5` token is the pinned upstream GLib User-Agent's intentional
-compatibility token, not a newly found ModernOS version bug. No UA spoofing,
+compatibility token, not a newly found Coast version bug. No UA spoofing,
 TLS bypass, origin relaxation, fabricated API or challenge result was added.
 Some live runs also report DNS failure for brunhild.challenges.cloudflare.com;
 its causal relevance has not been established.
@@ -676,7 +681,7 @@ in the challenge. It is wired through `gui --browser-exception-trace`, broker
 `--exception-trace`, renderer `--exception-trace` and the OSDev test's new
 `--exception-trace` option. These are source edits, not installed functionality.
 
-The incremental `ModernOSRenderer` build exited 1: in
+The incremental `CoastRenderer` build exited 1: in
 `userland/modern-browser/port/renderer-native.inc`, `JSC::jsDynamicCast` was
 not found in that namespace and `Debugger::exceptionOrCaughtValue` is private.
 No diagnostic candidate33 ISO was built or tested. Renderer/broker/kernel
@@ -823,7 +828,7 @@ under the verification27 directory. The friendly and default ISO copies were
 published atomically after checking no VM held the previous default.
 
 Never configure or run Ninja concurrently. Build incrementally with
-`python3 -u tools/build_webcore.py --interpreter llint --target ModernOSRenderer
+`python3 -u tools/build_webcore.py --interpreter llint --target CoastRenderer
 --jobs 20`, then `make -j8 iso ISO_IMAGE=build/modern-browser/<new-candidate>.iso`.
 Never overwrite an ISO in use. Inspect `fuser build/os.iso` immediately before
 an atomic final publication; preserve existing defaults and all immutable
@@ -1017,7 +1022,7 @@ HANDOFF STATE: all owned test VMs are closed and no build is running. The user
 asked for a continuation prompt. The isolated x86-64 LLInt trial was interrupted
 normally at 3756/3839 remaining-build steps to leave a clean handoff; its completed
 objects/cache are preserved. This was not a compile failure. Resume via
-`python3 -u tools/build_webcore.py --interpreter llint --target ModernOSRenderer
+`python3 -u tools/build_webcore.py --interpreter llint --target CoastRenderer
 --jobs 20`. Cache is `build/modern-browser/webcore-llint`; JIT/DFG/FTL and Wasm
 remain off. Existing `webcore` C_LOOP cache and v37 ISO remain intact. This new
 backend must receive full native/scheduling/network/GC/memory/capability checks
@@ -1189,11 +1194,11 @@ is resolved; do not restart dependency/component work to demonstrate progress.
   `scrollY=0`, document height `1401`, visible height `240`. Form submission
   was not reached. Preserve `webcore-network-wheel-failure.log` and
   `webcore-network-wheel-update-failure.log`; do not weaken the assertion.
-- `EditorModernOS.h` uses real WebCore editing/undo and upstream WPE keyboard
+- `EditorCoast.h` uses real WebCore editing/undo and upstream WPE keyboard
   commands. Unimplemented clipboard and persistent storage services remain
   denied/disabled; they are not implemented by empty success providers.
 - The empty chrome client dropped rendering-update requests. The new
-  `ChromeModernOS.h` records real view invalidation and scheduling;
+  `ChromeCoast.h` records real view invalidation and scheduling;
   `renderer-fixture.cpp::tick()` now calls actual `Page::updateRendering()`
   and `Page::finalizeRenderingUpdate({})`. This is a candidate fix, **not a
   verified resolution** of the wheel failure.
@@ -1257,8 +1262,8 @@ general form/navigation or requested public-site success is demonstrated yet.
   `build/modern-browser/webcore-deps-soup-guest.log`; 1-CPU full evidence:
   `build/modern-browser/webcore-deps-1cpu-guest.log`.
 - `tools/build_webcore.py` configures genuine WPE WebKit 2.54.0 with owned
-  `userland/modern-browser/port/{OptionsModernOS.cmake,PlatformModernOS.cmake,
-  SourcesModernOS.txt}`. It extracts a **separate** source tree under
+  `userland/modern-browser/port/{OptionsCoast.cmake,PlatformCoast.cmake,
+  SourcesCoast.txt}`. It extracts a **separate** source tree under
   `build/modern-browser/webcore-source/wpewebkit-2.54.0`, preserving the tested
   JSC source tree. `build/modern-browser/webcore` retains all incremental
   objects. The software Skia port excludes GPU/Ganesh and AVX objects, retains
@@ -1850,7 +1855,7 @@ flips remain missing. Host OpenGL texture upload is not guest GPU acceleration.
 Current root/Home/tmp are RAM. Supported NVMe/AHCI ext2/ext4 mount automatically
 read-only when clean; FAT32 mounts read/write and persists. Files Ctrl+L can
 open paths from `lsblk`/`mounts`; save documents there and `sync` before shutdown.
-Desktop preferences use the first writable FAT32 mount's .modernos/desktop.ini
+Desktop preferences use the first writable FAT32 mount's .coast/desktop.ini
 when available, but Home/downloads are not automatically moved to disk.
 FAT12/16, exFAT, NTFS, Btrfs, encryption/LVM and USB mass-storage are not supported.
 
@@ -1862,14 +1867,14 @@ Linux system disk for testing. Use disposable disk images for driver work.
 The user was shown a safe NEW-file QEMU FAT32 image example from Linux:
 
 ```sh
-test ! -e modernos-data.img &&
-truncate -s 1G modernos-data.img &&
-mkfs.fat -F32 modernos-data.img &&
-make run FAT_DISK="$PWD/modernos-data.img"
+test ! -e coast-data.img &&
+truncate -s 1G coast-data.img &&
+mkfs.fat -F32 coast-data.img &&
+make run FAT_DISK="$PWD/coast-data.img"
 ```
 
 No image was created by the agent. Reuse the same image on later boots with
-`make run FAT_DISK="$PWD/modernos-data.img"`. A single unpartitioned attached
+`make run FAT_DISK="$PWD/coast-data.img"`. A single unpartitioned attached
 image normally mounts at /mnt/nvme0n1; always verify actual discovery names.
 Adding Btrfs access or persistent Home is a separate feature request, not work
 already completed or explicitly started.

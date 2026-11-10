@@ -20,7 +20,7 @@ def main():
     runtime = ROOT / 'userland/runtime'
     cache = BUILD / 'source-bundle'
     cache.mkdir(parents=True, exist_ok=True)
-    destination = runtime / 'usr/src/modernos'
+    destination = runtime / 'usr/src/coast'
     destination.mkdir(parents=True, exist_ok=True)
     manifest, originals = [], []
     for name, expected in SOURCES.items():

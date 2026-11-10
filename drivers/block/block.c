@@ -239,3 +239,34 @@ size_t block_info(char *out, size_t cap) {
     }
     return min(used, cap ? cap - 1 : 0);
 }
+
+/* Power cannot use block_flush's historical no-hook success convention. */
+bool block_power_ready(void) {
+    if (!ahci_power_ready() || !nvme_power_ready())
+        return false;
+    for (unsigned i = 0; i < block_count; i++) {
+        struct block_device *d = &block_devices[i];
+        if (!d->parent && !d->readonly && !d->flush)
+            return false;
+    }
+    return true;
+}
+
+int block_power_flush(void) {
+    if (!block_power_ready())
+        return -E_NOTSUP;
+    for (unsigned i = 0; i < block_count; i++) {
+        struct block_device *d = &block_devices[i];
+        if (!d->parent && !d->readonly) {
+            int error = d->flush(d);
+            if (error)
+                return error;
+        }
+    }
+    return 0;
+}
+
+int block_power_stop(void) {
+    int error = ahci_power_stop();
+    return error ? error : nvme_power_stop();
+}

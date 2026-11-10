@@ -1,5 +1,5 @@
-#ifndef MODERNOS_WALLPAPER_PROTOCOL_H
-#define MODERNOS_WALLPAPER_PROTOCOL_H
+#ifndef COAST_WALLPAPER_PROTOCOL_H
+#define COAST_WALLPAPER_PROTOCOL_H
 #include <stdint.h>
 
 /* Private decoder pipe: a header followed by width * height ARGB8888 pixels.

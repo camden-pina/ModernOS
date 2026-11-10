@@ -14,7 +14,7 @@ def exercise(iso, cpus, accel, label, enabled):
     try:
         child_origin = f'https://10.0.2.2:{fixture.cross_https}'
         fixture.assets['/exception-child'] = (b'''<!doctype html><script>
-const original = new Error('MODERNOS_EXCEPTION_TRACE_CHILD');
+const original = new Error('COAST_EXCEPTION_TRACE_CHILD');
 try { throw original; } catch (value) {
   if (value !== original) throw Error('child exception identity changed');
 }
@@ -31,7 +31,7 @@ function observe(original) {
     ++caught;
   }
 }
-observe(new TypeError('MODERNOS_EXCEPTION_TRACE_CAUGHT'));
+observe(new TypeError('COAST_EXCEPTION_TRACE_CAUGHT'));
 const accessorError = new Error();
 Object.defineProperty(accessorError, 'name', {get() { ++getters; return 'getter'; }});
 Object.defineProperty(accessorError, 'message', {get() { ++getters; return 'getter'; }});
@@ -102,8 +102,8 @@ addEventListener('DOMContentLoaded', () => {
         desktop.exit()
         log = Path(vm.log.name).read_text(errors='replace')
         if enabled:
-            for marker in ('TypeError: MODERNOS_EXCEPTION_TRACE_CAUGHT',
-                           'Error: MODERNOS_EXCEPTION_TRACE_CHILD', 'JavaScript diagnostic frame',
+            for marker in ('TypeError: COAST_EXCEPTION_TRACE_CAUGHT',
+                           'Error: COAST_EXCEPTION_TRACE_CHILD', 'JavaScript diagnostic frame',
                            'JavaScript diagnostic array registers[0]: undefined', 'web-name=prototype'):
                 assert marker in log, marker
             assert 'PRIVATE_VALUE_MUST_NOT_BE_LOGGED' not in log, 'Private local value was logged'

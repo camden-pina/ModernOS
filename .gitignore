@@ -1,18 +1,36 @@
-toolchain/build
-toolchain/opt
-toolchain/src
-
-# Generated kernel, userland, ISO, and integration-test artifacts.
+# All build products, test images, downloads and local services live here.
 /build/
-# Kernel products, including optional in-tree and custom O= builds.
+/toolchain/build/
+/toolchain/opt/
+/toolchain/src/
+/userland/bin/
+/userland/obj/
+/userland/runtime/
+
+# In-tree kernel and bootloader products (also covers custom O= directories).
 *.o
+*.obj
 *.d
 *.cmd
 *.a
+*.lo
+*.la
+*.so
+*.so.*
+*.gch
+*.pch
+*.bc
+*.dwo
+*.gcno
+*.gcda
+*.pdb
+*.elf
+*.efi
+*.fd
 vmlinux
-vmlinux.cmd
-os.iso
-# Images are built locally, including named test and release candidates.
+initramfs.tar
+iso_root/
+/arch/x86/boot/efi/loader-test
 *.iso
 *.img
 *.qcow2
@@ -21,44 +39,61 @@ os.iso
 *.raw
 *.volume
 *.state
-*.elf
-initramfs.tar
-iso_root/
-/arch/x86/boot/efi/*.obj
-/arch/x86/boot/efi/modernos.efi
-/arch/x86/boot/efi/loader-test
-/userland/bin/
-/userland/obj/
-/userland/runtime/usr/bin/
-/userland/runtime/usr/share/vim/vim92/
-/userland/runtime/usr/include/
-/userland/runtime/usr/lib/
-/userland/runtime/usr/libexec/
-/userland/runtime/usr/src/
-/userland/runtime/usr/lib64
-/userland/runtime/lib
-/userland/runtime/etc/ssl/
-/userland/runtime/usr/share/netsurf/
-/userland/runtime/usr/share/fonts/
-/userland/runtime/usr/share/modern-browser/
-/userland/runtime/usr/share/git-core/
-/userland/runtime/usr/share/bash-completion/
+*.pkg.tar.*
 
-# Pinned upstream downloads; restore with make fetch-sources.
-/userland/vendor/*.tar.gz
-/userland/vendor/*.tar.xz
-/userland/vendor/*.tar.bz2
-/userland/vendor/*.tgz
+# CMake/Ninja state can be regenerated in custom output directories.
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+.ninja_deps
+.ninja_log
+
+# Upstream sources are fetched by checksum, never committed as archives.
+/userland/vendor/**/*.tar.*
+/userland/vendor/**/*.tgz
+/userland/vendor/**/*.zip
+/userland/vendor/**/*.whl
+/userland/vendor/**/*.deb
 /userland/vendor/.*.part
 
-# Host and editor metadata, and local credentials/session configuration.
+# Local build metadata and interrupted downloads.
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.cache/
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+target/
+*.part
+*.tmp
+*.swp
+*.swo
+*~
 .DS_Store
 ._*
 /.agents/
 /.aws/
 /.codex/
+/.vscode/
+/.idea/
+
+# Machine configuration and signing secrets. Public verification keys (*.asc)
+# belong in source control; private signing state stays outside source exports.
 .env
 .env.*
 !.env.example
+*.pem.key
+*.key
+*.p12
+*.pfx
+private-keys-v1.d/
+openpgp-revocs.d/
+secring.gpg
+trustdb.gpg
+S.gpg-agent*

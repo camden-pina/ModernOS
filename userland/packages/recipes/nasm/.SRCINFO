@@ -1,0 +1,16 @@
+pkgbase = nasm
+	pkgdesc = NASM x86 assembler and disassembler, built with native Coast GCC
+	pkgver = 2.16.03
+	pkgrel = 2
+	url = https://www.nasm.us/
+	arch = x86_64
+	license = BSD-2-Clause
+	makedepends = gcc
+	makedepends = make
+	makedepends = xz
+	depends = musl
+	source = http://10.0.2.2:8765/distfiles/nasm-2.16.03.tar.xz
+	sha256sums = 1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148
+	noextract = nasm-2.16.03.tar.xz
+
+pkgname = nasm

@@ -1,0 +1,108 @@
+--- a/src/vs/base/common/platform.ts
++++ b/src/vs/base/common/platform.ts
+@@ -10,6 +10,7 @@
+ let _isWindows = false;
+ let _isMacintosh = false;
+ let _isLinux = false;
++let _isCoast = false;
+ let _isLinuxSnap = false;
+ let _isChromeOS = false;
+ let _isNative = false;
+@@ -71,8 +72,17 @@
+ }
+ declare const navigator: INavigator;
+ 
++// Coast native C-API host: no Node/Electron/browser environment is implied.
++const CoastHost = $globalThis.Coast;
++if (CoastHost?.protocol === 1 && CoastHost.platform === 'coast' && CoastHost.runtime === 'JavaScriptCore') {
++	_isCoast = true;
++	_isNative = true;
++	_locale = LANGUAGE_DEFAULT;
++	_platformLocale = LANGUAGE_DEFAULT;
++}
++
+ // Native environment
+-if (typeof nodeProcess === 'object') {
++else if (typeof nodeProcess === 'object') {
+ 	_isWindows = (nodeProcess.platform === 'win32');
+ 	_isMacintosh = (nodeProcess.platform === 'darwin');
+ 	_isLinux = (nodeProcess.platform === 'linux');
+@@ -119,9 +129,10 @@
+ 	Web,
+ 	Mac,
+ 	Linux,
+-	Windows
+-}
+-export type PlatformName = 'Web' | 'Windows' | 'Mac' | 'Linux';
++	Windows,
++	Coast
++}
++export type PlatformName = 'Web' | 'Windows' | 'Mac' | 'Linux' | 'Coast';
+ 
+ export function PlatformToString(platform: Platform): PlatformName {
+ 	switch (platform) {
+@@ -129,11 +140,14 @@
+ 		case Platform.Mac: return 'Mac';
+ 		case Platform.Linux: return 'Linux';
+ 		case Platform.Windows: return 'Windows';
++		case Platform.Coast: return 'Coast';
+ 	}
+ }
+ 
+ let _platform: Platform = Platform.Web;
+-if (_isMacintosh) {
++if (_isCoast) {
++	_platform = Platform.Coast;
++} else if (_isMacintosh) {
+ 	_platform = Platform.Mac;
+ } else if (_isWindows) {
+ 	_platform = Platform.Windows;
+@@ -144,6 +158,7 @@
+ export const isWindows = _isWindows;
+ export const isMacintosh = _isMacintosh;
+ export const isLinux = _isLinux;
++export const isCoast = _isCoast;
+ export const isLinuxSnap = _isLinuxSnap;
+ export const isChromeOS = _isChromeOS;
+ export const isNative = _isNative;
+@@ -254,9 +269,10 @@
+ export const enum OperatingSystem {
+ 	Windows = 1,
+ 	Macintosh = 2,
+-	Linux = 3
+-}
+-export const OS = (_isMacintosh || _isIOS ? OperatingSystem.Macintosh : (_isWindows ? OperatingSystem.Windows : OperatingSystem.Linux));
++	Linux = 3,
++	Coast = 4
++}
++export const OS = _isCoast ? OperatingSystem.Coast : (_isMacintosh || _isIOS ? OperatingSystem.Macintosh : (_isWindows ? OperatingSystem.Windows : OperatingSystem.Linux));
+ 
+ let _isLittleEndian = true;
+ let _isLittleEndianComputed = false;
+--- a/src/vs/base/common/process.ts
++++ b/src/vs/base/common/process.ts
+@@ -8,9 +8,22 @@
+ let safeProcess: Omit<INodeProcess, 'arch'> & { arch: string | undefined };
+ declare const process: INodeProcess;
+ 
++// Native Coast services are distinct from Node and the Electron sandbox.
++interface ICoastProcess extends Omit<INodeProcess, 'versions'> {
++	readonly protocol: number;
++	readonly runtime: string;
++}
++const CoastHost = (globalThis as typeof globalThis & { Coast?: ICoastProcess }).Coast;
++const vscodeGlobal = (globalThis as { vscode?: { process?: INodeProcess } }).vscode;
++if (CoastHost?.protocol === 1 && CoastHost.platform === 'coast' && CoastHost.runtime === 'JavaScriptCore') {
++	safeProcess = {
++		platform: CoastHost.platform, arch: CoastHost.arch, env: CoastHost.env,
++		cwd: () => CoastHost.cwd()
++	};
++}
++
+ // Native sandbox environment
+-const vscodeGlobal = (globalThis as { vscode?: { process?: INodeProcess } }).vscode;
+-if (typeof vscodeGlobal !== 'undefined' && typeof vscodeGlobal.process !== 'undefined') {
++else if (typeof vscodeGlobal !== 'undefined' && typeof vscodeGlobal.process !== 'undefined') {
+ 	const sandboxProcess: INodeProcess = vscodeGlobal.process;
+ 	safeProcess = {
+ 		get platform() { return sandboxProcess.platform; },

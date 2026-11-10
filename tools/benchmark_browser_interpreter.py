@@ -33,7 +33,7 @@ def main():
         desktop.screenshot('browser-interpreter-start-' + args.label)
 
         window = desktop.launch('Browser');
-        desktop.expect('BROWSER_READY', 'ModernOS Browser')
+        desktop.expect('BROWSER_READY', 'Coast Browser')
         desktop.key('l', 'ctrl');
         vm.send(fixture.url('webcore-interpreter') + '\n')
         line = vm.until(

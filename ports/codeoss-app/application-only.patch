@@ -1,0 +1,28 @@
+--- a/build/gulpfile.vscode.ts
++++ b/build/gulpfile.vscode.ts
+@@ -343,7 +343,10 @@
+ 			.pipe(util.skipDirectories())
+ 			.pipe(util.fixWin32DirectoryPermissions())
+ 			.pipe(filter(['**', '!**/.github/**'], { dot: true })) // https://github.com/microsoft/vscode/issues/116523
+-			.pipe(electron(electronConfig))
++			// Coast packages the application separately from its source-built runtime.
++			.pipe(process.env['COAST_APPLICATION_ONLY'] === '1'
++				? rename(file => { file.dirname = 'resources/app/' + (file.dirname || ''); })
++				: electron(electronConfig))
+ 			.pipe(filter([
+ 				'**',
+ 				'!LICENSE',
+@@ -604,6 +607,13 @@
+ 	}
+ });
+ 
++// This explicit task never downloads or runs a target Electron runtime.
++task.task(task.define('coast-application-package', task.series(
++	compileNativeExtensionsBuildTask,
++	util.rimraf(path.join(buildRoot, 'Coast-application-linux-x64')),
++	packageTask('linux', 'x64', 'out-vscode-min', 'Coast-application-linux-x64')
++)));
++
+ // #region nls
+ 
+ task.task(task.define(

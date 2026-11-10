@@ -1,5 +1,5 @@
-#ifndef MODERNOS_SMOOTH_SCROLL_H
-#define MODERNOS_SMOOTH_SCROLL_H
+#ifndef COAST_SMOOTH_SCROLL_H
+#define COAST_SMOOTH_SCROLL_H
 
 #include <stdbool.h>
 #include <stdint.h>

@@ -171,14 +171,14 @@ def template_values(config: BootConfig, loader: str):
         wallpaper = f"wallpaper: boot():{config.wallpaper}" if config.wallpaper else ""
     elif loader == "grub":
         entry = [f"menuentry {grub_quote(config.title)} {{",
-                 "    chainloader /EFI/ModernOS/modernos.efi", "}"]
+                 "    chainloader /EFI/Coast/coast.efi", "}"]
         timeout = str(config.timeout)
         display = f"set gfxmode={mode},auto\nset gfxpayload=keep" if mode else ""
         wallpaper = f"    background_image {grub_quote(config.wallpaper)}" if config.wallpaper else ""
     else:
         entry = [f"default_selection {refind_quote(config.title)}", "",
                  f"menuentry {refind_quote(config.title)} {{",
-                 "    loader /EFI/ModernOS/modernos.efi", "}"]
+                 "    loader /EFI/Coast/coast.efi", "}"]
         timeout = str(0 if config.timeout == -1 else -1 if config.timeout == 0 else config.timeout)
         display = "resolution " + " ".join(mode.split("x")[:2]) if mode else ""
         wallpaper = "banner /boot/refind-background.png" if config.wallpaper else ""

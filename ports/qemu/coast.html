@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coast VM connecting</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #101828; color: #f8fafc; font: 15px system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #1d2939; }
+  strong { font-size: 18px; } #status { flex: 1; color: #cbd5e1; }
+  button { border: 1px solid #667085; border-radius: 6px; background: #344054; color: inherit; padding: 7px 12px; cursor: pointer; }
+  #screen { width: 100vw; height: calc(100vh - 96px); overflow: hidden; }
+  footer { height: 36px; padding: 8px 20px; color: #cbd5e1; }
+</style>
+<header><strong>Coast VM</strong><span id="status">Connecting…</span><button id="restart">Ctrl+Alt+Delete</button><button id="shell" title="Send Ctrl+Alt+Esc to Coast">Shell</button><button id="fullscreen">Fullscreen</button><button id="disconnect">Disconnect</button></header>
+<div id="screen"></div>
+<footer>Click the screen to use the virtual machine. At the Coast prompt, enter <b>gui</b> to open its desktop.</footer>
+<script type="module">
+  import RFB from './core/rfb.js';
+  const screen = document.getElementById('screen');
+  const status = document.getElementById('status');
+  const value = new URL(location.href).searchParams.get('port') || '5701';
+  if (!/^\d{4,5}$/.test(value) || Number(value) > 65535) throw new Error('Invalid VM port');
+  const rfb = new RFB(screen, `ws://127.0.0.1:${value}/`);
+  let connected = false;
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.addEventListener('connect', () => { connected = true; status.textContent = 'Connected'; document.title = 'Coast VM connected'; });
+  rfb.addEventListener('disconnect', event => { connected = false; status.textContent = event.detail.clean ? 'Disconnected' : 'Connection lost'; document.title = 'Coast VM disconnected'; });
+  rfb.addEventListener('securityfailure', () => { status.textContent = 'Connection refused'; document.title = 'Coast VM connection failed'; });
+  document.getElementById('restart').onclick = () => rfb.sendCtrlAltDel();
+  document.getElementById('shell').onclick = () => {
+    const keys = [[0xffe3, 'ControlLeft'], [0xffe9, 'AltLeft'], [0xff1b, 'Escape']];
+    for (const [key, code] of keys) rfb.sendKey(key, code, true);
+    for (const [key, code] of [...keys].reverse()) rfb.sendKey(key, code, false);
+    rfb.focus();
+  };
+  document.getElementById('fullscreen').onclick = () => screen.requestFullscreen();
+  document.getElementById('disconnect').onclick = () => rfb.disconnect();
+  setInterval(async () => {
+    if (!connected) return;
+    try {
+      const state = await (await fetch('./coast-status', {cache: 'no-store'})).json();
+      if (!connected) return;
+      status.textContent = state.desktop ? 'Desktop ready' : state.booted ? 'Shell ready' : 'Connected';
+      document.title = state.desktop ? 'Coast VM desktop ready' : state.booted ? 'Coast VM shell ready' : 'Coast VM connected';
+    } catch (_) { /* The VNC connection retains its own error reporting. */ }
+  }, 1000);
+</script>
+</html>

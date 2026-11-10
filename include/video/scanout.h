@@ -1,5 +1,5 @@
-#ifndef MODERNOS_SCANOUT_H
-#define MODERNOS_SCANOUT_H
+#ifndef COAST_SCANOUT_H
+#define COAST_SCANOUT_H
 #include <drivers/pci/pci.h>
 #include <boot/info.h>
 #include <uapi/abi.h>

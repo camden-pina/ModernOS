@@ -147,7 +147,7 @@ def exercise(cpus, storage=False, dark=False):
             print('PASS upstream Vim: read-only warning and forced save failure preserve the source', flush=True)
 
         if dark:
-            config = base + '/.modernos' if storage else '/home/user/.config'
+            config = base + '/.coast' if storage else '/home/user/.config'
             command('mkdir -p ' + config)
             command('write ' + config + '/desktop.ini dark=1')
 

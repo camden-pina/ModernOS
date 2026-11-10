@@ -1,0 +1,86 @@
+{
+  "libgpg-error": {
+    "version": "1.61",
+    "archive": "libgpg-error-1.61.tar.bz2",
+    "source": "libgpg-error-1.61",
+    "url": "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.61.tar.bz2",
+    "sha256": "7a85413f2bc354f4f8aa832b718af122e48965e9e0eb9012ee659c13c6385c93"
+  },
+  "libgcrypt": {
+    "version": "1.12.4",
+    "archive": "libgcrypt-1.12.4.tar.bz2",
+    "source": "libgcrypt-1.12.4",
+    "url": "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.12.4.tar.bz2",
+    "sha256": "d77f68f48879510e79a2f65977ccc68981781ea0923e5bdffac2a193ea3d660e"
+  },
+  "libassuan": {
+    "version": "3.0.2",
+    "archive": "libassuan-3.0.2.tar.bz2",
+    "source": "libassuan-3.0.2",
+    "url": "https://gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2",
+    "sha256": "d2931cdad266e633510f9970e1a2f346055e351bb19f9b78912475b8074c36f6"
+  },
+  "libksba": {
+    "version": "1.8.1",
+    "archive": "libksba-1.8.1.tar.bz2",
+    "source": "libksba-1.8.1",
+    "url": "https://gnupg.org/ftp/gcrypt/libksba/libksba-1.8.1.tar.bz2",
+    "sha256": "c2f84393011827219ae117131dba8e7684c2bed0961eed11b0642c2acba440b5"
+  },
+  "npth": {
+    "version": "1.8",
+    "archive": "npth-1.8.tar.bz2",
+    "source": "npth-1.8",
+    "url": "https://gnupg.org/ftp/gcrypt/npth/npth-1.8.tar.bz2",
+    "sha256": "8bd24b4f23a3065d6e5b26e98aba9ce783ea4fd781069c1b35d149694e90ca3e"
+  },
+  "gnupg": {
+    "version": "2.5.24",
+    "archive": "gnupg-2.5.24.tar.bz2",
+    "source": "gnupg-2.5.24",
+    "url": "https://gnupg.org/ftp/gcrypt/gnupg/gnupg-2.5.24.tar.bz2",
+    "sha256": "bf149d01a2b9fcc0e4589b8ae8697d3d5c557ea48ed95a3fa55dd3b1187e6039"
+  },
+  "gpgme": {
+    "version": "2.2.0",
+    "archive": "gpgme-2.2.0.tar.bz2",
+    "source": "gpgme-2.2.0",
+    "url": "https://gnupg.org/ftp/gcrypt/gpgme/gpgme-2.2.0.tar.bz2",
+    "sha256": "7160e80e84dafd00d956c84891c533bb7ab16a6a54fbe1574b2f3acf0496977b"
+  },
+  "libarchive": {
+    "version": "3.8.11",
+    "archive": "libarchive-3.8.11.tar.xz",
+    "source": "libarchive-3.8.11",
+    "url": "https://github.com/libarchive/libarchive/releases/download/v3.8.11/libarchive-3.8.11.tar.xz",
+    "sha256": "a3dc0872b1b39da34dc18ef1b944f0f11ffd37425d70ae04be679279f1cf43d2"
+  },
+  "fakeroot": {
+    "version": "2.1.4",
+    "archive": "fakeroot_2.1.4.orig.tar.xz",
+    "source": "fakeroot-2.1.4",
+    "url": "https://deb.debian.org/debian/pool/main/f/fakeroot/fakeroot_2.1.4.orig.tar.xz",
+    "sha256": "0822bd5a9f0cf19d2ba0546b88b0432d4d3d9917db62c57b74044ccadba06e49"
+  },
+  "pacman": {
+    "version": "7.1.0",
+    "archive": "pacman-v7.1.0.tar.gz",
+    "source": "pacman-v7.1.0",
+    "url": "https://gitlab.archlinux.org/pacman/pacman/-/archive/v7.1.0/pacman-v7.1.0.tar.gz",
+    "sha256": "1090f680958a73dc1f443a1eb919bd2ad77b3caff38e92e9737dec100c647bc9"
+  },
+  "meson": {
+    "version": "1.12.1",
+    "archive": "meson-1.12.1-py3-none-any.whl",
+    "source": "meson-host",
+    "url": "https://files.pythonhosted.org/packages/57/99/36cd25f9598eef70db97577440a70a360af505f6f01c2338a18d1556079c/meson-1.12.1-py3-none-any.whl",
+    "sha256": "930bc7542cbd9f57009e182fd014eba48cf1a0180a7b9006d2d32d8f168d8b02"
+  },
+  "libseccomp": {
+    "version": "2.6.1",
+    "archive": "libseccomp-2.6.1.tar.gz",
+    "source": "libseccomp-2.6.1",
+    "url": "https://github.com/seccomp/libseccomp/releases/download/v2.6.1/libseccomp-2.6.1.tar.gz",
+    "sha256": "501f66c667225d53791b97e1d7cf85ab764c297d04881f60f38f451c4b0ee1be"
+  }
+}

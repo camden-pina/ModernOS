@@ -20,7 +20,7 @@ static void rest(void) {
 }
 
 static int info(struct os_audio_info *p) {
-    if (syscall(MODERNOS_AUDIO, OS_AUDIO_INFO, p, 0) < 0) {
+    if (syscall(COAST_AUDIO, OS_AUDIO_INFO, p, 0) < 0) {
         perror("speaker-check: audio info");
         return -1;
     }
@@ -71,7 +71,7 @@ static int tone(unsigned channels, double frequency, double seconds) {
             samples[2 * i + 1] = channels & 2 ? value : 0;
         }
 
-        long result = syscall(MODERNOS_AUDIO, OS_AUDIO_WRITE, samples, n);
+        long result = syscall(COAST_AUDIO, OS_AUDIO_WRITE, samples, n);
         if (result < 0 && errno == EAGAIN) {
             rest();
             continue;
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
     }
     puts(
         "Speaker listening check: quiet LEFT 440 Hz, RIGHT 660 Hz, BOTH 440 Hz, two-second silence, resume.");
-    if (syscall(MODERNOS_AUDIO, OS_AUDIO_RESET, 0, 0) < 0) {
+    if (syscall(COAST_AUDIO, OS_AUDIO_RESET, 0, 0) < 0) {
         perror("speaker-check: reset");
         return 1;
     }
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
     if (tone(3, 440, 2))
         goto failed;
-    if (syscall(MODERNOS_AUDIO, OS_AUDIO_RESET, 0, 0) < 0)
+    if (syscall(COAST_AUDIO, OS_AUDIO_RESET, 0, 0) < 0)
         goto failed;
     puts("PAUSE: two seconds of silence");
     fflush(stdout);
@@ -146,12 +146,12 @@ int main(int argc, char **argv) {
     fflush(stdout);
     if (tone(3, 440, 2))
         goto failed;
-    if (syscall(MODERNOS_AUDIO, OS_AUDIO_RESET, 0, 0) < 0)
+    if (syscall(COAST_AUDIO, OS_AUDIO_RESET, 0, 0) < 0)
         goto failed;
     puts(
         "PCM/stereo/pause/resume sequence submitted and drained. A person must confirm audible speakers and silence.");
     return 0;
 failed:
-    syscall(MODERNOS_AUDIO, OS_AUDIO_RESET, 0, 0);
+    syscall(COAST_AUDIO, OS_AUDIO_RESET, 0, 0);
     return 1;
 }

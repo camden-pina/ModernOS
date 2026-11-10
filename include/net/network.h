@@ -1,5 +1,5 @@
-#ifndef MODERNOS_NETWORK_H
-#define MODERNOS_NETWORK_H
+#ifndef COAST_NETWORK_H
+#define COAST_NETWORK_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -8,6 +8,8 @@ struct file;
 struct net_socket;
 void network_probe(void *pci_header);
 void network_start(void);
+bool network_power_ready(void);
+int network_power_stop(void);
 long network_syscall(void *task, void *registers);
 long network_file_syscall(void *task, void *registers, struct file *);
 long network_read(struct file *, void *, size_t, unsigned flags);

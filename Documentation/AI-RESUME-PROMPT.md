@@ -1,4 +1,11 @@
-Continue authorized ModernOS development in /home/camdenp/Documents/test.
+Continue authorized Coast source-build work in /home/camdenp/Desktop/ModernOS.
+Read Documentation/PASSOFF-2026-11-09.md first. Preserve selected images,
+services, staged sources, user applications and unrelated VMs. The older resume
+prompt below is historical and does not set the current task or source path.
+
+---
+
+Continue authorized Coast development in /home/camdenp/Documents/test.
 Latest follow-up: read the ACTIVE candidate46 section in Documentation/AI-HANDOFF.md first.
 Current source and installed browser match unpublished immutable46:
 build/modern-browser/native-cloudflare-activation-target-candidate46.iso, SHA-256
@@ -145,7 +152,7 @@ unverified, Wi-Fi7 unsupported. No host reboot or raw physical disk write occurr
 Never reset/clean/discard dirty or untracked source, vendor assets or evidence.
 Build incrementally, never configure/Ninja concurrently, and never overwrite
 an existing candidate or an image held by a process. Build a NEW immutable ISO:
-python3 -u tools/build_webcore.py --interpreter llint --target ModernOSRenderer --jobs 20
+python3 -u tools/build_webcore.py --interpreter llint --target CoastRenderer --jobs 20
 make -j8 iso ISO_IMAGE=build/modern-browser/<new-immutable-candidate>.iso
 The run target rebuilds ISO_IMAGE: do not point it at an existing immutable image.
 Preserve actual old defaults and successfully scan them with unrestricted fuser

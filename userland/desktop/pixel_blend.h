@@ -1,5 +1,5 @@
-#ifndef MODERNOS_PIXEL_BLEND_H
-#define MODERNOS_PIXEL_BLEND_H
+#ifndef COAST_PIXEL_BLEND_H
+#define COAST_PIXEL_BLEND_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

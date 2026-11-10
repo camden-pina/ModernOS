@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package one selected boot manager and the shared ModernOS boot payload."""
+"""Package one selected boot manager and the shared Coast boot payload."""
 import argparse
 import os
 from pathlib import Path, PurePosixPath
@@ -106,11 +106,11 @@ def stage_payload(args, config):
 
     if wallpaper_source and not wallpaper_source.is_file():
         raise ValueError(f"Missing configured wallpaper: {wallpaper_source}")
-    reserved = {"/boot/modernos.conf", "/boot/limine/limine.conf",
+    reserved = {"/boot/coast.conf", "/boot/limine/limine.conf",
                 "/boot/limine/limine-bios.sys", "/boot/limine/limine-bios-cd.bin",
                 "/boot/limine/limine-uefi-cd.bin", "/boot/grub/grub.cfg",
                 "/EFI/BOOT/BOOTX64.EFI", "/EFI/BOOT/refind.conf",
-                "/EFI/ModernOS/modernos.efi", "/boot/refind-background.png", "/efiboot.img"}
+                "/EFI/Coast/coast.efi", "/boot/refind-background.png", "/efiboot.img"}
     occupied = {PurePosixPath(name.casefold()): PurePosixPath(name) for name in reserved}
     for guest in destinations:
         add_destination(occupied, guest, "Payload")
@@ -158,7 +158,7 @@ def stage_payload(args, config):
         copy_file(source, root, guest)
     boot = root / "boot"
     boot.mkdir(exist_ok=True)
-    (boot / "modernos.conf").write_text(efi_config(config))
+    (boot / "coast.conf").write_text(efi_config(config))
     return root
 
 
@@ -231,7 +231,7 @@ def make_efi_volume(args, root):
     volume = root / "efiboot.img"
     with volume.open("wb") as output:
         output.truncate(size)
-    run([args.mformat, "-i", volume, "-F", "-v", "MODERNOS", "::"])
+    run([args.mformat, "-i", volume, "-F", "-v", "COAST", "::"])
     for source in sorted(root.iterdir()):
         if source != volume:
             run([args.mcopy, "-i", volume, "-s", source, "::"])
@@ -254,7 +254,7 @@ def build(args):
     if args.bootloader == "limine":
         options = install_limine(args, root, config, rendered)
     else:
-        copy_file(args.efi_image, root, "/EFI/ModernOS/modernos.efi")
+        copy_file(args.efi_image, root, "/EFI/Coast/coast.efi")
         if args.bootloader == "grub":
             install_grub(args, root, config, rendered)
         else:
@@ -264,7 +264,7 @@ def build(args):
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(args.output.name + ".tmp")
     try:
-        run([args.xorriso, "-as", "mkisofs", "-R", "-J", "-V", "MODERNOS_ISO",
+        run([args.xorriso, "-as", "mkisofs", "-R", "-J", "-V", "COAST_ISO",
              *options, root, "-o", temporary])
         if args.bootloader == "limine":
             run([args.limine_dir / "limine", "bios-install", temporary])
@@ -280,7 +280,7 @@ def main():
     parser.add_argument("--bootloader", choices=("limine", "grub", "refind"), required=True)
     for name in ("config", "kernel", "initramfs", "root", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
-    parser.add_argument("--efi-image", type=Path, default=Path("modernos.efi"))
+    parser.add_argument("--efi-image", type=Path, default=Path("coast.efi"))
     parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--template", type=Path, help="native template for the selected bootloader")
     parser.add_argument("--limine-dir", type=Path)

@@ -76,6 +76,5 @@ void kvfprintf(const char *format, va_list args);
 /* Formatter Prototypes */
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
 int snprintf(char *buf, size_t size, const char *fmt, ...);
-void lai_vsnprintf(char *buf, size_t len, const char *fmt, va_list arg);
 
 #endif /* _LINUX_PRINTK_H */

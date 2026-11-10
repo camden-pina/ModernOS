@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the bundled source rebuild inside ModernOS (long-running TCG test)."""
+"""Exercise the bundled source rebuild inside Coast (long-running TCG test)."""
 import argparse
 import json
 from pathlib import Path
@@ -52,8 +52,8 @@ def exercise(cpus, memory, iso=None, timeout=43200, label='rebuild',
 
         with saved.open('a' if resume else 'w') as progress:
             while True:
-                probe = ('if test -f /tmp/toolchain/.modernos-stage; then printf REBUILD_STAGE=; '
-                         'cat /tmp/toolchain/.modernos-stage; fi; '
+                probe = ('if test -f /tmp/toolchain/.coast-stage; then printf REBUILD_STAGE=; '
+                         'cat /tmp/toolchain/.coast-stage; fi; '
                          'if test -f /tmp/rebuild.status; then printf REBUILD_STATUS=; '
                          'cat /tmp/rebuild.status; else tail -n 2 /tmp/rebuild.log; fi')
                 output = vm.shell_command(probe, timeout=120)
@@ -82,7 +82,7 @@ def exercise(cpus, memory, iso=None, timeout=43200, label='rebuild',
                     assert status.group(1) == '0', tail
                     assert 'REBUILT_GCC_RUN_OK' in tail and 'REBUILT_GXX_RUN_OK' in tail, tail
                     vm.shell_command('/tmp/toolchain/install/bin/gcc --version',
-                                     'ModernOS native rebuild')
+                                     'Coast native rebuild')
 
                     print(
                         'PASS native source rebuild: binutils, GCC/G++, libgcc/libstdc++, compiled C/C++ proofs', flush=True)

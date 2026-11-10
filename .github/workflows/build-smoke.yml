@@ -11,6 +11,16 @@ jobs:
   fresh-checkout:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - name: Check source fetching, cold builds and cache recovery
-        run: make test-source-fetch test-browser-build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install host build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang lld nasm mtools xorriso python3 curl bzip2 xz-utils gnupg
+      - name: Check publication, source fetching, boot configuration and host services
+        run: |
+          make source-check test-source-tree test-source-fetch test-desktop-assembly test-electron-admission test-runtime-fixture test-acpi-host test-power-host test-efi-loader test-boot-config
+          python3 -B tools/test_package_configuration.py
+      - name: Compile the kernel and native desktop from a fresh checkout
+        run: |
+          make -j2
+          make -C userland bin/gui -j2
+          python3 -B tools/build_native_iso.py --output-root build/native-image --jobs 2
+          make source-check

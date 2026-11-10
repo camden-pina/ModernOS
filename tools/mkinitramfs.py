@@ -4,6 +4,7 @@ import argparse
 import os
 import pathlib
 import tarfile
+import tempfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument("output", type=pathlib.Path)
@@ -18,92 +19,115 @@ args = parser.parse_args()
 
 args.output.parent.mkdir(parents=True, exist_ok=True)
 
-with tarfile.open(args.output, "w", format=tarfile.USTAR_FORMAT) as archive:
-    directory = tarfile.TarInfo("bin")
-    directory.type = tarfile.DIRTYPE
-    directory.mode = 0o755
-    archive.addfile(directory)
-
-    for path in sorted(args.programs.iterdir()):
-        entry = tarfile.TarInfo("bin/" + path.name)
-        entry.size = path.stat().st_size
-        entry.mode = 0o755
-        with path.open("rb") as source:
+def build_archive(output):
+    with tarfile.open(output, "w", format=tarfile.USTAR_FORMAT) as archive:
+        seen = {}
+        def add_entry(entry, source=None):
+            name = entry.name.rstrip('/')
+            metadata = (entry.type, entry.mode, entry.uid, entry.gid)
+            if name in seen:
+                if entry.isdir() and seen[name] == metadata:
+                    return
+                raise ValueError(f'Conflicting initramfs member: {name}')
+            seen[name] = metadata
             archive.addfile(entry, source)
 
-    if args.audio_firmware:
-        size = args.audio_firmware.stat().st_size
-        if not 80 <= size <= 512 * 1024:
-            raise ValueError('AW88399 firmware size is outside the supported bounds')
+        directory = tarfile.TarInfo("bin")
+        directory.type = tarfile.DIRTYPE
+        directory.mode = 0o755
+        add_entry(directory)
 
-        for name in ('usr', 'usr/lib', 'usr/lib/firmware'):
-            entry = tarfile.TarInfo(name);
-            entry.type = tarfile.DIRTYPE;
-            entry.mode = 0o755;
-            archive.addfile(entry)
-
-        entry = tarfile.TarInfo('usr/lib/firmware/aw88399_acf.bin');
-        entry.size = size;
-        entry.mode = 0o444
-        with args.audio_firmware.open('rb') as source:
-            archive.addfile(entry, source)
-
-    if args.font_license:
-        for name in ("usr", "usr/share", "usr/share/licenses", "usr/share/licenses/modernos-desktop"):
-            entry = tarfile.TarInfo(name)
-            entry.type = tarfile.DIRTYPE
-            entry.mode = 0o755
-            archive.addfile(entry)
-
-        entry = tarfile.TarInfo("usr/share/licenses/modernos-desktop/FONT-LICENSE.txt")
-        entry.size = args.font_license.stat().st_size
-        entry.mode = 0o444
-        with args.font_license.open("rb") as source:
-            archive.addfile(entry, source)
-
-    if args.wallpapers:
-        for name in ("usr", "usr/share", "usr/share/wallpapers"):
-            entry = tarfile.TarInfo(name)
-            entry.type = tarfile.DIRTYPE
-            entry.mode = 0o755
-            archive.addfile(entry)
-        for path in sorted(args.wallpapers.iterdir()):
-            if not path.is_file():
-                continue
-            entry = tarfile.TarInfo("usr/share/wallpapers/" + path.name)
+        for path in sorted(args.programs.iterdir()):
+            entry = tarfile.TarInfo("bin/" + path.name)
             entry.size = path.stat().st_size
-            entry.mode = 0o444
+            entry.mode = 0o4755 if path.name == 'sudo' else 0o755
             with path.open("rb") as source:
-                archive.addfile(entry, source)
+                add_entry(entry, source)
 
-    if args.native_licenses:
-        entry = tarfile.TarInfo('usr/share/licenses/native-programs')
-        entry.type = tarfile.DIRTYPE
-        entry.mode = 0o755
-        archive.addfile(entry)
+        if args.audio_firmware:
+            size = args.audio_firmware.stat().st_size
+            if not 80 <= size <= 512 * 1024:
+                raise ValueError('AW88399 firmware size is outside the supported bounds')
 
-        for path in sorted(args.native_licenses.glob('*.txt')):
-            entry = tarfile.TarInfo('usr/share/licenses/native-programs/' + path.name)
-            entry.size = path.stat().st_size
+            for name in ('usr', 'usr/lib', 'usr/lib/firmware'):
+                entry = tarfile.TarInfo(name);
+                entry.type = tarfile.DIRTYPE;
+                entry.mode = 0o755;
+                add_entry(entry)
+
+            entry = tarfile.TarInfo('usr/lib/firmware/aw88399_acf.bin');
+            entry.size = size;
             entry.mode = 0o444
-            with path.open('rb') as source:
-                archive.addfile(entry, source)
+            with args.audio_firmware.open('rb') as source:
+                add_entry(entry, source)
 
-    if args.runtime:
-        for path in sorted(args.runtime.rglob('*')):
-            name = path.relative_to(args.runtime).as_posix()
-            entry = tarfile.TarInfo(name)
-            if path.is_symlink():
-                entry.type = tarfile.SYMTYPE
-                entry.linkname = os.readlink(path)
-                entry.mode = 0o777
-                archive.addfile(entry)
-            elif path.is_dir():
+        if args.font_license:
+            for name in ("usr", "usr/share", "usr/share/licenses", "usr/share/licenses/coast-desktop"):
+                entry = tarfile.TarInfo(name)
                 entry.type = tarfile.DIRTYPE
                 entry.mode = 0o755
-                archive.addfile(entry)
-            elif path.is_file() and not path.is_symlink():
+                add_entry(entry)
+
+            entry = tarfile.TarInfo("usr/share/licenses/coast-desktop/FONT-LICENSE.txt")
+            entry.size = args.font_license.stat().st_size
+            entry.mode = 0o444
+            with args.font_license.open("rb") as source:
+                add_entry(entry, source)
+
+        if args.wallpapers:
+            for name in ("usr", "usr/share", "usr/share/wallpapers"):
+                entry = tarfile.TarInfo(name)
+                entry.type = tarfile.DIRTYPE
+                entry.mode = 0o755
+                add_entry(entry)
+            for path in sorted(args.wallpapers.iterdir()):
+                if not path.is_file():
+                    continue
+                entry = tarfile.TarInfo("usr/share/wallpapers/" + path.name)
                 entry.size = path.stat().st_size
-                entry.mode = 0o755 if path.stat().st_mode & 0o111 else 0o644
+                entry.mode = 0o444
+                with path.open("rb") as source:
+                    add_entry(entry, source)
+
+        if args.native_licenses:
+            entry = tarfile.TarInfo('usr/share/licenses/native-programs')
+            entry.type = tarfile.DIRTYPE
+            entry.mode = 0o755
+            add_entry(entry)
+
+            for path in sorted(args.native_licenses.glob('*.txt')):
+                entry = tarfile.TarInfo('usr/share/licenses/native-programs/' + path.name)
+                entry.size = path.stat().st_size
+                entry.mode = 0o444
                 with path.open('rb') as source:
-                    archive.addfile(entry, source)
+                    add_entry(entry, source)
+
+        if args.runtime:
+            for path in sorted(args.runtime.rglob('*')):
+                name = path.relative_to(args.runtime).as_posix()
+                entry = tarfile.TarInfo(name)
+                if path.is_symlink():
+                    entry.type = tarfile.SYMTYPE
+                    entry.linkname = os.readlink(path)
+                    entry.mode = 0o777
+                    add_entry(entry)
+                elif path.is_dir():
+                    entry.type = tarfile.DIRTYPE
+                    entry.mode = 0o755
+                    add_entry(entry)
+                elif path.is_file() and not path.is_symlink():
+                    entry.size = path.stat().st_size
+                    entry.mode = 0o755 if path.stat().st_mode & 0o111 else 0o644
+                    with path.open('rb') as source:
+                        add_entry(entry, source)
+
+# A failed traversal/collision must not truncate the last successful archive.
+fd, temporary = tempfile.mkstemp(prefix='.' + args.output.name + '-', dir=args.output.parent)
+os.close(fd)
+staged = pathlib.Path(temporary)
+try:
+    build_archive(staged)
+    os.chmod(staged, 0o644)
+    os.replace(staged, args.output)
+finally:
+    staged.unlink(missing_ok=True)

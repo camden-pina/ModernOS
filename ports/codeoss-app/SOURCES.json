@@ -1,0 +1,29 @@
+{
+  "release": "1.140.06880",
+  "vscodium": {
+    "version": "1.140.06880",
+    "commit": "f33df00b6dd822a163133a48b3c7dab78a520007",
+    "source": "vscodium-f33df00b6dd822a163133a48b3c7dab78a520007",
+    "archive": "vscodium-f33df00b6dd822a163133a48b3c7dab78a520007.tar.gz",
+    "url": "https://codeload.github.com/VSCodium/vscodium/tar.gz/f33df00b6dd822a163133a48b3c7dab78a520007",
+    "sha256": "2639e1730b68b04ce1e89eaf679e988cbdc4a0631a0edfa0f10f4180470be204",
+    "license": "MIT"
+  },
+  "vscode": {
+    "version": "1.140.0",
+    "commit": "07f806f999227108933c2e30515b26eecc1fda74",
+    "source": "vscode-07f806f999227108933c2e30515b26eecc1fda74",
+    "archive": "vscode-07f806f999227108933c2e30515b26eecc1fda74.tar.gz",
+    "url": "https://codeload.github.com/microsoft/vscode/tar.gz/07f806f999227108933c2e30515b26eecc1fda74",
+    "sha256": "c98cf7c2bd80d1f95469d17f8e74e90fd0e5e1fc0f99ef20ed5c186dc0215f57",
+    "license": "MIT"
+  },
+  "build_sourceversion": {
+    "sha1": "807ba2d6075c29587f884698cd7370c81ab0724c",
+    "algorithm": "SHA-1 of the release string followed by a newline, as in VSCodium version.sh",
+    "input": "1.140.06880\n"
+  },
+  "node_build_reference": "24.18.0",
+  "electron_build_reference": "43.7.3",
+  "state": "source pins verified; full application source compilation and guest qualification pending"
+}

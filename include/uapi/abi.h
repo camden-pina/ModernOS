@@ -1,5 +1,5 @@
-#ifndef MODERNOS_ABI_H
-#define MODERNOS_ABI_H
+#ifndef COAST_ABI_H
+#define COAST_ABI_H
 #include <stdint.h>
 
 #define OS_PATH_MAX 512
@@ -8,13 +8,29 @@
 #define OS_ENV_MAX 512
 #define OS_ARG_STRING_MAX 32768
 #define OS_EXEC_BYTES_MAX (128 * 1024)
-#define OS_FD_MAX 128
+#define OS_FD_MAX 256
 
 /* x86-64 Linux syscall numbers; see Documentation/kernel-userland.md for the subset. */
 enum {
+    SYS_chown = 92,
+    SYS_fchown = 93,
+    SYS_lchown = 94,
+    SYS_fchownat = 260,
+    SYS_flock = 73,
+    SYS_link = 86,
+    SYS_linkat = 265,
+    SYS_statfs = 137,
+    SYS_fstatfs = 138,
+    SYS_fchmodat = 268,
+    SYS_fchmodat2 = 452,
+    SYS_faccessat2 = 439,
+    SYS_statx = 332,
+    SYS_clock_nanosleep = 230,
+    SYS_close_range = 436,
     SYS_read = 0,
     SYS_write = 1,
     SYS_open = 2,
+    SYS_creat = 85,
     SYS_close = 3,
     SYS_stat = 4,
     SYS_fstat = 5,
@@ -23,7 +39,10 @@ enum {
     SYS_munmap = 11,
     SYS_brk = 12,
     SYS_sched_yield = 24,
+    SYS_sched_getparam = 143,
+    SYS_sched_getscheduler = 145,
     SYS_mremap = 25,
+    SYS_madvise = 28,
     SYS_clone = 56,
     SYS_fork = 57,
     SYS_vfork = 58,
@@ -35,6 +54,7 @@ enum {
     SYS_execve = 59,
     SYS_exit = 60,
     SYS_wait4 = 61,
+    SYS_waitid = 247,
     SYS_kill = 62,
     SYS_getcwd = 79,
     SYS_chdir = 80,
@@ -44,7 +64,12 @@ enum {
     SYS_rmdir = 84,
     SYS_unlink = 87,
     SYS_chmod = 90,
+    SYS_setpgid = 109,
     SYS_getppid = 110,
+    SYS_getpgrp = 111,
+    SYS_setsid = 112,
+    SYS_getpgid = 121,
+    SYS_getsid = 124,
     SYS_sync = 162,
     SYS_getdents64 = 217,
     SYS_clock_gettime = 228,
@@ -63,11 +88,23 @@ enum {
     SYS_fsync = 74,
     SYS_fdatasync = 75,
     SYS_fchmod = 91,
+    SYS_setuid = 105, SYS_setgid = 106, SYS_setreuid = 113, SYS_setregid = 114,
+    SYS_setfsuid = 122, SYS_setfsgid = 123,
     SYS_getuid = 102,
     SYS_getgid = 104,
     SYS_geteuid = 107,
     SYS_getegid = 108,
+    SYS_getgroups = 115,
+    SYS_setgroups = 116,
+    SYS_setresuid = 117,
+    SYS_getresuid = 118,
+    SYS_setresgid = 119,
+    SYS_getresgid = 120,
     SYS_arch_prctl = 158,
+    SYS_capget = 125,
+    SYS_capset = 126,
+    SYS_prctl = 157,
+    SYS_unshare = 272,
     SYS_mount = 165,
     SYS_umount2 = 166,
     SYS_gettid = 186,
@@ -95,6 +132,12 @@ enum {
     SYS_web_identity = 410,
     SYS_memory_usage = 411,
     SYS_audio = 412,
+    SYS_power = 413,
+    SYS_clipboard = 414,
+    SYS_input_v2 = 415,
+    SYS_pointer_info = 416,
+    SYS_window = 417,
+    SYS_account = 418,
 
     SYS_lstat = 6,
     SYS_poll = 7,
@@ -104,12 +147,15 @@ enum {
     SYS_pause = 34,
     SYS_pipe = 22,
     SYS_select = 23,
+    SYS_sendfile = 40,
     SYS_ftruncate = 77,
+    SYS_fallocate = 285,
     SYS_truncate = 76,
     SYS_symlink = 88,
     SYS_fchdir = 81,
     SYS_readlink = 89,
     SYS_umask = 95,
+    SYS_chroot = 161,
     SYS_gettimeofday = 96,
     SYS_getrlimit = 97,
     SYS_rt_sigpending = 127,
@@ -126,7 +172,11 @@ enum {
     SYS_utimensat = 280,
     SYS_pselect6 = 270,
     SYS_ppoll = 271,
+    SYS_seccomp = 317,
     SYS_getrandom = 318,
+    SYS_landlock_create_ruleset = 444,
+    SYS_landlock_add_rule = 445,
+    SYS_landlock_restrict_self = 446,
     SYS_getrusage = 98,
     SYS_times = 100,
     SYS_prlimit64 = 302,
@@ -149,6 +199,12 @@ enum {
     SYS_accept4 = 288,
 
     SYS_eventfd = 284,
+    SYS_inotify_init = 253,
+    SYS_inotify_add_watch = 254,
+    SYS_inotify_rm_watch = 255,
+    SYS_inotify_init1 = 294,
+    SYS_preadv = 295,
+    SYS_pwritev = 296,
     SYS_eventfd2 = 290,
     SYS_memfd_create = 319,
 
@@ -187,11 +243,15 @@ enum {
     E_NOSPC = 28,
     E_ROFS = 30,
     E_NAMETOOLONG = 36,
+    E_NOLCK = 37,
     E_NOSYS = 38,
+    E_OVERFLOW = 75,
     E_NOTEMPTY = 39,
     E_LOOP = 40,
     E_PIPE = 32,
     E_NOTSUP = 95,
+    E_NOMSG = 42,
+    E_BADFD = 77,
     E_TIMEDOUT = 110,
     E_NOTSOCK = 88,
     E_DESTADDRREQ = 89,
@@ -228,6 +288,7 @@ enum {
 #define O_NOCTTY 0400
 #define O_LARGEFILE 0100000
 #define O_NOFOLLOW 0400000
+#define O_PATH 010000000
 #define AT_SYMLINK_NOFOLLOW 0x100
 #define AT_FDCWD (-100)
 #define AT_REMOVEDIR 0x200
@@ -317,8 +378,10 @@ struct os_sigaction {
     uint64_t handler, flags, restorer, mask;
 };
 
+#define SA_NOCLDSTOP 1
 #define SA_SIGINFO 4
 #define SA_RESTORER 0x04000000
+#define SA_ONSTACK 0x08000000
 #define SA_RESTART 0x10000000
 #define SA_NODEFER 0x40000000
 #define SA_RESETHAND 0x80000000
@@ -345,25 +408,46 @@ struct os_winsize {
 #define TCSETS 0x5402
 #define TCSETSW 0x5403
 #define TCSETSF 0x5404
+#define TIOCGPGRP 0x540f
+#define TIOCSPGRP 0x5410
 #define TIOCGWINSZ 0x5413
 #define FIONREAD 0x541b
 #define TIOCSWINSZ 0x5414
 #define TCFLSH 0x540b
 #define OS_PTY_GET_FOREGROUND 0x4d500001
+#define OS_PTY_GET_CWD 0x4d500002
+struct os_pty_cwd { uint32_t pid, reserved; char path[OS_PATH_MAX]; };
+/* x86-64 waitid SIGCHLD result. Unused fields/padding are always zero. */
+struct os_waitid_info {
+    int32_t signo, error, code, reserved0;
+    uint32_t pid, uid;
+    int32_t status;
+    uint32_t reserved1;
+    uint64_t reserved[12];
+};
+_Static_assert(sizeof(struct os_waitid_info)==128,"waitid siginfo ABI");
+_Static_assert(__builtin_offsetof(struct os_waitid_info,pid)==16,"waitid PID ABI");
+_Static_assert(__builtin_offsetof(struct os_waitid_info,uid)==20,"waitid UID ABI");
+_Static_assert(__builtin_offsetof(struct os_waitid_info,status)==24,"waitid status ABI");
 #define OPOST 1
 #define ONLCR 4
 #define ISIG 1
 #define ICANON 2
 #define ECHO 8
 #define NOFLSH 128
+#define TOSTOP 256
 #define ICRNL 0x100
 #define VINTR 0
+#define VQUIT 1
+#define VSUSP 10
 #define VERASE 2
 #define VEOF 4
 #define VTIME 5
 #define VMIN 6
 
-enum { INFO_CPUS, INFO_PROCESSES, INFO_DISKS, INFO_MOUNTS, INFO_LSBLK, INFO_NETWORK };
+enum { INFO_CPUS, INFO_PROCESSES, INFO_DISKS, INFO_MOUNTS, INFO_LSBLK, INFO_NETWORK, INFO_ACPI, INFO_POWER };
+/* Asynchronous requests: zero means accepted/coalesced, never hardware success. */
+enum { OS_POWER_OFF = 1, OS_POWER_RESET = 2, OS_POWER_CANCEL = 3 };
 /* v3 adds capability discovery and buffered presentation; v1/v2 remain valid.
    Surfaces are copied, never hardware mappings. */
 #define OS_DISPLAY_VERSION 3
@@ -378,7 +462,8 @@ enum {
     DISPLAY_RELEASE,
     DISPLAY_PRESENT_BATCH,
     DISPLAY_CAPS,
-    DISPLAY_PRESENT_SWAP
+    DISPLAY_PRESENT_SWAP,
+    DISPLAY_KEYBOARD_SNAPSHOT
 };
 
 #define DISPLAY_CAP_PAGE_FLIP 1

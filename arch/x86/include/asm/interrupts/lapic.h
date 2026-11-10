@@ -1,6 +1,9 @@
 #ifndef _LAPIC_H
 #define _LAPIC_H 1
 
+#include <stdbool.h>
+#include <stdint.h>
+bool apic_send_ipi(uint32_t destination, uint8_t vector);
 void apic_init(void);
 void apic_init_cpu(void);
 void apic_timer_start(void);

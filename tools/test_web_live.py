@@ -38,7 +38,7 @@ def exercise(cpus, iso=None):
         desktop = DesktopTest(vm)
         desktop.screenshot('browser-live-start')
         desktop.launch('Browser')
-        desktop.expect('BROWSER_READY', 'ModernOS Browser')
+        desktop.expect('BROWSER_READY', 'Coast Browser')
         desktop.key('l', 'ctrl')
         vm.send('https://gcc.gnu.org/\n')
         vm.until(rb'DESKTOP BROWSER_READY[^\n]*GNU Compiler Collection[^\n]*\n', 90)

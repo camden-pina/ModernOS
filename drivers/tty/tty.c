@@ -1,3 +1,4 @@
+#include <power.h>
 #include <tty.h>
 #include <sched.h>
 #include <usb_input.h>
@@ -16,6 +17,26 @@ static struct os_termios config = {.iflag = ICRNL,
                                    .cflag = 0xbf,
                                    .lflag = ISIG | ICANON | ECHO,
                                    .cc = {[VINTR] = 3, [VERASE] = 127, [VEOF] = 4, [VMIN] = 1}};
+
+unsigned tty_job_foreground(void) {
+    return __atomic_load_n(&foreground, __ATOMIC_ACQUIRE);
+}
+
+void tty_job_restore(unsigned from, unsigned to, const struct os_termios *mode) {
+    uint64_t irq = spin_lock_irqsave(&input_lock);
+    if (foreground == from) {
+        if (mode && ((config.lflag ^ mode->lflag) & ICANON)) {
+            editing_size = 0;
+            tail = head;
+            skip_lf = editing_overflow = false;
+            canonical_escape = 0;
+        }
+        if (mode)
+            config = *mode;
+        __atomic_store_n(&foreground, to, __ATOMIC_RELEASE);
+    }
+    spin_unlock_irqrestore(&input_lock, irq);
+}
 
 bool tty_is_foreground(unsigned pid) {
     return pid == __atomic_load_n(&foreground, __ATOMIC_ACQUIRE);
@@ -57,19 +78,31 @@ int tty_get_config(struct os_termios *out) {
 }
 
 int tty_set_config(const struct os_termios *in, bool flush) {
-    if (!tty_is_foreground(this_cpu()->current->tgid))
-        return -E_PERM;
+    if (!tty_is_foreground(task_input_identity(this_cpu()->current)))
+        return this_cpu()->current->context->job_managed?task_background_terminal(this_cpu()->current,22):-E_PERM;
     /* Explicit supported subset; never silently enable unimplemented disciplines. */
-    if (in->line || in->iflag & ~ICRNL || in->oflag || in->lflag & ~(ISIG | ICANON | ECHO) ||
+    if (in->line || in->iflag & ~ICRNL || in->oflag || in->lflag & ~(ISIG | ICANON | ECHO | TOSTOP) ||
         in->cc[VMIN] > 1 || in->cc[VTIME])
         return -E_NOTSUP;
     uint64_t f = spin_lock_irqsave(&input_lock);
-    if (flush || ((config.lflag ^ in->lflag) & ICANON)) {
+    if (flush) {
         editing_size = 0;
         tail = head;
-        skip_lf = false;
-        editing_overflow = false;
+        skip_lf = editing_overflow = false;
         canonical_escape = 0;
+    } else if ((config.lflag & ICANON) && !(in->lflag & ICANON)) {
+        unsigned free = (tail + sizeof(queue) - head - 1) % sizeof(queue);
+        if (editing_overflow || editing_size > free) {
+            spin_unlock_irqrestore(&input_lock, f);
+            return editing_overflow ? -E_2BIG : -E_AGAIN;
+        }
+        for (unsigned i = 0; i < editing_size; i++) {
+            queue[head] = editing[i];
+            head = (head + 1) % sizeof(queue);
+        }
+        editing_size = 0;
+        canonical_escape = 0;
+        skip_lf = false;
     }
     config = *in;
     spin_unlock_irqrestore(&input_lock, f);
@@ -90,9 +123,10 @@ void tty_input(char c) {
     struct os_termios mode = config;
     spin_unlock_irqrestore(&input_lock, f);
 
-    if ((mode.lflag & ISIG) && c && (uint8_t)c == mode.cc[VINTR]) {
+    if ((mode.lflag & ISIG) && c && ((uint8_t)c==mode.cc[VINTR]||(uint8_t)c==mode.cc[VQUIT]||(uint8_t)c==mode.cc[VSUSP])) {
+        unsigned signal_number=(uint8_t)c==mode.cc[VINTR]?2:(uint8_t)c==mode.cc[VQUIT]?3:20;
         if (pid > 1)
-            task_kill(pid, 2);
+            task_signal_foreground(pid, signal_number);
         uint64_t f = spin_lock_irqsave(&input_lock);
         editing_size = 0;
         tail = head;
@@ -104,7 +138,7 @@ void tty_input(char c) {
         }
         spin_unlock_irqrestore(&input_lock, f);
         if (mode.lflag & ECHO)
-            console_write("^C\n", 3);
+            console_write(signal_number==20?"^Z\n":signal_number==3?"^\\\n":"^C\n", 3);
         return;
     }
 
@@ -213,10 +247,12 @@ void tty_input(char c) {
 long tty_read(void *data, size_t size, bool nonblock) {
     if (!size)
         return 0;
-    if (this_cpu()->current->tgid != __atomic_load_n(&foreground, __ATOMIC_ACQUIRE))
-        return -E_IO;
     for (;;) {
         uint64_t f = spin_lock_irqsave(&input_lock);
+        if (task_input_identity(this_cpu()->current) != foreground) {
+            spin_unlock_irqrestore(&input_lock, f);
+            return this_cpu()->current->context->job_managed?task_background_terminal(this_cpu()->current,21):-E_IO;
+        }
         size_t done = 0;
         bool had_data = tail != head;
         while (tail != head && done < size) {
@@ -258,12 +294,14 @@ long tty_read(void *data, size_t size, bool nonblock) {
 void input_task(void *arg) {
     (void)arg;
     for (;;) {
+        power_transaction_begin();
         kernel_usb_input_poll();
         while (inb(COM1_PORT + 5) & 1)
             tty_input(inb(COM1_PORT));
         mouse_event_t event;
         while (mouse_read_event(&event))
             display_pointer(&event);
+        power_transaction_end();
         sched_sleep(1000);
     }
 }

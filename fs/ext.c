@@ -98,6 +98,9 @@ static int inode_node(struct mount *m, uint64_t id, struct vnode *out) {
                           .id = id,
                           .size = size,
                           .mode = mode,
+                          .nlink = get_le16(inode.bytes + 26),
+                          .uid = get_le16(inode.bytes + 2) | ((uint32_t)get_le16(inode.bytes + 120) << 16),
+                          .gid = get_le16(inode.bytes + 24) | ((uint32_t)get_le16(inode.bytes + 122) << 16),
                           .atime = get_le32(inode.bytes + 8),
                           .ctime = get_le32(inode.bytes + 12),
                           .mtime = get_le32(inode.bytes + 16)};

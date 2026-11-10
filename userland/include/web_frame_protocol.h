@@ -1,5 +1,5 @@
-#ifndef MODERNOS_WEB_FRAME_PROTOCOL_H
-#define MODERNOS_WEB_FRAME_PROTOCOL_H
+#ifndef COAST_WEB_FRAME_PROTOCOL_H
+#define COAST_WEB_FRAME_PROTOCOL_H
 #include <stdint.h>
 #include "web_frame_tree.h"
 

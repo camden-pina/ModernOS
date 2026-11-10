@@ -1,0 +1,25 @@
+{
+  "version": "2.36-9+deb12u14",
+  "source": "glibc-2.36",
+  "license": "LGPL-2.1-or-later",
+  "source_metadata": {
+    "url": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.36-9+deb12u14.dsc",
+    "sha256": "cfe1f0b8dc1fa211ce5a45b3725cc38b29f88667f1140ebdca6de35cf9c6f1fd"
+  },
+  "archives": {
+    "glibc_2.36.orig.tar.xz": {
+      "archive": "glibc_2.36.orig.tar.xz",
+      "sha256": "a543c02070d46ccaf866957efd13f10c924daa74c86a90a0254db09a92a708ee",
+      "bytes": 19363988,
+      "url": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.36.orig.tar.xz"
+    },
+    "glibc_2.36-9+deb12u14.debian.tar.xz": {
+      "archive": "glibc_2.36-9+deb12u14.debian.tar.xz",
+      "sha256": "cf4ac9cd98185452cae3ef34e2e4ee12753e3d93fd0c62c61396d4a47eec902f",
+      "bytes": 918488,
+      "url": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.36-9+deb12u14.debian.tar.xz"
+    }
+  },
+  "patch_policy": "Apply the pinned Debian series before the Coast port changes",
+  "target": "Coast x86-64 GNU application ABI"
+}

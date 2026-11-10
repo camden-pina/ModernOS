@@ -1,0 +1,41 @@
+--- a/Modules/_posixsubprocess.c
++++ b/Modules/_posixsubprocess.c
+@@ -12,7 +12,8 @@
+ #if defined(HAVE_PIPE2) && !defined(_GNU_SOURCE)
+ #  define _GNU_SOURCE
+ #endif
+-#include <unistd.h>               // close()
++#include <unistd.h>
++#include <time.h>               // close()
+ #include <fcntl.h>                // fcntl()
+ #ifdef HAVE_SYS_TYPES_H
+ #  include <sys/types.h>
+@@ -914,12 +915,26 @@
+          * MUST NOT re-acquire the GIL.
+          */
+         vfork_tstate_save = PyEval_SaveThread();
+-        pid = vfork();
++        /* Coast temporarily refuses native shared-VM spawn while peer
++         * threads finish kernel transactions. Keep the GIL released and
++         * retry EAGAIN instead of falling back to unsupported threaded fork.
++         * The child takes the pid==0 break before any sleep or GIL work. */
++        for (unsigned attempt = 0; ; ++attempt) {
++            pid = vfork();
++            if (pid != (pid_t)-1 || errno != EAGAIN || attempt == 1023)
++                break;
++            struct timespec delay = {0, 1000000};
++            while (nanosleep(&delay, &delay) < 0 && errno == EINTR) {}
++        }
++        int vfork_errno = errno;
+         if (pid != 0) {
+             // Not in the child process, reacquire the GIL.
+             PyEval_RestoreThread(vfork_tstate_save);
+         }
+-        if (pid == (pid_t)-1) {
++        if (pid == (pid_t)-1 && vfork_errno == EAGAIN) {
++            errno = vfork_errno;
++        }
++        else if (pid == (pid_t)-1) {
+             /* If vfork() fails, fall back to using fork(). When it isn't
+              * allowed in a process by the kernel, vfork can return -1
+              * with errno EINVAL. https://bugs.python.org/issue47151. */

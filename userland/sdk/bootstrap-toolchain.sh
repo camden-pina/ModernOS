@@ -1,21 +1,23 @@
 #!/bin/sh
-# Native static C/C++ toolchain rebuild. All commands execute inside ModernOS.
+# Native static C/C++ toolchain rebuild. All commands execute inside Coast.
 set -eu
 export PATH=/usr/bin:/bin SHELL=/bin/sh CONFIG_SHELL=/bin/sh LC_ALL=C
 
 usage() {
-    printf '%s\n' 'Usage: bootstrap-toolchain [--work DIR] [--prefix DIR] [-j JOBS] [--prepare-only]' \
+    printf '%s\n' 'Usage: bootstrap-toolchain [--work DIR] [--prefix DIR] [-j JOBS] [--prepare-only] [--posix-threads]' \
         'Extract bundled sources, build binutils/GCC/libgcc/libstdc++, and install' \
         'a separate static toolchain. Defaults: /tmp/toolchain, WORK/install, -j1.' \
         'Use a RAM workspace with sufficient memory (8 GiB recommended).' \
         'Re-running resumes completed extraction/configuration/build stages.' \
-        '--prepare-only verifies/extracts sources without configuring or compiling.'
+        '--prepare-only verifies/extracts sources without configuring or compiling.' \
+        '--posix-threads enables C++ threads, mutexes and condition variables.'
 }
 
 work=/tmp/toolchain
 prefix=
 jobs=1
 prepare_only=no
+thread_model=single
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -37,6 +39,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --prepare-only)
             prepare_only=yes;
+            shift
+            ;;
+        --posix-threads)
+            thread_model=posix;
             shift
             ;;
         -j[0-9]*)
@@ -110,15 +116,48 @@ case "$work" in
         ;;
 esac
 
-bundle=/usr/src/modernos
-(cd "$bundle" && sha256sum -c SHA256SUMS)
+bundle=/usr/src/coast
+original_sources=no
+if [ -f /usr/src/coast/distfiles/gcc-14.2.0.tar.gz ]; then
+    bundle=/usr/src/coast/distfiles
+    original_sources=yes
+    cat > "$work/original-SHA256SUMS" <<'COAST_ORIGINAL_HASHES'
+7d376d445f93126dc545e2c0086d0f647c3094aae081cdb78f42ce2bc25e7293  gcc-14.2.0.tar.gz
+c44968b97cd86499efbc4b4ab7d98471f673e5414c554ef54afa930062dbbfcb  binutils-2.37.tar.gz
+fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2  gmp-6.2.1.tar.xz
+0c98a3f1732ff6ca4ea690552079da9c597872d30e96ec28414ee23c95558a7f  mpfr-4.1.0.tar.xz
+17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459  mpc-1.2.1.tar.gz
+a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4  musl-1.2.5.tar.gz
+dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3  make-4.4.1.tar.gz
+3dd430f0cd3b4428c6c3f6afc021b9cd3c1f8c93f7a688dc268ca428a90b4ac1  gawk-5.4.0.tar.xz
+COAST_ORIGINAL_HASHES
+    (cd "$bundle" && sha256sum -c "$work/original-SHA256SUMS")
+else
+    (cd "$bundle" && sha256sum -c SHA256SUMS)
+fi
 
 for package in gcc-14.2.0 binutils-2.37 gmp-6.2.1 mpfr-4.1.0 mpc-1.2.1 musl-1.2.5 make-4.4.1 gawk-5.4.0; do
-    if [ ! -f "$work/src/$package/.modernos-extracted" ]; then
+    if [ ! -f "$work/src/$package/.coast-extracted" ]; then
         printf 'Extracting %s\n' "$package"
         rm -rf "$work/src/$package"
-        tar -xJf "$bundle/$package.tar.xz" --no-same-owner -C "$work/src"
-        touch "$work/src/$package/.modernos-extracted"
+        archive=$package.tar.xz
+        if [ "$original_sources" = yes ]; then
+            case "$package" in
+                gcc-14.2.0) archive=gcc-14.2.0.tar.gz ;;
+                binutils-2.37) archive=binutils-2.37.tar.gz ;;
+                gmp-6.2.1) archive=gmp-6.2.1.tar.xz ;;
+                mpfr-4.1.0) archive=mpfr-4.1.0.tar.xz ;;
+                mpc-1.2.1) archive=mpc-1.2.1.tar.gz ;;
+                musl-1.2.5) archive=musl-1.2.5.tar.gz ;;
+                make-4.4.1) archive=make-4.4.1.tar.gz ;;
+                gawk-5.4.0) archive=gawk-5.4.0.tar.xz ;;
+            esac
+        fi
+        case "$archive" in
+            *.tar.gz) tar -xzf "$bundle/$archive" --no-same-owner -C "$work/src" ;;
+            *.tar.xz) tar -xJf "$bundle/$archive" --no-same-owner -C "$work/src" ;;
+        esac
+        touch "$work/src/$package/.coast-extracted"
     fi
 done
 
@@ -145,7 +184,7 @@ export AWK=gawk
 }
 
 stage() {
-    printf '%s\n' "$1" > "$work/.modernos-stage";
+    printf '%s\n' "$1" > "$work/.coast-stage";
 }
 
 stage sources
@@ -163,13 +202,13 @@ cd "$work/build"
 mkdir -p binutils gcc
 cd binutils
 
-if [ ! -f .modernos-configured ]; then
+if [ ! -f .coast-configured ]; then
     "$work/src/binutils-2.37/configure" --build="$target" --host="$target" --target="$target" \
         --prefix="$prefix" --with-sysroot=/ --disable-nls --disable-werror \
         --disable-gdb --disable-gold --disable-shared --enable-static --without-debuginfod
-    printf '%s\n' "$prefix" > .modernos-configured
+    printf '%s\n' "$prefix" > .coast-configured
 fi
-[ "$(cat .modernos-configured)" = "$prefix" ] || {
+[ "$(cat .coast-configured)" = "$prefix" ] || {
     printf 'Prefix changed; use a new workspace\n' >&2;
     exit 2;
 }
@@ -179,28 +218,36 @@ make install
 stage binutils
 
 cd ../gcc
-if [ ! -f .modernos-configured ]; then
+thread_option=--disable-threads
+[ "$thread_model" = single ] || thread_option=--enable-threads=posix
+configuration="$prefix threads=$thread_model"
+if [ -f .coast-configured ] && [ "$thread_model" = single ] && [ "$(cat .coast-configured)" = "$prefix" ]; then
+    printf '%s\n' "$configuration" > .coast-configured
+fi
+if [ ! -f .coast-configured ]; then
     "$work/src/gcc-14.2.0/configure" --build="$target" --host="$target" --target="$target" \
         --prefix="$prefix" --with-sysroot=/ --with-native-system-header-dir=/usr/include \
         --with-as="$prefix/bin/as" --with-ld="$prefix/bin/ld" \
-        '--with-pkgversion=ModernOS native rebuild' '--with-specs=%{!shared:%{!r:-static -no-pie}}' \
+        '--with-pkgversion=Coast native rebuild' '--with-specs=%{!shared:%{!r:-static -no-pie}}' \
         --disable-bootstrap --disable-multilib --disable-multiarch --disable-shared \
         --disable-nls --disable-libsanitizer --disable-libssp --disable-libquadmath \
         --disable-libgomp --disable-libvtv --disable-libcc1 --disable-plugin --disable-lto \
         --disable-libstdcxx-pch --disable-libstdcxx-verbose --disable-libstdcxx-backtrace \
-        --disable-symvers --disable-threads --disable-fixincludes --enable-languages=c,c++ \
+        --disable-symvers "$thread_option" --disable-fixincludes --enable-languages=c,c++ \
         --enable-checking=release --enable-clocale=generic --without-isl --without-zstd
-    printf '%s\n' "$prefix" > .modernos-configured
+    printf '%s\n' "$configuration" > .coast-configured
 fi
-[ "$(cat .modernos-configured)" = "$prefix" ] || {
-    printf 'Prefix changed; use a new workspace\n' >&2;
+[ "$(cat .coast-configured)" = "$configuration" ] || {
+    printf 'Prefix or thread model changed; use a new workspace\n' >&2;
     exit 2;
 }
 
 # Changing AWK does not itself invalidate GNU make's generated-table targets.
 # Retire old derived tables/runtimes once, including a workspace first built
 # with BusyBox awk. Never edit or substitute the upstream generator inputs.
-/bin/sh "$bundle/prepare-gcc-options.sh" "$work/build/gcc" "$target" "$AWK"
+options_helper=${0%/*}/prepare-gcc-options.sh
+[ -f "$options_helper" ] || options_helper=/usr/src/coast/prepare-gcc-options.sh
+/bin/sh "$options_helper" "$work/build/gcc" "$target" "$AWK"
 
 # Command-line variables override target flags captured by an older configure.
 # A resumed libstdc++ build must not retain its former global -std=gnu++11.
@@ -256,6 +303,23 @@ EOF
 
 "$prefix/bin/g++" -std=c++17 "$work/proof.cpp" -o "$work/proof-cxx"
 "$work/proof-cxx"
+
+if [ "$thread_model" = posix ]; then
+    cat > "$work/proof-threads.cpp" <<'EOF'
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <cstdio>
+int main() {
+    std::mutex mutex; std::condition_variable condition; bool ready=false;
+    std::thread worker([&] { std::lock_guard<std::mutex> lock(mutex); ready=true; condition.notify_one(); });
+    std::unique_lock<std::mutex> lock(mutex); condition.wait(lock,[&]{return ready;}); lock.unlock(); worker.join();
+    std::puts("REBUILT_CXX_THREADS_OK");
+}
+EOF
+    "$prefix/bin/g++" -std=c++17 -pthread "$work/proof-threads.cpp" -o "$work/proof-threads"
+    "$work/proof-threads"
+fi
 
 stage complete
 printf 'Native toolchain rebuild succeeded: %s/bin/gcc\n' "$prefix"

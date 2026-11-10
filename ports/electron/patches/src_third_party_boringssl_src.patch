@@ -1,0 +1,184 @@
+diff --git a/crypto/cipher/get_cipher.cc b/crypto/cipher/get_cipher.cc
+index dabc54a..ce213e0 100644
+--- a/crypto/cipher/get_cipher.cc
++++ b/crypto/cipher/get_cipher.cc
+@@ -31,6 +31,7 @@ static const struct {
+   const EVP_CIPHER *(*func)();
+ } kCiphers[] = {
+     {NID_aes_128_cbc, "aes-128-cbc", EVP_aes_128_cbc},
++    {NID_aes_128_cfb128, "aes-128-cfb", EVP_aes_128_cfb128},
+     {NID_aes_128_ctr, "aes-128-ctr", EVP_aes_128_ctr},
+     {NID_aes_128_ecb, "aes-128-ecb", EVP_aes_128_ecb},
+     {NID_aes_128_gcm, "aes-128-gcm", EVP_aes_128_gcm},
+@@ -41,17 +42,23 @@ static const struct {
+     {NID_aes_192_gcm, "aes-192-gcm", EVP_aes_192_gcm},
+     {NID_aes_192_ofb128, "aes-192-ofb", EVP_aes_192_ofb},
+     {NID_aes_256_cbc, "aes-256-cbc", EVP_aes_256_cbc},
++    {NID_aes_256_cfb128, "aes-256-cfb", EVP_aes_256_cfb128},
+     {NID_aes_256_ctr, "aes-256-ctr", EVP_aes_256_ctr},
+     {NID_aes_256_ecb, "aes-256-ecb", EVP_aes_256_ecb},
+     {NID_aes_256_gcm, "aes-256-gcm", EVP_aes_256_gcm},
+     {NID_aes_256_ofb128, "aes-256-ofb", EVP_aes_256_ofb},
++    {NID_bf_cbc, "bf-cbc", EVP_bf_cbc},
++    {NID_bf_cfb64, "bf-cfb", EVP_bf_cfb},
++    {NID_bf_ecb, "bf-ecb", EVP_bf_ecb},
+     {NID_des_cbc, "des-cbc", EVP_des_cbc},
+     {NID_des_ecb, "des-ecb", EVP_des_ecb},
+     {NID_des_ede_cbc, "des-ede-cbc", EVP_des_ede_cbc},
+     {NID_des_ede_ecb, "des-ede", EVP_des_ede},
++    {NID_des_ede3_ecb, "des-ede3", EVP_des_ede3},
+     {NID_des_ede3_cbc, "des-ede3-cbc", EVP_des_ede3_cbc},
+     {NID_rc2_cbc, "rc2-cbc", EVP_rc2_cbc},
+     {NID_rc4, "rc4", EVP_rc4},
++    {NID_rc2_40_cbc, "rc2-40-cbc", EVP_rc2_40_cbc}
+ };
+ 
+ const EVP_CIPHER *EVP_get_cipherbynid(int nid) {
+diff --git a/crypto/digest/digest_extra.cc b/crypto/digest/digest_extra.cc
+index d38e0c1..cd60baa 100644
+--- a/crypto/digest/digest_extra.cc
++++ b/crypto/digest/digest_extra.cc
+@@ -48,6 +48,7 @@ static const struct nid_to_digest nid_to_digest_mapping[] = {
+     {NID_sha512, EVP_sha512, SN_sha512, LN_sha512},
+     {NID_sha512_256, EVP_sha512_256, SN_sha512_256, LN_sha512_256},
+     {NID_md5_sha1, EVP_md5_sha1, SN_md5_sha1, LN_md5_sha1},
++    {NID_ripemd160, EVP_ripemd160, SN_ripemd160, LN_ripemd160},
+     // As a remnant of signing |EVP_MD|s, OpenSSL returned the corresponding
+     // hash function when given a signature OID. To avoid unintended lax parsing
+     // of hash OIDs, this is no longer supported for lookup by OID or NID.
+diff --git a/crypto/fipsmodule/digest/digests.cc.inc b/crypto/fipsmodule/digest/digests.cc.inc
+index a246a51..ddf0a90 100644
+--- a/crypto/fipsmodule/digest/digests.cc.inc
++++ b/crypto/fipsmodule/digest/digests.cc.inc
+@@ -18,6 +18,7 @@
+ #include <string.h>
+ 
+ #include <openssl/nid.h>
++#include <openssl/ripemd.h>
+ 
+ #include "../../internal.h"
+ #include "../bcm_interface.h"
+@@ -181,4 +182,27 @@ DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512_256) {
+   out->ctx_size = sizeof(SHA512_CTX);
+ }
+ 
++static void ripemd160_init(EVP_MD_CTX *ctx) {
++  CHECK(RIPEMD160_Init(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
++}
++
++static void ripemd160_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
++  CHECK(RIPEMD160_Update(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data), data, count));
++}
++
++static void ripemd160_final(EVP_MD_CTX *ctx, uint8_t *md) {
++  CHECK(RIPEMD160_Final(md, reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
++}
++
++DEFINE_METHOD_FUNCTION(EVP_MD, EVP_ripemd160) {
++  out->type = NID_ripemd160;
++  out->md_size = RIPEMD160_DIGEST_LENGTH;
++  out->flags = 0;
++  out->init = ripemd160_init;
++  out->update = ripemd160_update;
++  out->final = ripemd160_final;
++  out->block_size = 64;
++  out->ctx_size = sizeof(RIPEMD160_CTX);
++}
++
+ #undef CHECK
+diff --git a/decrepit/evp/evp_do_all.cc b/decrepit/evp/evp_do_all.cc
+index 584b139..c5dd0b1 100644
+--- a/decrepit/evp/evp_do_all.cc
++++ b/decrepit/evp/evp_do_all.cc
+@@ -23,8 +23,10 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
+                                                const char *unused, void *arg),
+                               void *arg) {
+   callback(EVP_aes_128_cbc(), "AES-128-CBC", nullptr, arg);
++  callback(EVP_aes_128_cfb128(), "AES-128-CFB", nullptr, arg);
+   callback(EVP_aes_192_cbc(), "AES-192-CBC", nullptr, arg);
+   callback(EVP_aes_256_cbc(), "AES-256-CBC", nullptr, arg);
++  callback(EVP_aes_256_cfb128(), "AES-256-CFB", nullptr, arg);
+   callback(EVP_aes_128_ctr(), "AES-128-CTR", nullptr, arg);
+   callback(EVP_aes_192_ctr(), "AES-192-CTR", nullptr, arg);
+   callback(EVP_aes_256_ctr(), "AES-256-CTR", nullptr, arg);
+@@ -37,9 +39,13 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
+   callback(EVP_aes_128_gcm(), "AES-128-GCM", nullptr, arg);
+   callback(EVP_aes_192_gcm(), "AES-192-GCM", nullptr, arg);
+   callback(EVP_aes_256_gcm(), "AES-256-GCM", nullptr, arg);
++  callback(EVP_bf_cbc(), "BF-CBC", nullptr, arg);
++  callback(EVP_bf_cfb(), "BF-CFB", nullptr, arg);
++  callback(EVP_bf_ecb(), "BF-ECB", nullptr, arg);
+   callback(EVP_des_cbc(), "DES-CBC", nullptr, arg);
+   callback(EVP_des_ecb(), "DES-ECB", nullptr, arg);
+   callback(EVP_des_ede(), "DES-EDE", nullptr, arg);
++  callback(EVP_des_ede3(), "DES-EDE3", nullptr, arg);
+   callback(EVP_des_ede_cbc(), "DES-EDE-CBC", nullptr, arg);
+   callback(EVP_des_ede3_cbc(), "DES-EDE3-CBC", nullptr, arg);
+   callback(EVP_rc2_cbc(), "RC2-CBC", nullptr, arg);
+@@ -47,8 +53,10 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
+ 
+   // OpenSSL returns everything twice, the second time in lower case.
+   callback(EVP_aes_128_cbc(), "aes-128-cbc", nullptr, arg);
++  callback(EVP_aes_128_cfb128(), "aes-128-cfb", nullptr, arg);
+   callback(EVP_aes_192_cbc(), "aes-192-cbc", nullptr, arg);
+   callback(EVP_aes_256_cbc(), "aes-256-cbc", nullptr, arg);
++  callback(EVP_aes_256_cfb128(), "aes-256-cfb", nullptr, arg);
+   callback(EVP_aes_128_ctr(), "aes-128-ctr", nullptr, arg);
+   callback(EVP_aes_192_ctr(), "aes-192-ctr", nullptr, arg);
+   callback(EVP_aes_256_ctr(), "aes-256-ctr", nullptr, arg);
+@@ -61,9 +69,13 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
+   callback(EVP_aes_128_gcm(), "aes-128-gcm", nullptr, arg);
+   callback(EVP_aes_192_gcm(), "aes-192-gcm", nullptr, arg);
+   callback(EVP_aes_256_gcm(), "aes-256-gcm", nullptr, arg);
++  callback(EVP_bf_cbc(), "bf-cbc", nullptr, arg);
++  callback(EVP_bf_cfb(), "bf-cfb", nullptr, arg);
++  callback(EVP_bf_ecb(), "bf-ecb", nullptr, arg);
+   callback(EVP_des_cbc(), "des-cbc", nullptr, arg);
+   callback(EVP_des_ecb(), "des-ecb", nullptr, arg);
+   callback(EVP_des_ede(), "des-ede", nullptr, arg);
++  callback(EVP_des_ede3(), "des-ede3", nullptr, arg);
+   callback(EVP_des_ede_cbc(), "des-ede-cbc", nullptr, arg);
+   callback(EVP_des_ede3_cbc(), "des-ede3-cbc", nullptr, arg);
+   callback(EVP_rc2_cbc(), "rc2-cbc", nullptr, arg);
+@@ -82,6 +94,7 @@ void EVP_MD_do_all_sorted(void (*callback)(const EVP_MD *md,
+   callback(EVP_sha384(), "SHA384", nullptr, arg);
+   callback(EVP_sha512(), "SHA512", nullptr, arg);
+   callback(EVP_sha512_256(), "SHA512-256", nullptr, arg);
++  callback(EVP_ripemd160(), "ripemd160", nullptr, arg);
+ 
+   callback(EVP_md4(), "md4", nullptr, arg);
+   callback(EVP_md5(), "md5", nullptr, arg);
+@@ -91,6 +104,7 @@ void EVP_MD_do_all_sorted(void (*callback)(const EVP_MD *md,
+   callback(EVP_sha384(), "sha384", nullptr, arg);
+   callback(EVP_sha512(), "sha512", nullptr, arg);
+   callback(EVP_sha512_256(), "sha512-256", nullptr, arg);
++  callback(EVP_ripemd160(), "ripemd160", nullptr, arg);
+ }
+ 
+ void EVP_MD_do_all(void (*callback)(const EVP_MD *md, const char *name,
+diff --git a/include/openssl/cipher.h b/include/openssl/cipher.h
+index 4003082..11407f1 100644
+--- a/include/openssl/cipher.h
++++ b/include/openssl/cipher.h
+@@ -552,6 +552,7 @@ OPENSSL_EXPORT const EVP_CIPHER *EVP_des_ede3_ecb(void);
+ 
+ // EVP_aes_128_cfb128 is only available in decrepit.
+ OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_128_cfb128(void);
++OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_256_cfb128(void);
+ 
+ // EVP_aes_128_cfb is an alias for `EVP_aes_128_cfb128` and is only available in
+ // decrepit.
+diff --git a/include/openssl/digest.h b/include/openssl/digest.h
+index 19e63be..a9f1637 100644
+--- a/include/openssl/digest.h
++++ b/include/openssl/digest.h
+@@ -48,6 +48,9 @@ OPENSSL_EXPORT const EVP_MD *EVP_blake2b256(void);
+ // MD5 and SHA-1, as used in TLS 1.1 and below.
+ OPENSSL_EXPORT const EVP_MD *EVP_md5_sha1(void);
+ 
++// EVP_ripemd160 is in decrepit and not available by default.
++OPENSSL_EXPORT const EVP_MD *EVP_ripemd160(void);
++
+ // EVP_get_digestbynid returns an `EVP_MD` for the given NID, or NULL if no
+ // such digest is known.
+ OPENSSL_EXPORT const EVP_MD *EVP_get_digestbynid(int nid);

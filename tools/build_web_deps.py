@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline static musl libraries/assets shared by NetSurf and Git HTTPS."""
+"""Offline static musl libraries for Git HTTPS and native image/font tools."""
 from contextlib import contextmanager
 import fcntl
 import hashlib

@@ -1,0 +1,20 @@
+FROM docker.io/library/archlinux@sha256:823e937464d1528b306a8e1137ef406b9c56e5fee43c7a19e93684d554af74e1
+RUN pacman -Syu --noconfirm --needed base-devel python python-pip python-poetry \
+    git gpgme nginx valkey openssh mariadb mariadb-libs cgit-aurweb uwsgi \
+    uwsgi-plugin-cgi pyalpm python-srcinfo python-alpm libgit2 asciidoc gettext catatonit devtools reuse \
+    && pacman -Scc --noconfirm
+ENV PYTHONPATH=/opt/aurweb AUR_CONFIG=/run/coast/config \
+    AUR_CONFIG_DEFAULTS=/opt/aurweb/conf/config.defaults \
+    POETRY_VIRTUALENVS_CREATE=false POETRY_DYNAMIC_VERSIONING_BYPASS=6.5.1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 PYTHONDONTWRITEBYTECODE=1
+COPY aurweb /opt/aurweb
+WORKDIR /opt/aurweb
+RUN poetry install --only main --no-interaction --no-ansi \
+    && make -C po all install && make -C doc \
+    && useradd -u 1000 -U -d /data/git -s /bin/bash aur \
+    && passwd -d aur
+COPY runtime /opt/coast
+RUN chmod 755 /opt/coast/*.py /opt/coast/git-auth /opt/coast/git-serve /opt/coast/git-update \
+    && mkdir -p /data /run/coast && python /opt/coast/brand.py
+EXPOSE 8000 2222
+ENTRYPOINT ["/usr/bin/catatonit", "--", "/usr/bin/python", "/opt/coast/serve.py"]

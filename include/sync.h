@@ -7,8 +7,12 @@ typedef struct {
     unsigned value;
 } spinlock_t;
 
+struct task;
 typedef struct {
     unsigned value;
+    struct task *owner;
+    unsigned owner_cpu;
+    bool counted;
 } mutex_t;
 
 static inline uint64_t irq_save(void) {

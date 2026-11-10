@@ -1,5 +1,5 @@
-#ifndef MODERNOS_BOOT_INFO_H
-#define MODERNOS_BOOT_INFO_H
+#ifndef COAST_BOOT_INFO_H
+#define COAST_BOOT_INFO_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

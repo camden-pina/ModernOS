@@ -131,7 +131,7 @@ int main(void) {
 '''
 
 if __name__ == '__main__':
-    with tempfile.TemporaryDirectory(prefix='modernos-igc-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='coast-igc-') as temporary:
         path = Path(temporary)
         for name, text in HEADERS.items():
             target = path / name;

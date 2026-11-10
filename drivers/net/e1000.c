@@ -8,7 +8,8 @@
 #include <printk.h>
 #include <uapi/abi.h>
 
-#define RING 128
+#define RING 1024
+#define RING_PAGES ((RING * 16 + PAGE_SIZE - 1) / PAGE_SIZE)
 #define BUFFER 2048
 
 struct rx_desc {
@@ -29,6 +30,7 @@ static volatile struct tx_desc *transmit_ring;
 static uint64_t receive_phys, transmit_phys, receive_buffers, transmit_buffers;
 static unsigned receive_head, transmit_head;
 static uint8_t address[6];
+static volatile uint16_t *power_pci_command;
 
 static uint32_t reg(unsigned offset) {
     return registers[offset / 4];
@@ -77,7 +79,8 @@ bool e1000_probe(void *pci_header) {
     if (!registers)
         return false;
     /* Polling only: the device never receives a live interrupt vector. */
-    *(volatile uint16_t *)&pci->command |= 6 | (1u << 10);
+    *(volatile uint16_t *)(void *)((uintptr_t)pci + 4) |= 6 | (1u << 10);
+    power_pci_command = (void *)((uintptr_t)pci + 4);
     put(0xd8, UINT32_MAX);
     put(0, reg(0) | (1u << 26));
     uint64_t end = tsc_uptime_us() + 100000;
@@ -124,8 +127,8 @@ bool e1000_probe(void *pci_header) {
     for (unsigned i = 0; i < 128; i++)
         put(0x5200 + i * 4, 0);
 
-    receive_phys = pmm_alloc_pages(1);
-    transmit_phys = pmm_alloc_pages(1);
+    receive_phys = pmm_alloc_pages(RING_PAGES);
+    transmit_phys = pmm_alloc_pages(RING_PAGES);
     receive_buffers = pmm_alloc_pages(RING * BUFFER / PAGE_SIZE);
     transmit_buffers = pmm_alloc_pages(RING * BUFFER / PAGE_SIZE);
     if (!receive_phys || !transmit_phys || !receive_buffers || !transmit_buffers)
@@ -133,8 +136,8 @@ bool e1000_probe(void *pci_header) {
 
     receive_ring = phys_ptr(receive_phys);
     transmit_ring = phys_ptr(transmit_phys);
-    memset((void *)receive_ring, 0, PAGE_SIZE);
-    memset((void *)transmit_ring, 0, PAGE_SIZE);
+    memset((void *)receive_ring, 0, RING_PAGES * PAGE_SIZE);
+    memset((void *)transmit_ring, 0, RING_PAGES * PAGE_SIZE);
     for (unsigned i = 0; i < RING; i++) {
         receive_ring[i].address = receive_buffers + i * BUFFER;
         transmit_ring[i].address = transmit_buffers + i * BUFFER;
@@ -171,9 +174,9 @@ failure:
     put(0xd8, UINT32_MAX);
 
     if (receive_phys)
-        pmm_free_pages(receive_phys, 1);
+        pmm_free_pages(receive_phys, RING_PAGES);
     if (transmit_phys)
-        pmm_free_pages(transmit_phys, 1);
+        pmm_free_pages(transmit_phys, RING_PAGES);
     if (receive_buffers)
         pmm_free_pages(receive_buffers, RING * BUFFER / PAGE_SIZE);
     if (transmit_buffers)
@@ -229,4 +232,31 @@ long e1000_receive(void *frame, size_t capacity) {
     put(0x2818, receive_head);
     receive_head = (receive_head + 1) % RING;
     return good ? (long)length : 0;
+}
+
+int e1000_power_stop(void) {
+    if (!registers)
+        return 0;
+    /* Polled TX completion precedes controller reset. All DMA memory remains
+       reserved even if the device refuses its reset acknowledgement. */
+    uint64_t end = tsc_uptime_us() + 1000000;
+    for (unsigned i = 0; i < RING; i++)
+        while (!(transmit_ring[i].status & 1)) {
+            if (tsc_uptime_us() >= end)
+                return -E_TIMEDOUT;
+            __asm__ volatile("pause" ::: "memory");
+        }
+    put(0xd8, UINT32_MAX);
+    put(0x100, 0);
+    put(0x400, 0);
+    (void)reg(8); /* drain posted disable writes */
+    put(0, reg(0) | (1u << 26));
+    end = tsc_uptime_us() + 1000000;
+    while (reg(0) & (1u << 26)) {
+        if (tsc_uptime_us() >= end)
+            return -E_TIMEDOUT;
+        __asm__ volatile("pause" ::: "memory");
+    }
+    *power_pci_command &= ~4u;
+    return (*power_pci_command & 4) ? -E_IO : 0;
 }

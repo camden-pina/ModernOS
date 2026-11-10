@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Offline static-musl WebKit JavaScriptCore port, separate from NetSurf.
+"""Build standalone JavaScriptCore for the text-core editor and SDK checks.
 
-This builds a genuine modern JS engine component. It does NOT build WebCore,
-render websites, or replace the native desktop Browser. All caches stay under
-build/modern-browser; the existing SDK and browser caches are preserved.
+This component has no browser frontend. Chromium is the desktop browser.
 """
 import argparse
 import hashlib
@@ -34,6 +32,47 @@ PACKAGES = {
 FLAGS = '-O2 -g0 -fno-pie -fno-stack-protector -mno-avx -mno-avx2'
 
 
+def low_memory_build(environ=None):
+    """Opt in explicitly; reject typos before changing any build artifacts."""
+    value = (os.environ if environ is None else environ).get('COAST_LOW_MEMORY_BUILD', '0')
+    if value not in ('0', '1'):
+        raise SystemExit('COAST_LOW_MEMORY_BUILD must be 0 or 1')
+    return value == '1'
+
+
+def cxx_wrapper_text(build, prefix, cross, low_memory=False):
+    include = prefix / 'include/c++/14.2.0'
+    command = (shlex.quote(str(cross) + 'g++') +
+               ' -nostdinc++ -isystem ' + shlex.quote(str(include)) +
+               ' -isystem ' + shlex.quote(str(include / 'x86_64-linux-musl')) +
+               ' -L' + shlex.quote(str(prefix / 'lib')) +
+               ' -L' + shlex.quote(str(prefix / 'lib64')))
+    if not low_memory:
+        return '#!/bin/sh\nexec ' + command + ' "$@"\n'
+    # Collector parameters do not change generated code. The isolated WebCore
+    # build further shards these expensive TUs. Keep every codegen/feature/ABI
+    # flag in the original argument vector, including the Release -O3 setting.
+    return '''#!/bin/sh
+gc_expand=5
+for arg do
+    case "$arg" in
+        *JSTypedArrayViewPrototypeFunctions[1-4].cpp|*JSTypedArrayViewPrototypeFunctions[1-4]Part[2-8].cpp) gc_expand=1;;
+    esac
+done
+exec ''' + command + ' --param=ggc-min-expand="$gc_expand" --param=ggc-min-heapsize=32768 "$@"\n'
+
+
+def write_cxx_wrapper(build, prefix, cross, low_memory=False):
+    wrapper = build / 'musl-posix-g++'
+    text = cxx_wrapper_text(build, prefix, cross, low_memory)
+    if not wrapper.exists() or wrapper.read_text() != text:
+        wrapper.write_text(text)
+    wrapper.chmod(0o755)
+    # Ninja does not hash wrapper contents; this policy changes only collector
+    # behavior. Source sharding is tracked normally through source dependencies.
+    return wrapper
+
+
 def run(directory, log, *args, env=None):
     print(f'{log}: {shlex.join(map(str, args[:3]))}', flush=True)
     with (BUILD / log).open('w') as output:
@@ -46,7 +85,7 @@ def run(directory, log, *args, env=None):
 def stage(name, configure, targets, env, jobs, outputs=()):
     directory = BUILD / name
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = directory / '.modernos-stage'
+    stamp = directory / '.coast-stage'
     configure_digest = hashlib.sha256(Path(configure[0]).read_bytes()).hexdigest()
     key = hashlib.sha256(json.dumps([list(map(str, configure)), configure_digest, targets,
                                      {k: env.get(k) for k in (
@@ -56,7 +95,7 @@ def stage(name, configure, targets, env, jobs, outputs=()):
         print(f'{name}: cached', flush=True)
         return
     stamp.unlink(missing_ok=True)
-    configured = directory / '.modernos-configured'
+    configured = directory / '.coast-configured'
     if (not configured.exists() or configured.read_text() != key
             or not (directory / 'Makefile').is_file()):
         run(directory, name + '-configure.log', *configure, env=env)
@@ -120,6 +159,7 @@ def main():
     parser.add_argument('--deps-only', action='store_true')
     parser.add_argument('--jobs', type=int, default=8)
     args = parser.parse_args()
+    low_memory = low_memory_build()
 
     if not 1 <= args.jobs <= 32:
         parser.error('--jobs must be 1..32')
@@ -159,7 +199,7 @@ def main():
         raise SystemExit('libstdc++ configure thread-selection patch drifted')
     patched = BUILD / 'libstdcxx-posix-configure'
     patched.write_text(configure.replace(old, 'target_thread_file=posix') +
-                       '\n# ModernOS separate POSIX gthread runtime, revision 3.\n')
+                       '\n# Coast separate POSIX gthread runtime, revision 3.\n')
     patched.chmod(0o755)
 
     # Standalone libstdc++ configure also expects GCC's generated libgcc
@@ -186,14 +226,7 @@ def main():
                                       text=True, stderr=subprocess.DEVNULL)
     if ' T _ZNSt18condition_variableC1Ev' not in symbols or ' T __once_proxy' not in symbols:
         raise SystemExit('POSIX C++ runtime is missing condition-variable/once implementations')
-    wrapper = BUILD / 'musl-posix-g++'
-    include = PREFIX / 'include/c++/14.2.0'
-    wrapper.write_text('#!/bin/sh\nexec ' + shlex.quote(str(CROSS) + 'g++') +
-                       ' -nostdinc++ -isystem ' + shlex.quote(str(include)) +
-                       ' -isystem ' + shlex.quote(str(include / 'x86_64-linux-musl')) +
-                       ' -L' + shlex.quote(str(PREFIX / 'lib')) +
-                       ' -L' + shlex.quote(str(PREFIX / 'lib64')) + ' "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = write_cxx_wrapper(BUILD, PREFIX, CROSS, low_memory)
     target_env['CXX'] = str(wrapper)
     run(BUILD, 'cxx-runtime-check-build.log', wrapper, *shlex.split(FLAGS),
         '-std=gnu++23', '-pthread', '-static', '-no-pie',

@@ -1,5 +1,5 @@
-#ifndef MODERNOS_BOOT_SMP_H
-#define MODERNOS_BOOT_SMP_H
+#ifndef COAST_BOOT_SMP_H
+#define COAST_BOOT_SMP_H
 #include <stdint.h>
 #include <stdbool.h>
 

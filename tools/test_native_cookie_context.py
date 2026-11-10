@@ -97,7 +97,7 @@ const errors=[];function check(value,why){if(!value)errors.push(why);}
     try:
         run('openssl', 'req', '-new', '-newkey', 'rsa:2048', '-nodes',
             '-keyout', fixture.directory / 'cookie.key', '-out', fixture.directory / 'cookie.csr',
-            '-subj', '/CN=ModernOS cookie fixture')
+            '-subj', '/CN=Coast cookie fixture')
         extensions = fixture.directory / 'cookie.extensions'
         extensions.write_text('basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\n'
                               'extendedKeyUsage=serverAuth\nsubjectAltName=IP:10.0.2.2,DNS:' + foreign_host + '\n')

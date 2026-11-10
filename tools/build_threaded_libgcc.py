@@ -22,7 +22,7 @@ TARGET = 'x86_64-linux-musl'
 def build_posix_libgcc(build, prefix, jobs, env):
     build.mkdir(parents=True, exist_ok=True)
 
-    # JSC and WebCore can be separate parallel Make prerequisites. Both use
+    # JSC and Qt can be separate parallel Make prerequisites. Both use
     # this cache, so the stamp must be checked after acquiring its lock.
     with (build / '.libgcc-posix-build.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -42,7 +42,7 @@ def _build_posix_libgcc(build, prefix, jobs, env):
         for path in inputs
     ], sort_keys=True).encode()).hexdigest()
     directory = build / 'libgcc-posix' / key
-    stamp = directory / '.modernos-stage'
+    stamp = directory / '.coast-stage'
     if not stamp.exists() or not (directory / 'libgcc.a').exists():
         # Existing objects contain no-op locks. Recompile every object
         # using the generated target configuration and real POSIX header.

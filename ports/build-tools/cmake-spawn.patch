@@ -1,0 +1,123 @@
+--- a/Utilities/cmlibuv/src/unix/process.c
++++ b/Utilities/cmlibuv/src/unix/process.c
+@@ -36,6 +36,12 @@
+ #include <poll.h>
+ #include <sched.h>
+ 
++#if defined(COAST_NATIVE)
++# define UV_USE_COAST_POSIX_SPAWN
++# include <spawn.h>
++# include <paths.h>
++#endif
++
+ #if defined(__APPLE__)
+   /* macOS 10.8 and later have a working posix_spawn */
+ # if MAC_OS_X_VERSION_MIN_REQUIRED >= 1080
+@@ -465,10 +471,14 @@
+ }
+ 
+ 
+-#if defined(UV_USE_APPLE_POSIX_SPAWN)
++#if defined(UV_USE_APPLE_POSIX_SPAWN) || defined(UV_USE_COAST_POSIX_SPAWN)
+ typedef struct uv__posix_spawn_fncs_tag {
+   struct {
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++    int (*addchdir_np)(posix_spawn_file_actions_t *, const char *);
++#else
+     int (*addchdir_np)(const posix_spawn_file_actions_t *, const char *);
++#endif
+   } file_actions;
+ } uv__posix_spawn_fncs_t;
+ 
+@@ -479,13 +489,20 @@
+ 
+ 
+ static void uv__spawn_init_posix_spawn_fncs(void) {
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++  posix_spawn_fncs.file_actions.addchdir_np = posix_spawn_file_actions_addchdir_np;
++#else
+   /* Try to locate all non-portable functions at runtime */
+   posix_spawn_fncs.file_actions.addchdir_np =
+     dlsym(RTLD_DEFAULT, "posix_spawn_file_actions_addchdir_np");
++#endif
+ }
+ 
+ 
+ static void uv__spawn_init_can_use_setsid(void) {
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++  posix_spawn_can_use_setsid = 1;
++#else
+   int which[] = {CTL_KERN, KERN_OSRELEASE};
+   unsigned major;
+   unsigned minor;
+@@ -502,6 +519,7 @@
+     return;
+ 
+   posix_spawn_can_use_setsid = (major >= 19);  /* macOS Catalina */
++#endif
+ }
+ 
+ 
+@@ -548,9 +566,10 @@
+    *    spawn-sigmask in attributes
+    * 4) POSIX_SPAWN_SETSID: Make the process a new session leader if a detached
+    *    session was requested. */
+-  flags = POSIX_SPAWN_CLOEXEC_DEFAULT |
+-          POSIX_SPAWN_SETSIGDEF |
+-          POSIX_SPAWN_SETSIGMASK;
++  flags = POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK;
++#if !defined(UV_USE_COAST_POSIX_SPAWN)
++  flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
++#endif
+   if (options->flags & UV_PROCESS_DETACHED) {
+     /* If running on a version of macOS where this flag is not supported,
+      * revert back to the fork/exec flow. Otherwise posix_spawn will
+@@ -666,10 +685,15 @@
+       }
+     }
+ 
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++    /* POSIX dup2 actions also clear CLOEXEC when source == destination. */
++    err = posix_spawn_file_actions_adddup2(actions, use_fd, fd);
++#else
+     if (fd == use_fd)
+         err = posix_spawn_file_actions_addinherit_np(actions, fd);
+     else
+         err = posix_spawn_file_actions_adddup2(actions, use_fd, fd);
++#endif
+     assert(err != ENOSYS);
+     if (err != 0)
+       goto error;
+@@ -917,7 +941,7 @@
+   int exec_errorno;
+   ssize_t r;
+ 
+-#if defined(UV_USE_APPLE_POSIX_SPAWN)
++#if defined(UV_USE_APPLE_POSIX_SPAWN) || defined(UV_USE_COAST_POSIX_SPAWN)
+   uv_once(&posix_spawn_init_once, uv__spawn_init_posix_spawn);
+ 
+   /* Special child process spawn case for macOS Big Sur (11.0) onwards
+@@ -942,8 +966,13 @@
+   /* The posix_spawn flow will return UV_ENOSYS if any of the posix_spawn_x_np
+    * non-standard functions is both _needed_ and _undefined_. In those cases,
+    * default back to the fork/execve strategy. For all other errors, just fail. */
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++  /* Unsupported credential changes must fail, without a threaded fork. */
++  return err;
++#else
+   if (err != UV_ENOSYS)
+     return err;
++#endif
+ 
+ #endif
+ 
+@@ -1027,6 +1056,9 @@
+   int i;
+ 
+   if (options->cpumask != NULL) {
++#if defined(UV_USE_COAST_POSIX_SPAWN)
++    return UV_ENOTSUP;
++#endif
+ #ifndef CMAKE_BOOTSTRAP
+ #if defined(__linux__) || defined(__FreeBSD__)
+     if (options->cpumask_size < (size_t)uv_cpumask_size()) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recover a real RAM-only ModernOS guest and its live processes from a file."""
+"""Recover a real RAM-only Coast guest and its live processes from a file."""
 from test_runtime import VM, WORK, assert_success
 
 

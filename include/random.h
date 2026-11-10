@@ -1,5 +1,5 @@
-#ifndef MODERNOS_RANDOM_H
-#define MODERNOS_RANDOM_H
+#ifndef COAST_RANDOM_H
+#define COAST_RANDOM_H
 #include <stddef.h>
 #include <stdbool.h>
 

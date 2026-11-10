@@ -1,0 +1,10 @@
+{
+  "version": "23.0.0git",
+  "commit": "20b6ec66967ac2a8f932863c1abf251e5b17a843",
+  "archive": "llvm-project-20b6ec66967ac2a8f932863c1abf251e5b17a843.tar.gz",
+  "source": "llvm-project-20b6ec66967ac2a8f932863c1abf251e5b17a843",
+  "url": "https://codeload.github.com/llvm/llvm-project/tar.gz/20b6ec66967ac2a8f932863c1abf251e5b17a843",
+  "sha256": "ca864365541aae29589eb4c7b3638ea1348b4256f5855b62758824f916f4a8ca",
+  "bytes": 266460041,
+  "license": "Apache-2.0 WITH LLVM-exception"
+}

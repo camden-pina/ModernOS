@@ -1,0 +1,39 @@
+# Maintainer: Coast local ports
+pkgname=xorriso
+pkgver=1.5.8.pl02
+pkgrel=3
+pkgdesc='Native xorriso, built with Coast GCC'
+arch=('x86_64')
+license=('GPL-3.0-or-later')
+depends=('musl')
+makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi')
+source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-1.5.8.pl02.tar.gz"
+        "${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/xorriso-private-buffer.patch")
+sha256sums=('b1455ecafbf0692ddafe1d71002a96f2ce2d77f4deae602678261ce033f97bc8'
+            '648a3fffbfcc3ca98042b709db762546554e37ea90f8d2932736c1afd4052f67')
+noextract=('xorriso-1.5.8.pl02.tar.gz')
+
+prepare() {
+    cd "$srcdir"
+    tar -xzf 'xorriso-1.5.8.pl02.tar.gz'
+    cd xorriso-1.5.8
+    patch -Np1 -i "$srcdir/xorriso-private-buffer.patch"
+}
+
+build() {
+    cd "$srcdir/xorriso-1.5.8"
+    CFLAGS='-std=gnu11 -O2 -fno-pie -mno-avx -mno-avx2' LDFLAGS='-static -no-pie' CPPFLAGS='-idirafter /usr/lib/coast/linux-uapi/include' \
+        ./configure --prefix=/usr --build=x86_64-linux-musl --host=x86_64-linux-musl --disable-dependency-tracking --disable-shared --disable-libacl --disable-xattr --disable-zlib --disable-libbz2 --disable-libjte --disable-readline --disable-libedit
+    make
+}
+
+check() {
+    cd "$srcdir/xorriso-1.5.8"
+    ./xorriso/xorriso --version
+}
+
+package() {
+    cd "$srcdir/xorriso-1.5.8"
+    install -Dm755 xorriso/xorriso "$pkgdir/usr/bin/xorriso"
+    install -Dm644 COPYING "$pkgdir/usr/share/licenses/xorriso/COPYING"
+}

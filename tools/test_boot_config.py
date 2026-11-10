@@ -19,7 +19,7 @@ POLICY = 'version = 1\n[boot]\ntitle = "OS"\nkernel = "/kernel"\n'
 class BootConfigTests(unittest.TestCase):
     def test_repository_policy(self):
         config = read_config(ROOT / "arch/x86/boot/boot.conf")
-        self.assertEqual(config.title, "ModernOS")
+        self.assertEqual(config.title, "Coast")
         self.assertEqual(config.kernel, "/boot/kernel.elf")
         self.assertEqual([(m.path, m.string) for m in config.modules],
                          [("/boot/initramfs.tar", "initramfs")])
@@ -28,8 +28,8 @@ class BootConfigTests(unittest.TestCase):
         self.assertIn("timeout -1\n", refind_config(config))
         self.assertIn("resolution 2560 1600\n", refind_config(config))
         self.assertIn("module=/boot/initramfs.tar\nmodule_string=initramfs\n", efi_config(config))
-        self.assertIn("chainloader /EFI/ModernOS/modernos.efi", grub_config(config))
-        self.assertIn("loader /EFI/ModernOS/modernos.efi", refind_config(config))
+        self.assertIn("chainloader /EFI/Coast/coast.efi", grub_config(config))
+        self.assertIn("loader /EFI/Coast/coast.efi", refind_config(config))
         for command in ("reboot", "halt", "fwsetup"):
             self.assertIn(f"    {command}\n", grub_config(config))
         self.assertIn("showtools reboot,shutdown,firmware", refind_config(config))
@@ -165,7 +165,7 @@ resolution = "1280x720"
             source = str(ROOT / "arch/x86/boot/efi")
             self.assertNotIn(f'rm -rf "{source}', result.stdout)
             self.assertNotIn(f"rm -rf {source}", result.stdout)
-            self.assertIn(source + "/modernos.efi", result.stdout)
+            self.assertIn(source + "/coast.efi", result.stdout)
 
     def test_switching_loaders_replaces_staging(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -303,7 +303,7 @@ resolution = "1280x720"
                                   ("modules/root.tar", b"initramfs"),
                                   ("standalone.bin", b"standalone"),
                                   ("EFI/BOOT/BOOTX64.EFI", b"boot manager"),
-                                  ("boot/modernos.conf", b"kernel=/images/kernel.elf\n")):
+                                  ("boot/coast.conf", b"kernel=/images/kernel.elf\n")):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(payload)

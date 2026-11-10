@@ -1,4 +1,4 @@
-# Makefile for building Binutils, GCC, and dependencies (GMP, MPFR, MPC) for ModernOS
+# Makefile for building Binutils, GCC, and dependencies (GMP, MPFR, MPC) for Coast
 
 # -----------------------
 # Versions (must match the pins in userland/vendor/sources.json)

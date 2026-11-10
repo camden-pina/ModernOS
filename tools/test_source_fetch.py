@@ -48,6 +48,24 @@ class SourceFetchTest(unittest.TestCase):
             download.assert_not_called()
         self.assertEqual(archive.read_bytes(), b'local corrupt archive')
 
+    def test_native_source_package_reuse_checks_the_installed_hash(self):
+        installed = self.directory / 'installed'
+        installed.mkdir()
+        source = installed / self.entry['archive']
+        source.write_bytes(self.payload)
+        destination = self.directory / 'checkout'
+        with patch.dict('fetch_sources.os.environ', {'COAST_DISTFILES_DIR': str(installed)}), \
+                patch('fetch_sources.subprocess.run') as download:
+            fetch(self.entry, destination)
+            self.assertEqual((destination / source.name).read_bytes(), self.payload)
+            download.assert_not_called()
+            (destination / source.name).unlink()
+            source.write_bytes(b'corrupt installed source')
+            with self.assertRaisesRegex(ValueError, 'SHA-256 mismatch'):
+                fetch(self.entry, destination)
+            self.assertFalse((destination / source.name).exists())
+            download.assert_not_called()
+
     def test_download_is_installed_only_after_verification(self):
         archive = self.directory / self.entry['archive']
 
@@ -188,7 +206,7 @@ class SourceFetchTest(unittest.TestCase):
         launcher.chmod(0o755)
         env = dict(os.environ, PATH=str(self.directory) + os.pathsep + os.environ['PATH'])
         env.pop('MAKEFLAGS', None)
-        mirror = 'https://cache.invalid/modernos'
+        mirror = 'https://cache.invalid/coast'
         targets = ((ROOT, 'fetch-sources'), (ROOT / 'userland', 'sources'),
                    (ROOT / 'toolchain', str(self.directory / 'gcc-14.2.0.tar.gz')))
         for directory, target in targets:
@@ -198,7 +216,10 @@ class SourceFetchTest(unittest.TestCase):
                                         cwd=directory, env=env, text=True,
                                         capture_output=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.strip(), mirror)
+                # Independent source collections (for example Freedoom) may
+                # attach their own fetch steps to this public target.
+                self.assertTrue(result.stdout.strip())
+                self.assertTrue(all(line == mirror for line in result.stdout.splitlines()))
 
     def test_refind_uses_shared_mirror_and_verification(self):
         payload = io.BytesIO()

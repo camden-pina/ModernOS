@@ -1,5 +1,5 @@
-#ifndef MODERNOS_EVENTFD_H
-#define MODERNOS_EVENTFD_H
+#ifndef COAST_EVENTFD_H
+#define COAST_EVENTFD_H
 #include <fs/vfs.h>
 
 struct event_counter *eventfd_allocate(uint32_t initial, bool semaphore);

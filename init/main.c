@@ -3,6 +3,9 @@
 #include <descriptor_tables/idt.h>
 #include <interrupts/lapic.h>
 #include <acpi/acpi.h>
+#include <acpi/osl.h>
+#include <acpi/telemetry.h>
+#include <power.h>
 #include <mm/pmm.h>
 #include <mm/vmem.h>
 #include <mm/user.h>
@@ -37,13 +40,15 @@ void kernel_main(void) {
 
     if (fb)
         fbcon_init(fb);
-    pr_notice("ModernOS 0.3: SMP, userland and filesystems\n");
+    pr_notice("Coast 0.3: SMP, userland and filesystems\n");
 
     if (boot_info.rsdp)
         acpi_init(boot_info.rsdp);
     hpet_init();
     apic_init();
     pci_init();
+    if (boot_info.rsdp)
+        acpi_start();
 
     if (!kernel_usb_input_start())
         pr_warn("USB input unavailable; serial console remains active\n");
@@ -52,12 +57,48 @@ void kernel_main(void) {
     vfs_discover();
     audio_init();
 
+    if (boot_info.rsdp) {
+        uint64_t boot_irq_flags;
+        __asm__ volatile("pushfq; popq %0" : "=r"(boot_irq_flags));
+        if (!(boot_irq_flags & 0x200))
+            panic("ACPICA: SCI interrupts disabled by a boot consumer");
+        pr_info("ACPICA: boot consumers completed with SCI interrupts enabled (IF=1)\n");
+    }
+    /* Boot AML needs SCI delivery, but SMP/scheduler setup expects CLI. */
+    __asm__ volatile("cli" ::: "memory");
     sched_init(boot_info.smp);
-    char *args[] = {"/bin/modernos-sh", NULL};
-    int pid = process_spawn("/bin/modernos-sh", args, 0, "/", 0, true);
+#if CONFIG_ELECTRON_PROFILE_SELFTEST
+    extern void electron_budget_selftest(void);
+    electron_budget_selftest();
+#endif
+#if CONFIG_RAMFS_SHARED_WRITE_VERIFY
+    extern void ramfs_shared_write_selftest(void);
+    ramfs_shared_write_selftest();
+#if CONFIG_RAMFS_PARTIAL_WRITE_TEST
+    extern void ramfs_partial_selftest(void);
+    ramfs_partial_selftest();
+#endif
+#endif
+    char *args[] = {"/bin/coast-sh", NULL};
+    int pid = process_spawn("/bin/coast-sh", args, 0, "/", 0, true);
     if (pid < 0)
-        panic("cannot launch /bin/modernos-sh from initramfs: %d", pid);
+        panic("cannot launch /bin/coast-sh from initramfs: %d", pid);
 
+    /* Preserve the initial user shell as PID 1. */
+    if (boot_info.rsdp && !acpi_os_start_workers())
+        panic("cannot create ACPICA event workers");
+    if (boot_info.rsdp && !acpi_selftest_start())
+        panic("cannot create ACPICA selftest task");
+
+    if (boot_info.rsdp && !acpi_telemetry_start())
+        pr_warn("ACPI power telemetry worker unavailable\n");
+    if (!power_start(boot_info.rsdp != NULL))
+        panic("cannot create power coordinator");
+
+#if CONFIG_RAMFS_SHARED_WRITE_VERIFY && CONFIG_RAMFS_PARTIAL_WRITE_TEST
+    extern void ramfs_shared_write_stress_start(void);
+    ramfs_shared_write_stress_start();
+#endif
     network_start();
     if (task_kernel("input", input_task, NULL, 0) < 0)
         panic("cannot create input task");

@@ -4,7 +4,7 @@ set default=0
 set timeout={{TIMEOUT}}
 insmod fat
 insmod search_label
-search --no-floppy --label MODERNOS --set=root
+search --no-floppy --label COAST --set=root
 {{MENU_RESOLUTION}}
 if [ -f ($memdisk)/boot/grub/fonts/unicode.pf2 ]; then
     loadfont ($memdisk)/boot/grub/fonts/unicode.pf2

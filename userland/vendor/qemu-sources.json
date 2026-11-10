@@ -1,0 +1,90 @@
+{
+  "libffi": {
+    "archive": "libffi-3.5.2.tar.gz",
+    "url": "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz",
+    "mirrors": [
+      "https://sources.buildroot.net/libffi/libffi-3.5.2.tar.gz"
+    ],
+    "sha256": "f3a3082a23b37c293a4fcd1053147b371f2ff91fa7ea1b2a52e335676bac82dc",
+    "source": "libffi-3.5.2",
+    "version": "3.5.2",
+    "license": "MIT"
+  },
+  "pcre2": {
+    "archive": "pcre2-10.46.tar.bz2",
+    "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.46/pcre2-10.46.tar.bz2",
+    "mirrors": [
+      "https://sources.buildroot.net/pcre2/pcre2-10.46.tar.bz2"
+    ],
+    "sha256": "15fbc5aba6beee0b17aecb04602ae39432393aba1ebd8e39b7cabf7db883299f",
+    "source": "pcre2-10.46",
+    "version": "10.46",
+    "license": "BSD-3-Clause"
+  },
+  "glib": {
+    "archive": "glib-2.86.5.tar.xz",
+    "url": "https://download.gnome.org/sources/glib/2.86/glib-2.86.5.tar.xz",
+    "sha256": "ce85a947bb8b3c0204dbeff79aec39bcb46371c6fafb64ba5b8726c71e038d5f",
+    "source": "glib-2.86.5",
+    "version": "2.86.5",
+    "license": "LGPL-2.1-or-later"
+  },
+  "zlib": {
+    "archive": "zlib-1.3.2.tar.xz",
+    "url": "https://zlib.net/zlib-1.3.2.tar.xz",
+    "mirrors": [
+      "https://distfiles.macports.org/zlib/zlib-1.3.2.tar.xz"
+    ],
+    "sha256": "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3",
+    "source": "zlib-1.3.2",
+    "version": "1.3.2",
+    "license": "Zlib"
+  },
+  "pixman": {
+    "archive": "pixman-0.46.4.tar.gz",
+    "source": "pixman-0.46.4",
+    "version": "0.46.4",
+    "license": "MIT",
+    "url": "https://www.cairographics.org/releases/pixman-0.46.4.tar.gz",
+    "sha256": "d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
+  },
+  "libslirp": {
+    "archive": "libslirp-v4.9.3.tar.bz2",
+    "source": "libslirp-v4.9.3",
+    "version": "4.9.3",
+    "license": "BSD-3-Clause",
+    "url": "https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.9.3/libslirp-v4.9.3.tar.bz2",
+    "sha256": "c82e22c73bdc3f2c038e538d4f0c9c2166defb2402212d61bb7cb1b530ba952f"
+  },
+  "qemu": {
+    "archive": "qemu-10.2.4.tar.xz",
+    "source": "qemu-10.2.4",
+    "version": "10.2.4",
+    "license": "GPL-2.0-only",
+    "url": "https://download.qemu.org/qemu-10.2.4.tar.xz",
+    "sha256": "821b545b92f165e57dddccac5077d76d4d436a226595b8813ad59306bbfd0746",
+    "signature": {
+      "archive": "qemu-10.2.4.tar.xz.sig",
+      "url": "https://download.qemu.org/qemu-10.2.4.tar.xz.sig",
+      "sha256": "aca12b432b3c12c03812763ab306936c62550f4a120d94e454aee18de3e0eb84",
+      "fingerprint": "CEACC9E15534EBABB82D3FA03353C9CEF108B584"
+    }
+  },
+  "libucontext": {
+    "version": "1.3.3",
+    "archive": "libucontext-1.3.3.tar.xz",
+    "source": "libucontext-1.3.3",
+    "url": "https://distfiles.dereferenced.org/libucontext/libucontext-1.3.3.tar.xz",
+    "sha256": "6885ba23d9200f6e8d26dbf0283563ba8c1c2e4c225997043abf37fc835ccfb6",
+    "license": "ISC"
+  },
+  "ninja": {
+    "version": "1.13.2",
+    "url": "https://codeload.github.com/ninja-build/ninja/tar.gz/refs/tags/v1.13.2",
+    "archive": "ninja-1.13.2.tar.gz",
+    "source": "ninja-1.13.2",
+    "sha256": "974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17",
+    "provenance": "https://github.com/ninja-build/ninja/releases/tag/v1.13.2",
+    "license": "Apache-2.0"
+  }
+}

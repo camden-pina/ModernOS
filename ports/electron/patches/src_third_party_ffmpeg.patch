@@ -1,0 +1,13 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index bdf0208..94290cd 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -460,7 +460,7 @@ if (is_component_ffmpeg) {
+ 
+     if (!is_component_build) {
+       if (is_mac) {
+-        ldflags += [ "-Wl,-install_name,@rpath/libffmpeg.dylib" ]
++        ldflags += [ "-Wl,-install_name,@loader_path/libffmpeg.dylib" ]
+       } else if (is_linux) {
+         all_dependent_configs =
+             [ "//build/config/gcc:rpath_for_built_shared_libraries" ]

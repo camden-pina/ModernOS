@@ -1,0 +1,6 @@
+*self_spec:
+%<static %<no-pie %{!shared:%{!r:-pie}}
+
+*libgcc:
+-lgcc_s
+

@@ -1,0 +1,5 @@
+#!/bin/sh
+export AUR_CONFIG=/run/coast/config
+export AUR_CONFIG_DEFAULTS=/opt/aurweb/conf/config.defaults
+export PYTHONPATH=/opt/aurweb
+exec /usr/bin/aurweb-git-auth "$@"

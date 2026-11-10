@@ -30,6 +30,7 @@ static unsigned codec, function_group, first_node, node_count;
 static unsigned queued, position, owner;
 static uint64_t played;
 static bool running, starting_speakers;
+static volatile uint16_t *power_pci_command;
 static spinlock_t audio_lock;
 static bool legion_speakers;
 void aw88399_match(uint32_t, uint32_t);
@@ -318,6 +319,7 @@ static void use_legacy_streams(void) {
 
 bool hda_probe(void *header) {
     volatile pci_device_header_t *pci = header;
+    power_pci_command = (void *)((uintptr_t)pci + 4);
     uint32_t bar = pci->bar[0];
     if (registers || (bar & 1) || !(bar & ~15U))
         return false;
@@ -344,7 +346,7 @@ bool hda_probe(void *header) {
     if (!registers)
         return false;
 
-    *(volatile uint16_t *)&pci->command |= 6U | (1U << 10);
+    *(volatile uint16_t *)(void *)((uintptr_t)pci + 4) |= 6U | (1U << 10);
     w32(0x20, 0);
     w8(0x4c, 0);
     w8(0x5c, 0);
@@ -438,7 +440,7 @@ failed:
         stopped = wait_bit(8, 1, false, 100000);
     }
 
-    *(volatile uint16_t *)&pci->command &= ~4U;
+    *(volatile uint16_t *)(void *)((uintptr_t)pci + 4) &= ~4U;
     if (stopped) {
         if (command_phys)
             pmm_free_pages(command_phys, 1);
@@ -558,4 +560,28 @@ long hda_call(struct task *task, unsigned operation, uint64_t pointer, uint64_t 
     if (operation == OS_AUDIO_INFO && !user_copy_out(&task->space, pointer, &info, sizeof(info)))
         return -E_FAULT;
     return result;
+}
+
+bool hda_power_ready(void) {
+    /* Board-specific external speaker power/reset is separately unvalidated. */
+    return !legion_speakers && !starting_speakers;
+}
+
+int hda_power_stop(void) {
+    if (!registers)
+        return 0;
+    if (!hda_power_ready())
+        return -E_NOTSUP;
+    w8(stream, r8(stream) & ~2u);
+    if (!wait_bit(stream, 2, false, 100000))
+        return -E_TIMEDOUT;
+    running = false;
+    w8(0x4c, r8(0x4c) & ~2u); /* CORB RUN */
+    w8(0x5c, r8(0x5c) & ~2u); /* RIRB DMA */
+    if (!wait_bit(0x4c, 2, false, 100000) || !wait_bit(0x5c, 2, false, 100000))
+        return -E_TIMEDOUT;
+    w32(0x70, r32(0x70) & ~1u); /* DMA position buffer */
+    w32(0x20, 0); /* INTCTL */
+    *power_pci_command &= ~4u;
+    return (*power_pci_command & 4) ? -E_IO : 0;
 }

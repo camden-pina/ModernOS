@@ -45,7 +45,7 @@ int main(void) {
 '''
 
 if __name__ == '__main__':
-    with tempfile.TemporaryDirectory(prefix='modernos-scroll-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='coast-scroll-') as temporary:
         directory = Path(temporary)
         source = directory / 'check.c'
         source.write_text(SOURCE)

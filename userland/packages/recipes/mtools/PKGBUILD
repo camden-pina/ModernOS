@@ -1,0 +1,43 @@
+# Maintainer: Coast local ports
+pkgname=mtools
+pkgver=4.0.49
+pkgrel=1
+pkgdesc='Native mtools, built with Coast GCC'
+arch=('x86_64')
+license=('GPL-3.0-or-later')
+depends=('musl')
+makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi')
+source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/mtools-4.0.49.tar.gz")
+sha256sums=('10cd1111da87bf2400a380c1639a6cba8bfb937a24f9c51f5f88d393ae5f6f76')
+noextract=('mtools-4.0.49.tar.gz')
+
+prepare() {
+    cd "$srcdir"
+    tar -xzf 'mtools-4.0.49.tar.gz'
+}
+
+build() {
+    cd "$srcdir/mtools-4.0.49"
+    CFLAGS='-std=gnu11 -O2 -fno-pie -mno-avx -mno-avx2' LDFLAGS='-static -no-pie' CPPFLAGS='-idirafter /usr/lib/coast/linux-uapi/include' \
+        ./configure --prefix=/usr --build=x86_64-linux-musl --host=x86_64-linux-musl --without-x --disable-floppyd
+    make
+}
+
+check() {
+    cd "$srcdir/mtools-4.0.49"
+    ./mtools --version
+}
+
+package() {
+    cd "$srcdir/mtools-4.0.49"
+    install -Dm755 mtools "$pkgdir/usr/bin/mtools"
+    install -Dm755 mformat "$pkgdir/usr/bin/mformat"
+    install -Dm755 mcopy "$pkgdir/usr/bin/mcopy"
+    install -Dm755 mdir "$pkgdir/usr/bin/mdir"
+    install -Dm755 mmd "$pkgdir/usr/bin/mmd"
+    install -Dm755 mtype "$pkgdir/usr/bin/mtype"
+    install -Dm755 mdel "$pkgdir/usr/bin/mdel"
+    install -Dm755 mlabel "$pkgdir/usr/bin/mlabel"
+    install -Dm755 mshowfat "$pkgdir/usr/bin/mshowfat"
+    install -Dm644 COPYING "$pkgdir/usr/share/licenses/mtools/COPYING"
+}

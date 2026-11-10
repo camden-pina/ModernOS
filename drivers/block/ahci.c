@@ -22,7 +22,8 @@ struct port {
     uint64_t table_phys, dma_phys;
     uint8_t *table, *dma;
     mutex_t lock;
-    bool failed;
+    bool failed, initialized;
+    volatile uint16_t *pci_command;
 };
 
 static struct port ports[AHCI_PORT_MAX];
@@ -175,6 +176,7 @@ void ahci_probe(pci_device_header_t *h) {
             continue; /* SATA only */
         struct port *p = &ports[port_count++];
         p->regs = preg;
+        p->pci_command = command;
         write_port(p, 0x18, read_port(p, 0x18) & ~1u);
         if (!wait_clear(p, 0x18, 1u << 15))
             continue;
@@ -217,8 +219,41 @@ void ahci_probe(pci_device_header_t *h) {
                                  .transfer = ahci_transfer,
                                  .flush = ahci_flush};
         snprintf(d.name, sizeof(d.name), "sata%u", disk_count++);
+        p->initialized = true;
         if (block_register(&d))
             pr_info("%s: %llu MiB, %u byte sectors\n", d.name,
                     (unsigned long long)(sectors * sector_size >> 20), sector_size);
     }
+}
+
+bool ahci_power_ready(void) {
+    for (unsigned i = 0; i < port_count; i++)
+        if (!ports[i].initialized || ports[i].failed)
+            return false;
+    return true;
+}
+
+int ahci_power_stop(void) {
+    /* No buffer is freed. Stop command fetching, then FIS receive DMA; both
+       engine acknowledgements must arrive before disabling PCI bus master. */
+    for (unsigned i = 0; i < port_count; i++) {
+        struct port *p = &ports[i];
+        mutex_lock(&p->lock);
+        bool stopped = !p->failed && wait_clear(p, 0x38, UINT32_MAX) &&
+                       wait_clear(p, 0x34, UINT32_MAX);
+        if (stopped) {
+            write_port(p, 0x18, read_port(p, 0x18) & ~1u);
+            stopped = wait_clear(p, 0x18, 1u << 15);
+        }
+        if (stopped) {
+            write_port(p, 0x18, read_port(p, 0x18) & ~(1u << 4));
+            stopped = wait_clear(p, 0x18, 1u << 14);
+        }
+        mutex_unlock(&p->lock);
+        if (!stopped)
+            return -E_TIMEDOUT;
+    }
+    for (unsigned i = 0; i < port_count; i++)
+        *ports[i].pci_command &= ~4u;
+    return 0;
 }

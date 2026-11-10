@@ -18,5 +18,7 @@ bool kernel_usb_input_start(void);
  * Mouse samples remain queued for mouse_read_event() / mouse_read_events().
  */
 void kernel_usb_input_poll(void);
+bool kernel_usb_power_ready(void);
+int kernel_usb_power_stop(void);
 
 #endif

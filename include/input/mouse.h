@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <uapi/pointer_caps.h>
 
 #define MOUSE_MAX_SOURCES 256u
 #define MOUSE_BUTTON_LEFT (1u << 0)
@@ -52,6 +53,8 @@ bool mouse_read_event(mouse_event_t *out);
 size_t mouse_read_events(mouse_event_t *out, size_t capacity);
 bool mouse_get_state(uint16_t source_id, mouse_state_t *out);
 uint64_t mouse_dropped_events(void);
+uint32_t mouse_capabilities(uint16_t source_id);
+void mouse_set_capabilities(uint16_t source_id, uint32_t capabilities);
 
 /* Driver-facing API; initialize once before attaching any input sources.
  * Source zero is reserved. Overflow drops the oldest sample; the next read

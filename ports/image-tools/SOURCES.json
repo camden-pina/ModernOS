@@ -1,0 +1,28 @@
+[
+  {
+    "archive": "xorriso-1.5.8.pl02.tar.gz",
+    "url": "https://ftp.gnu.org/gnu/xorriso/xorriso-1.5.8.pl02.tar.gz",
+    "sha256": "b1455ecafbf0692ddafe1d71002a96f2ce2d77f4deae602678261ce033f97bc8",
+    "signature_verified": true,
+    "verification": [
+      "[GNUPG:] NEWSIG",
+      "[GNUPG:] KEY_CONSIDERED 44BC9FD0D688EB007C4DD029E9CBDFC0ABC0A854 0",
+      "[GNUPG:] SIG_ID 8gRvb6eiYYM9iBCL0hUhJHcTFEw 2026-05-24 1779609313",
+      "[GNUPG:] GOODSIG E9CBDFC0ABC0A854 Thomas Schmitt <scdbackup@gmx.net>",
+      "[GNUPG:] VALIDSIG 44BC9FD0D688EB007C4DD029E9CBDFC0ABC0A854 2026-05-24 1779609313 0 4 0 17 2 00 44BC9FD0D688EB007C4DD029E9CBDFC0ABC0A854"
+    ]
+  },
+  {
+    "archive": "mtools-4.0.49.tar.gz",
+    "url": "https://ftp.gnu.org/gnu/mtools/mtools-4.0.49.tar.gz",
+    "sha256": "10cd1111da87bf2400a380c1639a6cba8bfb937a24f9c51f5f88d393ae5f6f76",
+    "signature_verified": true,
+    "verification": [
+      "[GNUPG:] NEWSIG",
+      "[GNUPG:] KEY_CONSIDERED 51A23D9D7C4DF41AA48FA893E99CF5537790B839 0",
+      "[GNUPG:] SIG_ID Rm3DUAGJUOwuOjo6jhUUISrOu9E 2025-06-14 1749918003",
+      "[GNUPG:] GOODSIG E99CF5537790B839 Alain KNAFF <alain@knaff.lu>",
+      "[GNUPG:] VALIDSIG 51A23D9D7C4DF41AA48FA893E99CF5537790B839 2025-06-14 1749918003 0 4 0 1 8 00 51A23D9D7C4DF41AA48FA893E99CF5537790B839"
+    ]
+  }
+]

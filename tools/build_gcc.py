@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Offline, source-built static GCC/binutils and development SDK for ModernOS.
+"""Offline, source-built static GCC/binutils and development SDK for Coast.
 
 The build machine first creates a musl cross compiler. That compiler builds
 the native tools; no glibc libraries are copied into the guest. Stage stamps
 allow an interrupted build to resume without rebuilding the earlier stages.
 """
+import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -12,6 +14,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+
+from fetch_sources import fetch, read_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / 'userland/vendor'
@@ -23,6 +27,7 @@ STAGE = BUILD / 'install'
 MUSL = ROOT / 'build/native-musl'
 TARGET = 'x86_64-linux-musl'
 VERSION = '14.2.0'
+JOBS = 8
 PACKAGES = {
     'gcc-14.2.0.tar.gz': '7d376d445f93126dc545e2c0086d0f647c3094aae081cdb78f42ce2bc25e7293',
     'binutils-2.37.tar.gz': 'c44968b97cd86499efbc4b4ab7d98471f673e5414c554ef54afa930062dbbfcb',
@@ -57,41 +62,61 @@ def stage(name, source, arguments, env, targets, install, outputs):
     relevant = {k: v for k, v in env.items() if k in ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS',
                                                       'CPPFLAGS', 'LDFLAGS', 'CC_FOR_BUILD', 'CXX_FOR_BUILD', 'CFLAGS_FOR_BUILD',
                                                       'CXXFLAGS_FOR_BUILD', 'LDFLAGS_FOR_TARGET', 'AR_FOR_TARGET', 'RANLIB_FOR_TARGET',
-                                                      'NM_FOR_TARGET', 'MODERNOS_HOST_TOOLCHAIN') or k.startswith(('ac_cv_', 'gcc_cv_'))}
+                                                      'NM_FOR_TARGET', 'COAST_HOST_TOOLCHAIN') or k.startswith(('ac_cv_', 'gcc_cv_'))}
     key = hashlib.sha256(json.dumps([str(ROOT), arguments, relevant, targets, install,
                                      PACKAGES], sort_keys=True).encode()).hexdigest()
-    stamp = directory / '.modernos-stage'
+    stamp = directory / '.coast-stage'
     if stamp.exists() and stamp.read_text() == key and all(p.exists() for p in outputs):
         print(f'{name}: cached', flush=True)
         return
-    configured = directory / '.modernos-configured'
+    configured = directory / '.coast-configured'
     if configured.exists() and configured.read_text() != key:
         shutil.rmtree(directory)
     directory.mkdir(parents=True, exist_ok=True)
     if not configured.exists() or configured.read_text() != key:
         run(directory, name + '-configure.log', str(source / 'configure'), *arguments, env=env)
         configured.write_text(key)
-    run(directory, name + '-build.log', 'make', '-j' + str(min(os.cpu_count() or 1, 12)),
+    run(directory, name + '-build.log', 'make', '-j' + str(JOBS),
         *targets, env=env)
     run(directory, name + '-install.log', 'make', *install, env=env)
     stamp.write_text(key)
 
 
 def main():
+    global BUILD, SOURCE, SEED, SYSROOT, STAGE, OPTIONS, MUSL, JOBS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output-root', type=Path, default=BUILD)
+    parser.add_argument('--runtime-root', type=Path, default=ROOT / 'userland/runtime')
+    parser.add_argument('--posix-threads', action='store_true', help='enable the POSIX C++ thread runtime')
+    parser.add_argument('--musl-root', type=Path, default=MUSL,
+                        help='source-built musl development prefix, including libc.a and headers')
+    parser.add_argument('--jobs', type=int, default=min(os.cpu_count() or 1, 8))
+    args = parser.parse_args()
+    if not 1 <= args.jobs <= 24:
+        parser.error('--jobs must be 1..24')
+    JOBS, MUSL = args.jobs, args.musl_root.resolve(strict=True)
+    BUILD = args.output_root.resolve()
+    SOURCE, SEED, SYSROOT, STAGE = (BUILD / p for p in ('src', 'cross', 'sysroot', 'install'))
+    if args.posix_threads:
+        OPTIONS = ['--enable-threads=posix' if option == '--disable-threads' else option for option in OPTIONS]
     BUILD.mkdir(parents=True, exist_ok=True)
+    lock = (BUILD / '.build.lock').open('a')
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     SOURCE.mkdir(exist_ok=True)
     if not (MUSL / 'lib/libc.a').exists():
         raise SystemExit('Build bin/nano first for the pinned musl development library.')
 
+    registry = read_manifest()
     for filename, digest in PACKAGES.items():
+        fetch(registry[filename], VENDOR)
         path = VENDOR / filename
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise SystemExit(f'Upstream source checksum mismatch: {path}')
         destination = SOURCE / filename.split('.tar.')[0]
-        if not (destination / '.modernos-extracted').exists():
+        if not (destination / '.coast-extracted').exists():
             with tarfile.open(path) as archive:
                 archive.extractall(SOURCE, filter='data')
-            (destination / '.modernos-extracted').touch()
+            (destination / '.coast-extracted').touch()
 
     gcc = SOURCE / ('gcc-' + VERSION)
     for package in ('gmp-6.2.1', 'mpfr-4.1.0', 'mpc-1.2.1'):
@@ -115,7 +140,7 @@ def main():
         version = subprocess.check_output([executable, '--version'], text=True).splitlines()[0]
         toolchain[tool] = [executable, version]
 
-    env['MODERNOS_HOST_TOOLCHAIN'] = json.dumps(toolchain, sort_keys=True)
+    env['COAST_HOST_TOOLCHAIN'] = json.dumps(toolchain, sort_keys=True)
     for name in ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LIBS',
                  'CONFIG_SITE', 'GCC_EXEC_PREFIX', 'COMPILER_PATH', 'LIBRARY_PATH'):
         env.pop(name, None)
@@ -164,15 +189,24 @@ def main():
           f'--target={TARGET}', '--prefix=/usr', '--with-sysroot=/',
           f'--with-build-sysroot={SYSROOT}', '--with-native-system-header-dir=/usr/include',
           '--with-as=/usr/bin/as', '--with-ld=/usr/bin/ld',
-          '--with-pkgversion=ModernOS static SDK',
+          '--with-pkgversion=Coast static SDK',
           '--with-specs=%{!shared:%{!r:-static -no-pie}}', *OPTIONS], native,
           ['all-gcc'], ['install-gcc', f'DESTDIR={STAGE}'],
           [STAGE / 'usr/bin/gcc', STAGE / f'usr/libexec/gcc/{TARGET}/{VERSION}/cc1plus'])
-    export_sdk(gcc)
+    export_sdk(gcc, args.runtime_root.resolve())
+    inputs = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in (Path(__file__), ROOT / 'tools/fetch_sources.py', ROOT / 'userland/vendor/sources.json')}
+    runtime = args.runtime_root.resolve()
+    files = {str(p.relative_to(runtime)): dict(path=str(p), sha256=hashlib.sha256(p.read_bytes()).hexdigest(),
+        mode=0o755 if p.stat().st_mode & 0o111 else 0o644)
+        for p in sorted(runtime.rglob('*')) if p.is_file()}
+    (BUILD / 'BUILD.json').write_text(json.dumps(dict(version=VERSION, sources=PACKAGES,
+        source_sha256=inputs, thread_model='posix' if args.posix_threads else 'single',
+        musl_libc_sha256=hashlib.sha256((MUSL / 'lib/libc.a').read_bytes()).hexdigest(),
+        target_host_executed=False, files=files), indent=2) + '\n')
 
 
-def export_sdk(gcc):
-    runtime = ROOT / 'userland/runtime'
+def export_sdk(gcc, runtime):
     for directory in ('lib/gcc', 'libexec'):
         shutil.copytree(STAGE / 'usr' / directory, runtime / 'usr' / directory,
                         dirs_exist_ok=True, symlinks=False)
@@ -202,7 +236,8 @@ def export_sdk(gcc):
 
     for name, original in (('cc', 'gcc'), ('c++', 'g++')):
         shutil.copy2(runtime / 'usr/bin' / original, runtime / 'usr/bin' / name)
-    licenses = VENDOR / 'licenses'
+    licenses = VENDOR / 'licenses' if runtime == ROOT / 'userland/runtime' else runtime / 'usr/share/licenses/native-gcc'
+    licenses.mkdir(parents=True, exist_ok=True)
     for source, name in ((gcc / 'COPYING3', 'gcc-COPYING3.txt'),
                          (gcc / 'COPYING.RUNTIME', 'gcc-runtime-exception.txt'),
                          (SOURCE / 'binutils-2.37/COPYING3', 'binutils-COPYING3.txt')):

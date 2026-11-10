@@ -1,5 +1,5 @@
-#ifndef MODERNOS_BROWSER_PROTOCOL_H
-#define MODERNOS_BROWSER_PROTOCOL_H
+#ifndef COAST_BROWSER_PROTOCOL_H
+#define COAST_BROWSER_PROTOCOL_H
 #include <stdint.h>
 #include <stddef.h>
 
@@ -32,8 +32,17 @@ enum {
     /* Desktop-to-broker geometry: width/height are the display, flags is its
      * available height, x/y are the outer window position, and canvas_width/
      * canvas_height are its outer dimensions. No payload or capability. */
-    BROWSER_SCREEN
+    BROWSER_SCREEN,
+    BROWSER_EDIT,
+    BROWSER_CLIPBOARD,
+    BROWSER_CLIPBOARD_ERROR
 };
+
+/* Text-only, gesture-delegated clipboard. Chunk offsets/counts are bytes;
+ * decoding happens after assembly, so UTF-8 may span chunk boundaries. */
+#define BROWSER_CLIPBOARD_LIMIT 65536U
+enum { BROWSER_EDIT_COPY = 1, BROWSER_EDIT_CUT, BROWSER_EDIT_PASTE, BROWSER_EDIT_CUT_ACK };
+enum { BROWSER_CLIP_START = 1, BROWSER_CLIP_END = 2 };
 
 enum { BROWSER_CAN_BACK = 1, BROWSER_CAN_FORWARD = 2, BROWSER_LOADING = 4 };
 /* Renderer-to-broker navigation metadata only; never desktop state flags. */
@@ -46,6 +55,22 @@ struct browser_packet {
     int32_t x, y, width, height;
     uint32_t canvas_width, canvas_height, flags;
 };
+
+static inline int browser_clipboard_valid(const struct browser_packet *p) {
+    return p->magic == BROWSER_MAGIC && p->type == BROWSER_CLIPBOARD &&
+           p->x > 0 && p->y >= 0 && p->width >= 0 &&
+           p->width <= (int)BROWSER_CLIPBOARD_LIMIT && !p->height &&
+           !p->canvas_width && !p->canvas_height && !(p->flags & ~3u) &&
+           p->bytes <= BROWSER_MAX_TEXT && (uint64_t)p->y + p->bytes <= (unsigned)p->width &&
+           (!!(p->flags & BROWSER_CLIP_START) == !p->y) &&
+           (!!(p->flags & BROWSER_CLIP_END) == (p->y + p->bytes == (unsigned)p->width)) &&
+           (p->bytes || !p->width);
+}
+static inline int browser_clipboard_error_valid(const struct browser_packet *p) {
+    return p->magic == BROWSER_MAGIC && p->type == BROWSER_CLIPBOARD_ERROR &&
+           p->x > 0 && p->flags == 1 && !p->bytes && !p->y && !p->width &&
+           !p->height && !p->canvas_width && !p->canvas_height;
+}
 
 /* For desktop-to-broker POINTER only, canvas_width/canvas_height carry the
  * actual pointer's screen coordinates. They do not identify a paint canvas. */

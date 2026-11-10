@@ -1,3 +1,6 @@
+> Historical record: the NetSurf/WebCore browser described here is retired.
+> Use [Chromium](chromium-browser.md) and the [current rebuild guide](source-builds.md).
+
 # Browser repair and verification — 2026-10-11
 
 This document records the historical v38 browser repairs and evidence.
@@ -6,7 +9,7 @@ scrolling, hardware support and package status are in
 [`browser-media-scroll.md`](browser-media-scroll.md).
 
 The native HTTP/HTTPS browser embeds WebCore/JavaScriptCore 2.54.0 and CPU Skia
-inside the ModernOS desktop. The renderer and trusted Soup network broker run
+inside the Coast desktop. The renderer and trusted Soup network broker run
 in the actual x86-64 Limine UEFI guest. Local files retain the existing NetSurf
 engine and explicit grants.
 

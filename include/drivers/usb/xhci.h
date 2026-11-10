@@ -9,6 +9,8 @@
  */
 bool xhci_init_controller(pci_device_header_t *pci_hdr);
 void xhci_poll(void);
+bool xhci_power_ready(void);
+int xhci_power_stop(void);
 bool xhci_is_running(void);
 uint8_t xhci_root_port_count(void);
 usb_device_t *xhci_open_root_device(uint8_t root_port);

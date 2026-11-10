@@ -255,10 +255,10 @@ onkeydown=e=>{if(e.key==='r'){
                 if parsed.path == '/webcore-fonts':
                     return self.respond(200, br'''<!doctype html><title>Checking fonts</title><style>
 body{margin:0;background:#ee7722;font:28px sans-serif}p{margin:0;line-height:40px}
-.zero{font:0px "Definitely Unavailable ModernOS Font"}
+.zero{font:0px "Definitely Unavailable Coast Font"}
 </style><p id=generic>Generic fallback text</p><p class=zero id=zero>Valid zero-sized text</p><canvas id=canvas width=10 height=10></canvas><script>
 const c=canvas.getContext('2d');
-for(const family of ['sans-serif','serif','monospace','system-ui','Definitely Unavailable ModernOS Font']) {
+for(const family of ['sans-serif','serif','monospace','system-ui','Definitely Unavailable Coast Font']) {
  c.font='0px "'+family+'"';if(c.measureText('valid text').width!==0)throw Error('zero font size: '+family);
 }
 if(zero.getBoundingClientRect().height!==0)throw Error('zero layout');
@@ -539,10 +539,10 @@ Promise.all(requests).then(()=>document.title='WebCore rendered').catch(e=>docum
                     return self.respond(200, (ROOT / 'userland/runtime/usr/share/netsurf/netsurf.png').read_bytes(), 'image/png')
 
                 if parsed.path == '/second.html':
-                    body = b'<!doctype html><title>ModernOS second page</title><h1>Second real document</h1>'
+                    body = b'<!doctype html><title>Coast second page</title><h1>Second real document</h1>'
                 elif parsed.path == '/script.html':
                     body = (b'<!doctype html><html><head><script>'
-                            b'var words=["ModernOS","JavaScript","page"];'
+                            b'var words=["Coast","JavaScript","page"];'
                             b'if (globalThis !== window || self !== window) throw new Error("Incorrect global aliases");'
                             b'var start=performance.now(), origin=performance.timeOrigin;'
                             b'performance.timeOrigin=0;'
@@ -550,7 +550,7 @@ Promise.all(requests).then(()=>document.title='WebCore rendered').catch(e=>docum
                             b'document.write("<title>"+words.join(" ")+"</title>");'
                             b'</script></head><body><h1>Embedded JavaScript</h1></body></html>')
                 elif parsed.path in ('/', '/page.html', '/form'):
-                    body = (b'<!doctype html><html><head><title>ModernOS HTTP page</title>'
+                    body = (b'<!doctype html><html><head><title>Coast HTTP page</title>'
                             b'<link rel="stylesheet" href="/style.css"></head><body>'
                             b'<h1>Real HTTP, HTML and CSS</h1><p id="intro">Served from the host fixture.</p>'
                             b'<p><a href="/second.html">Second page</a></p>'
@@ -643,12 +643,12 @@ Promise.all(requests).then(()=>document.title='WebCore rendered').catch(e=>docum
 
     def certificates(self):
         run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
-            '-keyout', self.directory / 'ca.key', '-out', self.directory / 'ca.pem', '-subj', '/CN=ModernOS fixture CA',
+            '-keyout', self.directory / 'ca.key', '-out', self.directory / 'ca.pem', '-subj', '/CN=Coast fixture CA',
             '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign')
 
         for name, san in [('good', 'IP:10.0.2.2,DNS:localhost'), ('wrong', 'IP:192.0.2.1')]:
             run('openssl', 'req', '-new', '-newkey', 'rsa:2048', '-nodes',
-                '-keyout', self.directory / (name + '.key'), '-out', self.directory / (name + '.csr'), '-subj', '/CN=ModernOS fixture')
+                '-keyout', self.directory / (name + '.key'), '-out', self.directory / (name + '.csr'), '-subj', '/CN=Coast fixture')
             extensions = self.directory / (name + '.extensions')
             extensions.write_text(
                 'basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=' + san + '\n')
@@ -658,7 +658,7 @@ Promise.all(requests).then(()=>document.title='WebCore rendered').catch(e=>docum
 
         run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
             '-keyout', self.directory / 'untrusted.key', '-out', self.directory / 'untrusted.pem',
-            '-subj', '/CN=Untrusted ModernOS fixture', '-addext', 'subjectAltName=IP:10.0.2.2')
+            '-subj', '/CN=Untrusted Coast fixture', '-addext', 'subjectAltName=IP:10.0.2.2')
 
     def listen(self, handler, certificate=None):
         server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
@@ -680,7 +680,7 @@ Promise.all(requests).then(()=>document.title='WebCore rendered').catch(e=>docum
         if not (tree / '.git').is_dir():
             tree.mkdir(exist_ok=True)
             run('git', 'init', '--initial-branch=main', tree)
-        run('git', '-C', tree, 'config', 'user.name', 'ModernOS fixture')
+        run('git', '-C', tree, 'config', 'user.name', 'Coast fixture')
         run('git', '-C', tree, 'config', 'user.email', 'fixture@example.invalid')
         (tree / 'document.txt').write_text(text + '\n')
         run('git', '-C', tree, 'add', 'document.txt')

@@ -13,6 +13,7 @@ void *memset(void *dest, int val, size_t len);
 int strcmp(const char *s1, const char *s2);
 int strncmp(const char *s1, const char *s2, size_t n);
 int strlen(const char *s);
+char *strrchr(const char *s,int c);
 void *strcpy(char *dest, const char *src);
 
 #endif

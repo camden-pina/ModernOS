@@ -39,6 +39,7 @@ typedef struct {
 
 typedef struct {
     bool uses_report_ids;
+    bool touchpad, mouse_application, absolute;
     uint8_t report_count;
     uint8_t field_count;
     hid_mouse_report_t reports[HID_MOUSE_MAX_REPORTS];

@@ -1,0 +1,24 @@
+{
+  "cmake": {
+    "version": "4.4.5",
+    "archive": "cmake-4.4.5.tar.gz",
+    "source": "cmake-4.4.5",
+    "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+    "mirrors": [
+      "https://cmake.org/files/v4.4/cmake-4.4.5.tar.gz"
+    ],
+    "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+    "checksum_source": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt",
+    "license": "BSD-3-Clause"
+  },
+  "gn": {
+    "version": "2407",
+    "commit": "3357c4f51b1a9e676378c695dd9c7e9911c35ee6",
+    "archive": "gn-3357c4f51b1a9e676378c695dd9c7e9911c35ee6.tar.gz",
+    "source": "gn-3357c4f51b1a9e676378c695dd9c7e9911c35ee6",
+    "url": "https://gn.googlesource.com/gn/+archive/3357c4f51b1a9e676378c695dd9c7e9911c35ee6.tar.gz",
+    "sha256": "9581194194b249112b640884f8a1f9810dcf58d4e011de17313c45345c5138ab",
+    "license": "BSD-3-Clause",
+    "parent": "Exact gn_version in the pinned Electron Chromium DEPS"
+  }
+}

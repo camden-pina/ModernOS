@@ -1,0 +1,25 @@
+/* Keep custom titlebar dropdowns above the workbench in the frameless port.
+   Electron supplies no separate native menu surface in this adapter. */
+.monaco-workbench.linux .part.titlebar {
+    overflow: visible;
+    z-index: 2501;
+}
+.monaco-workbench.linux .part.titlebar > .titlebar-container {
+    overflow: visible;
+}
+/* Native restore/focus changes can make the titlebar an opacity group. Its
+   fixed-position menus then inherit this otherwise harmless 35px clip. */
+.monaco-workbench.linux .part.titlebar .menubar {
+    overflow: visible;
+}
+/* The native frame already indicates inactive focus. Chromium clips fixed
+   menus when this extra opacity group is introduced during native restore. */
+.monaco-workbench.linux .part.titlebar.inactive > .titlebar-container {
+    opacity: 1;
+}
+/* The pinned scrollbar stylesheet only checks the older disable-animations
+   class. Honor the workbench's current reduced-motion setting as well. */
+.monaco-reduce-motion .monaco-scrollable-element > .visible,
+.monaco-reduce-motion .monaco-scrollable-element > .invisible.fade {
+    transition: none;
+}

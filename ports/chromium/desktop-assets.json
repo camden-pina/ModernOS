@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "font_packages": {
+    "fonts-dejavu-core": {
+      "archive": "fonts-dejavu-core_2.37-6_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-dejavu/fonts-dejavu-core_2.37-6_all.deb",
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/f/fonts-dejavu/fonts-dejavu-core_2.37-6_all.deb"
+      ],
+      "sha256": "8892669e51aab4dc56682c8e39d8ddb7d70fad83c369344e1e240bf3ca22bb76",
+      "bytes": 1067728,
+      "version": "2.37-6"
+    },
+    "fonts-noto-cjk": {
+      "archive": "fonts-noto-cjk_20220127+repack1-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-noto-cjk/fonts-noto-cjk_20220127+repack1-1_all.deb",
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/f/fonts-noto-cjk/fonts-noto-cjk_20220127+repack1-1_all.deb"
+      ],
+      "sha256": "4a2515eb6db3978b897fef9709ed0d2b1f4c6c4df4d83d6c4ef65f71f1b1f502",
+      "bytes": 56547048,
+      "version": "1:20220127+repack1-1"
+    },
+    "fonts-noto-color-emoji": {
+      "archive": "fonts-noto-color-emoji_2.042-0+deb12u1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-noto-color-emoji/fonts-noto-color-emoji_2.042-0+deb12u1_all.deb",
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/f/fonts-noto-color-emoji/fonts-noto-color-emoji_2.042-0+deb12u1_all.deb"
+      ],
+      "sha256": "a5ab0f69c7938423862320d9aca5dd187b3fd879d6a9a57dd52e17c3fa8d2751",
+      "bytes": 9893872,
+      "version": "2.042-0+deb12u1"
+    }
+  },
+  "dictionary": {
+    "name": "en-US-10-1.bdic",
+    "url": "https://redirector.gvt1.com/edgedl/chrome/dict/en-us-10-1.bdic",
+    "sha256": "a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100",
+    "bytes": 451968,
+    "reason": "Chromium default English spelling dictionary, bundled to avoid fetching it on every RAM-only boot",
+    "licenses": [
+      "ports/chromium/licenses/README_en_US.txt",
+      "ports/chromium/licenses/LICENSE"
+    ],
+    "archive": "en-US-10-1.bdic"
+  },
+  "policy": "Font and dictionary data only; executable payloads are never staged from these archives"
+}

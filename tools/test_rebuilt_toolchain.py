@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate/export the real native compiler from a completed RAM checkpoint.
 
-Compilation, linking, execution and archive creation all happen in ModernOS.
+Compilation, linking, execution and archive creation all happen in Coast.
 The host reads finished RAMFS artifacts with QEMU's read-only memory monitor.
 """
 import argparse
@@ -92,9 +92,9 @@ def exercise(checkpoint, destination, prefix='/tmp/toolchain/install', abi_sourc
 
     try:
         shell('test "$(cat /tmp/rebuild.status)" = 0 && '
-              'test "$(cat /tmp/toolchain/.modernos-stage)" = complete && echo REBUILD_COMPLETE',
+              'test "$(cat /tmp/toolchain/.coast-stage)" = complete && echo REBUILD_COMPLETE',
               'REBUILD_COMPLETE')
-        compiler = shell(shlex.quote(prefix + '/bin/gcc') + ' --version', 'ModernOS native rebuild')
+        compiler = shell(shlex.quote(prefix + '/bin/gcc') + ' --version', 'Coast native rebuild')
         runtimes = {}
         for library in ('libgcc.a', 'libstdc++.a'):
             output = shell(shlex.quote(prefix + '/bin/g++') + ' -print-file-name=' + library)
@@ -105,7 +105,7 @@ def exercise(checkpoint, destination, prefix='/tmp/toolchain/install', abi_sourc
             runtimes[library] = paths[0]
             shell('test -f ' + shlex.quote(paths[0]))
 
-        shell('mkdir -p ' + directory + '; cp -R /usr/src/modernos/examples/. ' + directory + '/')
+        shell('mkdir -p ' + directory + '; cp -R /usr/src/coast/examples/. ' + directory + '/')
 
         # A resumed checkpoint retains its packaged examples. Explicitly
         # stage only source text when validating a corrected ABI example;

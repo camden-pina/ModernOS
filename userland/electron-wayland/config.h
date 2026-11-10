@@ -1,0 +1,2 @@
+#define HAVE_MEMFD_CREATE 1
+#define COAST_FD_LIMIT 256

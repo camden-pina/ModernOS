@@ -1,0 +1,14 @@
+--- a/tcg/region.c
++++ b/tcg/region.c
+@@ -464,7 +464,10 @@
+  */
+ #define MIN_CODE_GEN_BUFFER_SIZE     (1 * MiB)
+ 
+-#if TCG_TARGET_REG_BITS == 32
++/* Coast bounds one mapping to 512 MiB. TCI bytecode needs no large JIT arena. */
++#if defined(CONFIG_TCG_INTERPRETER)
++#define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (128 * MiB)
++#elif TCG_TARGET_REG_BITS == 32
+ #define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (32 * MiB)
+ #ifdef CONFIG_USER_ONLY
+ /*

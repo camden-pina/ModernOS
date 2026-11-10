@@ -28,14 +28,14 @@ acpi_status_t acpi_table_find(void **table, const char *signature, size_t idx) {
             if (curr_idx == idx) {
                 *table = (void *)hdr;
                 kprintf("ACPI table %4.4s found at index %llu\n", signature, idx);
-                return ACPI_SUCCESS;
+                return ACPI_TABLE_OK;
             }
             curr_idx++;
         }
     }
 
     kprintf("ACPI table %4.4s not found at index %llu\n", signature, idx);
-    return ACPI_NO_TABLE;
+    return ACPI_TABLE_NOT_FOUND;
 }
 
 void *acpi_scan(const char *name, size_t idx) {
@@ -58,7 +58,7 @@ void *acpi_scan(const char *name, size_t idx) {
 
     void *ptr = NULL;
     acpi_status_t status = acpi_table_find(&ptr, name, idx);
-    if (status == ACPI_SUCCESS) {
+    if (status == ACPI_TABLE_OK) {
         kprintf("acpi_scan: ACPI table %4.4s found at index %llu\n", name, idx);
         return ptr;
     } else {

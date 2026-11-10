@@ -783,7 +783,7 @@ static efi_status loader_main(efi_handle image, struct efi_system_table *table) 
     system_table = table;
     bs = table->boot;
     serial_init();
-    message("ModernOS native UEFI loader");
+    message("Coast native UEFI loader");
     bs->set_watchdog_timer(0, 0, 0, NULL);
 
     uint64_t cr4;
@@ -801,9 +801,9 @@ static efi_status loader_main(efi_handle image, struct efi_system_table *table) 
 
     void *config_buffer;
     size_t config_size;
-    status = read_file("/boot/modernos.conf", CONFIG_LIMIT, &config_buffer, &config_size);
+    status = read_file("/boot/coast.conf", CONFIG_LIMIT, &config_buffer, &config_size);
     if (EFI_ERROR(status)) {
-        message("Cannot read /boot/modernos.conf");
+        message("Cannot read /boot/coast.conf");
         return status;
     }
     for (size_t i = 0; i < config_size; i++)
@@ -831,7 +831,7 @@ static efi_status loader_main(efi_handle image, struct efi_system_table *table) 
     handoff->info.memory_map = virtual_pointer(handoff->ranges);
     handoff->info.modules = virtual_pointer(handoff->modules);
     handoff->info.framebuffer = virtual_pointer(&handoff->framebuffer);
-    memcpy(handoff->loader_name, "ModernOS UEFI", sizeof("ModernOS UEFI"));
+    memcpy(handoff->loader_name, "Coast UEFI", sizeof("Coast UEFI"));
     handoff->info.loader_name = virtual_pointer(handoff->loader_name);
     handoff->info.cmdline = virtual_pointer(config.cmdline);
     handoff->info.rsdp = find_rsdp();

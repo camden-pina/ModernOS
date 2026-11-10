@@ -1,0 +1,65 @@
+{
+  "source": "Official torvalds/linux v7.1 LICENSES directory, for the packaged SPDX UAPI headers",
+  "files": [
+    {
+      "path": "GPL-1.0",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/deprecated/GPL-1.0",
+      "git_blob_sha": "8d0a75431f06db024fab4a09f84429061e7ef834",
+      "sha256": "e72efc63ce52380f374733ec7a733f5c11efa3c1f2b0cb48a9c355868ee5b09c"
+    },
+    {
+      "path": "Linux-OpenIB",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/deprecated/Linux-OpenIB",
+      "git_blob_sha": "1ad85f6b3a89bad3759dad18daadf9217ec0bc4e",
+      "sha256": "8ae20d34c2a74c85ae2760dd0034baf18e44bee3289b9b3a4fe46768b4ea2cd6"
+    },
+    {
+      "path": "Linux-syscall-note",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/exceptions/Linux-syscall-note",
+      "git_blob_sha": "9abdad71fafdf29de61157bfa9a31e244a32f5b8",
+      "sha256": "8e378ab93586eb55135d3bc119cce787f7324f48394777d00c34fa3d0be3303f"
+    },
+    {
+      "path": "CDDL-1.0",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/dual/CDDL-1.0",
+      "git_blob_sha": "b0ca1016db79a974de66c5e0ddee8b7ef6c9cad1",
+      "sha256": "490abf7869e4638fbb43df99a20e5683224617a6bf9ffd06971cb02b153e53c1"
+    },
+    {
+      "path": "BSD-2-Clause",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/BSD-2-Clause",
+      "git_blob_sha": "da366e2ce50be9b4ec250cad773677bee7fc1d9d",
+      "sha256": "6313108c23efffa36948f8b2cff1560a5935373b527b0e1a837cc77e6ed1bacd"
+    },
+    {
+      "path": "BSD-3-Clause",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/BSD-3-Clause",
+      "git_blob_sha": "34c7f057c8d5441314c339ba574a9c6224ce0f80",
+      "sha256": "7a83b1aeb460458db9a4bd521d7f237c45b1650f6e60ea5ffc71e49472454de3"
+    },
+    {
+      "path": "GPL-2.0",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/GPL-2.0",
+      "git_blob_sha": "ea8e93dc44bc462a2be34e484432cf2b9ec88527",
+      "sha256": "8780e78a1a737e127f25a65f6d95269bffd36158dc261114de7859b490bfc5aa"
+    },
+    {
+      "path": "LGPL-2.0",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/LGPL-2.0",
+      "git_blob_sha": "dc629746eb7269905025d7fc3e1e462962aac137",
+      "sha256": "967792c8a6a57bbbc123a69fff6c3020af80b04623916b82ba721b0347e64433"
+    },
+    {
+      "path": "LGPL-2.1",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/LGPL-2.1",
+      "git_blob_sha": "4d1d06a0e8ffe748621e71b17e97d477bbf160ce",
+      "sha256": "fe482a156acd576ecc147de2b0bee8e97b7adb461afb11efaf4022b9e8e9a229"
+    },
+    {
+      "path": "MIT",
+      "url": "https://raw.githubusercontent.com/torvalds/linux/v7.1/LICENSES/preferred/MIT",
+      "git_blob_sha": "f33a68ceb3ea00a533d2331a091ec7f2580bb4df",
+      "sha256": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f"
+    }
+  ]
+}

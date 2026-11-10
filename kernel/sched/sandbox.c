@@ -1,4 +1,5 @@
 #include <sandbox.h>
+#include <credentials.h>
 #include <sched.h>
 #include <string.h>
 #include <fs/memfd.h>
@@ -59,8 +60,8 @@ int sandbox_web_init(struct task *t, unsigned role, unsigned domain, const char 
     snprintf(t->browser_home, sizeof(t->browser_home), "%s", home);
     /* Large modern script/CSS bundles need room beyond the static engine.
        The trusted network/storage broker retains the smaller budget. */
-    t->space.vm->page_limit = role == OS_WEB_RENDERER ? 196608 : 131072;
-    return t->space.vm->pages > t->space.vm->page_limit ? -E_NOMEM : 0;
+    user_space_limit(&t->space, role == OS_WEB_RENDERER ? 196608 : 131072);
+    return (t->space.vm->pages > t->space.vm->page_limit || t->space.vm->virtual_pages > t->space.vm->page_limit) ? -E_NOMEM : 0;
 }
 
 static bool below(const char *path, const char *root) {
@@ -112,8 +113,8 @@ int sandbox_init(struct task *t, const char *home, const char *local) {
     if (e)
         return e;
     t->browser_sandbox = true;
-    t->space.vm->page_limit = 131072; /* 512 MiB including image, stack and mappings */
-    if (t->space.vm->pages > t->space.vm->page_limit)
+    user_space_limit(&t->space, 131072); /* 512 MiB including image, stack and mappings */
+    if ((t->space.vm->pages > t->space.vm->page_limit || t->space.vm->virtual_pages > t->space.vm->page_limit))
         return -E_NOMEM;
     return 0;
 }
@@ -187,6 +188,8 @@ int sandbox_path(const char *path, unsigned access) {
 }
 
 int sandbox_file(const struct file *f, unsigned access) {
+    int credential_error=credentials_file(f);
+    if(credential_error)return credential_error;
     struct task *t = sched_ready() ? this_cpu()->current : NULL;
     if (t && t->context->web_role) {
         unsigned role = t->context->web_role, domain = t->context->web_domain;
@@ -207,13 +210,14 @@ int sandbox_file(const struct file *f, unsigned access) {
             return role == OS_WEB_RENDERER
                        ? (unix_authorize((struct file *)f, domain, t->tgid) ? 0 : -E_ACCES)
                        : (unix_domain((struct file *)f) == domain ? 0 : -E_ACCES);
-        if (f->epoll)
+        if (f->epoll || f->inotify)
             return -E_ACCES;
         if (role == OS_WEB_RENDERER && (f->socket || f->tty || f->pty || f->pipe))
             return -E_ACCES;
     }
     if (f->memory || f->unix_socket)
         return t && t->browser_sandbox ? -E_ACCES : 0;
+    if(f->inotify)return t && t->browser_sandbox?-E_ACCES:0;
     if (f->pipe || f->socket || f->event)
         return 0;
     return sandbox_path(f->path, access);
@@ -290,6 +294,8 @@ int sandbox_syscall(struct task *t, register_t *r) {
     /* Default deny: adding a kernel syscall cannot expand browser authority. */
     switch (r->rax) {
     case SYS_fcntl:
+        if ((r->rsi >= OS_F_GETLK && r->rsi <= OS_F_SETLKW) ||
+            (r->rsi >= 36 && r->rsi <= 38)) return -E_PERM;
         /* Page code cannot grow inherited kernel buffers outside its quota.
          * Only the trusted broker may size its bounded output pipes. */
         return r->rsi == F_SETPIPE_SZ && role != OS_WEB_BROKER ? -E_PERM : 0;
@@ -335,6 +341,8 @@ int sandbox_syscall(struct task *t, register_t *r) {
     case SYS_setitimer:
     case SYS_alarm:
     case SYS_sched_yield:
+    case SYS_sched_getparam:
+    case SYS_sched_getscheduler:
     case SYS_nanosleep:
     case SYS_clock_gettime:
     case SYS_clock_getres:

@@ -1,0 +1,13 @@
+/* Private names keep the adapted SHM implementation local to this bridge. */
+#define wl_display_init_shm coast_wl_display_init_shm
+#define wl_shm_buffer_get coast_wl_shm_buffer_get
+#define wl_shm_buffer_get_stride coast_wl_shm_buffer_get_stride
+#define wl_shm_buffer_get_width coast_wl_shm_buffer_get_width
+#define wl_shm_buffer_get_height coast_wl_shm_buffer_get_height
+#define wl_shm_buffer_get_data coast_wl_shm_buffer_get_data
+#define wl_shm_buffer_get_format coast_wl_shm_buffer_get_format
+#define wl_shm_buffer_ref_pool coast_wl_shm_buffer_ref_pool
+#define wl_shm_pool_unref coast_wl_shm_pool_unref
+#define wl_shm_buffer_begin_access coast_wl_shm_buffer_begin_access
+#define wl_shm_buffer_end_access coast_wl_shm_buffer_end_access
+#define wl_shm_buffer_create coast_wl_shm_buffer_create

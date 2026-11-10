@@ -62,6 +62,10 @@ void tsc_init(void) {
 }
 
 /* Monotonic uptime generator called by printk */
+uint64_t tsc_frequency_khz(void) {
+    return tsc_khz;
+}
+
 uint64_t tsc_uptime_us(void) {
     if (tsc_khz == 0) {
         return 0;

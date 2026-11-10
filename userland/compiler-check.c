@@ -92,18 +92,18 @@ static int accounting(void) {
     struct timespec start, now, wall, deadline, resolution;
     struct tms ticks;
     struct os_memory_usage memory_before, memory_after, memory_released;
-    CHECK(!syscall(MODERNOS_MEMORY_USAGE,&memory_before));
+    CHECK(!syscall(COAST_MEMORY_USAGE,&memory_before));
     CHECK(memory_before.mapped_bytes && memory_before.peak_mapped_bytes>=memory_before.mapped_bytes);
     void *memory =
         mmap(NULL, 4 * 1024 * 1024, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    CHECK(memory!=MAP_FAILED && !syscall(MODERNOS_MEMORY_USAGE,&memory_after));
+    CHECK(memory!=MAP_FAILED && !syscall(COAST_MEMORY_USAGE,&memory_after));
     CHECK(memory_after.mapped_bytes>=memory_before.mapped_bytes+4*1024*1024);
-    CHECK(!munmap(memory,4*1024*1024) && !syscall(MODERNOS_MEMORY_USAGE,&memory_released));
+    CHECK(!munmap(memory,4*1024*1024) && !syscall(COAST_MEMORY_USAGE,&memory_released));
     CHECK(memory_released.mapped_bytes+4*1024*1024<=memory_after.mapped_bytes);
     CHECK(memory_released.peak_mapped_bytes>=memory_after.peak_mapped_bytes);
     CHECK(!getrusage(RUSAGE_SELF,&usage) && (uint64_t)usage.ru_maxrss*1024==memory_released.peak_mapped_bytes);
     errno = 0;
-    CHECK(syscall(MODERNOS_MEMORY_USAGE,(void *)1)==-1 && errno==EFAULT);
+    CHECK(syscall(COAST_MEMORY_USAGE,(void *)1)==-1 && errno==EFAULT);
     CHECK(!getrusage(RUSAGE_CHILDREN, &before));
     CHECK(!clock_getres(CLOCK_PROCESS_CPUTIME_ID, &resolution) && resolution.tv_nsec == 1000000);
     pid_t child = fork();

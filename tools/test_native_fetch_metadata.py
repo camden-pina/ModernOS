@@ -81,7 +81,7 @@ Promise.all([child,fetch('/fetch'),fetch(FOREIGN+'/foreign-fetch')]).then(()=>{
     try:
         run('openssl', 'req', '-new', '-newkey', 'rsa:2048', '-nodes',
             '-keyout', fixture.directory / 'metadata.key', '-out', fixture.directory / 'metadata.csr',
-            '-subj', '/CN=ModernOS metadata fixture')
+            '-subj', '/CN=Coast metadata fixture')
         extensions = fixture.directory / 'metadata.extensions'
         extensions.write_text('basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\n'
                               'extendedKeyUsage=serverAuth\nsubjectAltName=IP:10.0.2.2,DNS:' + foreign_host + '\n')

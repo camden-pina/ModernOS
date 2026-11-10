@@ -30,7 +30,9 @@ def main():
     shutil.rmtree(temporary)
     licenses = ROOT / 'userland/vendor/licenses'
     licenses.mkdir(exist_ok=True)
-    shutil.copy2(TARGET / 'COPYING', licenses / 'lwip-COPYING.txt')
+    # Source builds also run inside Coast, whose RAMFS has no xattr API.
+    # A license needs its exact bytes, not the host file's extended metadata.
+    shutil.copyfile(TARGET / 'COPYING', licenses / 'lwip-COPYING.txt')
     stamp.write_text(DIGEST)
 
 

@@ -108,7 +108,9 @@ int main(void) {
     errno = 0;
     REQUIRE(getrandom(random1,1,4)==-1 && errno==EINVAL);
     errno = 0;
-    REQUIRE(socket(AF_UNIX,SOCK_STREAM,0)==-1 && errno==EAFNOSUPPORT);
+    REQUIRE(socket(AF_INET6,SOCK_STREAM,0)==-1 && errno==EAFNOSUPPORT);
+    int unix_stream = socket(AF_UNIX,SOCK_STREAM,0);
+    REQUIRE(unix_stream>=0 && close(unix_stream)==0);
     int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     int sender = socket(AF_INET, SOCK_DGRAM, 0);
     REQUIRE(udp>=0 && sender>=0);

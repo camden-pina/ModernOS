@@ -1,5 +1,5 @@
-#ifndef MODERNOS_EFI_H
-#define MODERNOS_EFI_H
+#ifndef COAST_EFI_H
+#define COAST_EFI_H
 
 /* The x64 UEFI ABI uses the Microsoft calling convention. These definitions
  * intentionally cover only the protocols needed by this freestanding loader. */

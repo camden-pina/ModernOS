@@ -1,1 +1,1 @@
-obj-y := panic.o printk.o sched/
+obj-y := panic.o printk.o power.o sched/

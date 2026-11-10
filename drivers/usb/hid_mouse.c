@@ -4,6 +4,7 @@
 #define HID_STACK_SIZE 16u
 #define HID_USAGE_RANGES 64u
 #define HID_USAGE_MOUSE 0x00010002u
+#define HID_USAGE_TOUCHPAD 0x000d0005u /* USB HID Usage Tables 1.7, section 16. */
 #define HID_USAGE_X 0x00010030u
 #define HID_USAGE_Y 0x00010031u
 #define HID_USAGE_WHEEL 0x00010038u
@@ -129,6 +130,8 @@ static bool add_input(hid_mouse_layout_t *layout, const hid_global_t *global,
                 return false;
             report->button_mask |= 1u << button;
         } else {
+            if (!(flags & 4u))
+                layout->absolute = true;
             if (!(flags & 4u) || global->logical_min < INT32_MIN ||
                 global->logical_max > INT32_MAX || (report->axes & axis))
                 return false;
@@ -273,8 +276,12 @@ bool hid_mouse_parse_descriptor(const uint8_t *data, size_t size, hid_mouse_layo
                 if (length != 1 || collection_depth == HID_STACK_SIZE)
                     return false;
                 collection_stack[collection_depth++] = mouse_collection;
-                if (value == 1) /* Application; nested physical groups inherit. */
-                    mouse_collection = local_usage(&local, 0) == HID_USAGE_MOUSE;
+                if (value == 1) { /* Application; physical groups inherit. */
+                    uint32_t usage = local_usage(&local, 0);
+                    out->touchpad |= usage == HID_USAGE_TOUCHPAD;
+                    out->mouse_application |= usage == HID_USAGE_MOUSE;
+                    mouse_collection = usage == HID_USAGE_MOUSE || usage == HID_USAGE_TOUCHPAD;
+                }
                 break;
 
             case 12:

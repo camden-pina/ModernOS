@@ -18,7 +18,7 @@ from fetch_sources import ROOT, fetch, read_manifest
 
 PACKAGES = (
     {
-        'archive': 'modernos-cmake-4.4.4.tar.gz',
+        'archive': 'coast-cmake-4.4.4.tar.gz',
         'url': 'https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-linux-x86_64.tar.gz',
         'mirrors': ['https://cmake.org/files/v4.4/cmake-4.4.4-linux-x86_64.tar.gz'],
         'sha256': 'e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb',
@@ -27,7 +27,7 @@ PACKAGES = (
         'kind': 'tar',
     },
     {
-        'archive': 'modernos-ninja-1.13.2.zip',
+        'archive': 'coast-ninja-1.13.2.zip',
         'url': 'https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip',
         'sha256': '5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6',
         'directory': None,
@@ -103,7 +103,8 @@ def ruby_ready(executable):
         return False
     try:
         result = subprocess.run([str(executable), '-e',
-                                 'require "erb"; require "json"; puts RUBY_VERSION'],
+                                 'require "erb"; require "json"; require "yaml"; '
+                                 'YAML.safe_load("--- ready"); puts RUBY_VERSION'],
                                 capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -166,7 +167,9 @@ def prepare_ruby(root, cache, jobs):
     run_logged(build, cache, 'ruby-install', ['make', 'install'], env)
 
     if not ruby_ready(executable):
-        raise RuntimeError('Prepared Ruby is missing the required erb/json generators')
+        raise RuntimeError('Prepared Ruby is missing the required erb/json/yaml generators; '
+                           'YAML/Psych needs libyaml development headers '
+                           '(Debian/Ubuntu: libyaml-dev) when Ruby is built')
     return executable
 
 

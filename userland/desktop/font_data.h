@@ -2,15 +2,8 @@
 #ifndef DESKTOP_FONT_DATA_H
 #define DESKTOP_FONT_DATA_H
 #include <stdint.h>
-
-struct Glyph {
-    uint32_t offset;
-    uint8_t w, h;
-    int8_t left, top;
-    uint16_t advance;
-};
-
-extern const struct Glyph gui_glyphs[32][224];
-extern const uint8_t gui_font_metrics[32][2];
+struct Glyph { uint32_t offset; uint8_t w,h; int8_t left,top; uint16_t advance; };
+extern const struct Glyph gui_glyphs[48][224];
+extern const uint8_t gui_font_metrics[48][2];
 extern const uint8_t gui_font_pixels[];
 #endif

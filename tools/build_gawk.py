@@ -29,7 +29,7 @@ def main():
 
     BUILD.mkdir(parents=True, exist_ok=True)
     directory = BUILD / 'gawk-5.4.0'
-    stamp = BUILD / 'modernos-gawk.stamp'
+    stamp = BUILD / 'coast-gawk.stamp'
     key = hashlib.sha256(Path(__file__).read_bytes() + str(ROOT).encode() +
                          DIGEST.encode()).hexdigest()
     if not stamp.exists() or stamp.read_text() != key or not (directory / 'gawk').exists():

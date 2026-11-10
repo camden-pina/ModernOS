@@ -101,7 +101,7 @@ if __name__ == '__main__':
         struct.pack_into('<Q', controller, at + 14, base);
         struct.pack_into('<Q', controller, at + 22, base + 65535)
 
-    with tempfile.TemporaryDirectory(prefix='modernos-audio-power-') as temp:
+    with tempfile.TemporaryDirectory(prefix='coast-audio-power-') as temp:
         p = Path(temp);
         (p / 'check.c').write_text(SOURCE);
         (p / 'speaker.crs').write_bytes(speaker);

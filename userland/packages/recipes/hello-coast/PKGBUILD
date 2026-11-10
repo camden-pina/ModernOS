@@ -1,0 +1,29 @@
+# Maintainer: Coast local ports
+pkgname=hello-coast
+pkgver=1.1
+pkgrel=1
+pkgdesc='Small native program demonstrating a reviewed, unprivileged PKGBUILD'
+arch=('x86_64')
+license=('0BSD')
+depends=('musl')
+makedepends=('gcc' 'make')
+source=('hello.c')
+sha256sums=('f686c3fa4a27f5a0d312ac3ff0d46b4342028166222686897a67941a8d95b431')
+
+prepare() {
+    test -f "$srcdir/hello.c"
+}
+
+build() {
+    cc $CFLAGS "$srcdir/hello.c" $LDFLAGS -o hello-coast
+}
+
+check() {
+    ./hello-coast | grep -q 'Hello from a locally built Coast package'
+    test "$(id -u)" != 0
+}
+
+package() {
+    install -Dm755 hello-coast "$pkgdir/usr/bin/hello-coast"
+    install -Dm644 "$startdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

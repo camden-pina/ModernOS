@@ -7,6 +7,7 @@
 typedef struct {
     bool attached;
     bool caps_lock;
+    bool num_lock, scroll_lock, valid_report;
     usb_device_t *device;
     uint8_t endpoint_address;
     uint8_t previous_report[8];
@@ -18,7 +19,14 @@ static struct {
     uint16_t key_head;
     uint16_t key_tail;
     uint32_t dropped;
+    uint64_t state_epoch;
+    bool epoch_exhausted;
 } keyboard;
+
+static void state_discontinuity(void) {
+    if (keyboard.state_epoch == UINT64_MAX) keyboard.epoch_exhausted = true;
+    else keyboard.state_epoch++;
+}
 
 static char usage_ascii(uint8_t usage, uint8_t modifiers, bool caps_lock) {
     bool shift = (modifiers & (USB_MOD_LEFT_SHIFT | USB_MOD_RIGHT_SHIFT)) != 0;
@@ -75,6 +83,7 @@ static void emit_key(usb_keyboard_binding_t *dev, uint8_t usage, uint8_t mods, b
     uint16_t next = (uint16_t)((keyboard.key_head + 1u) % USB_KEY_QUEUE);
     if (next == keyboard.key_tail) {
         ++keyboard.dropped;
+        state_discontinuity();
         return;
     }
     keyboard.keys[keyboard.key_head] =
@@ -114,8 +123,13 @@ static void process_keyboard_report(usb_keyboard_binding_t *dev, const uint8_t r
      * Modifier changes are still reliable and are delivered above.
      */
     for (unsigned i = 2; i < 8; ++i)
-        if (report[i] >= 1 && report[i] <= 3)
+        if (report[i] >= 1 && report[i] <= 3) {
+            if (dev->valid_report) state_discontinuity();
+            dev->valid_report = false;
             return;
+        }
+    if (!dev->valid_report) state_discontinuity();
+    dev->valid_report = true;
 
     for (unsigned i = 2; i < 8; ++i) {
         uint8_t key = dev->previous_report[i];
@@ -125,6 +139,10 @@ static void process_keyboard_report(usb_keyboard_binding_t *dev, const uint8_t r
     /* Apply lock change before translating other newly pressed keys. */
     if (report_contains(report, 0x39) && !report_contains(dev->previous_report, 0x39))
         dev->caps_lock = !dev->caps_lock;
+    if (report_contains(report, 0x53) && !report_contains(dev->previous_report, 0x53))
+        dev->num_lock = !dev->num_lock;
+    if (report_contains(report, 0x47) && !report_contains(dev->previous_report, 0x47))
+        dev->scroll_lock = !dev->scroll_lock;
     for (unsigned i = 2; i < 8; ++i) {
         uint8_t key = report[i];
         if (key && !duplicate_usage(report, i) && !report_contains(dev->previous_report, key))
@@ -184,6 +202,7 @@ bool usb_keyboard_find_interface(const uint8_t *data, size_t size, uint8_t speed
 
 void usb_keyboard_init(void) {
     memset(&keyboard, 0, sizeof(keyboard));
+    keyboard.state_epoch = 1;
 }
 
 static void disconnect_binding(usb_keyboard_binding_t *binding) {
@@ -192,6 +211,7 @@ static void disconnect_binding(usb_keyboard_binding_t *binding) {
     static const uint8_t released[8] = {0};
     process_keyboard_report(binding, released);
     binding->attached = false;
+    state_discontinuity();
 }
 
 void usb_keyboard_disconnect(usb_device_t *device) {
@@ -247,6 +267,7 @@ bool usb_keyboard_bind(usb_device_t *device, const usb_keyboard_interface_t *int
     binding->device = device;
     binding->endpoint_address = interface->endpoint.address;
     binding->attached = true;
+    state_discontinuity();
     if (!usb_submit_interrupt_in(device, binding->endpoint_address, keyboard_report_complete,
                                  binding)) {
         binding->attached = false;
@@ -281,4 +302,27 @@ bool usb_keyboard_read_event(usb_keyboard_event_t *out) {
 
 uint32_t usb_keyboard_dropped_events(void) {
     return keyboard.dropped;
+}
+
+/* Same USB-poll context as read_event: never a user/global input query.
+   First milestone deliberately accepts one boot keyboard, not a fabricated
+   aggregate of independent devices' locks or incomplete rollover reports. */
+void usb_keyboard_snapshot(struct os_keyboard_snapshot *out) {
+    *out = (struct os_keyboard_snapshot){.version=OS_KEYBOARD_STATE_VERSION,
+        .size=sizeof(*out), .source_generation=keyboard.state_epoch};
+    unsigned count=0; usb_keyboard_binding_t *only=NULL;
+    for (unsigned i=1;i<=USB_MAX_DEVICES;i++) for(unsigned ep=1;ep<16;ep++) {
+        usb_keyboard_binding_t *b=&keyboard.bindings[i][ep];
+        if (b->attached && b->device->connected) { count++; only=b; }
+    }
+    if (count!=1 || !only->valid_report || keyboard.epoch_exhausted) return;
+    for(unsigned i=2;i<8;i++) {
+        unsigned key=only->previous_report[i];
+        if(key>=4)out->pressed[key/8]|=1u<<(key%8);
+    }
+    out->modifiers=only->previous_report[0];
+    for(unsigned i=0;i<8;i++)if(out->modifiers&(1u<<i))out->pressed[28]|=1u<<i;
+    out->locks=(only->caps_lock?OS_KEYBOARD_LOCK_CAPS:0)|
+        (only->num_lock?OS_KEYBOARD_LOCK_NUM:0)|(only->scroll_lock?OS_KEYBOARD_LOCK_SCROLL:0);
+    out->flags=OS_KEYBOARD_VALID;
 }

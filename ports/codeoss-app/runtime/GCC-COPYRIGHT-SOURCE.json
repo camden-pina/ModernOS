@@ -1,0 +1,50 @@
+{
+  "url": "https://deb.debian.org/debian/pool/main/g/gcc-12/gcc-12-base_12.2.0-14+deb12u1_amd64.deb",
+  "package": {
+    "Package": "gcc-12-base",
+    "Source": "gcc-12",
+    "Version": "12.2.0-14+deb12u1",
+    "Installed-Size": "100",
+    "Maintainer": "Debian GCC Maintainers <debian-gcc@lists.debian.org>",
+    "Architecture": "amd64",
+    "Breaks": "gnat (<< 7)",
+    "Description": "GCC, the GNU Compiler Collection (base package)",
+    "Multi-Arch": "same",
+    "Homepage": "http://gcc.gnu.org/",
+    "Description-md5": "b6e93638a6d08ea7a18929d7cf078e5d",
+    "Tag": "role::shared-lib",
+    "Section": "libs",
+    "Priority": "optional",
+    "Filename": "pool/main/g/gcc-12/gcc-12-base_12.2.0-14+deb12u1_amd64.deb",
+    "Size": "37596",
+    "MD5sum": "8e7e741807b1e1939df8f58323affdcb",
+    "SHA256": "1896a2aacf4ad681ff5eacc24a5b0ca4d5d9c9b9c9e4b6de5197bc1e116ea619"
+  },
+  "verification": "SHA256 and size matched index anchored to verified Debian InRelease signatures",
+  "copied_data_only": [
+    "usr/share/doc/gcc-12-base/README.Debian.amd64.gz",
+    "usr/share/doc/gcc-12-base/TODO.Debian",
+    "usr/share/doc/gcc-12-base/changelog.Debian.gz",
+    "usr/share/doc/gcc-12-base/copyright"
+  ],
+  "maintainer_scripts_executed": false,
+  "host_installation": false,
+  "copied_files": [
+    {
+      "path": "usr/share/doc/gcc-12-base/README.Debian.amd64.gz",
+      "sha256": "6edc0d8dffa071ec0866aabfa6b7831f9b464c397c93b310fd44606684b8dcb4"
+    },
+    {
+      "path": "usr/share/doc/gcc-12-base/TODO.Debian",
+      "sha256": "aba726eeeafd7ae426552559759c83ee93249d0d9c4e3e19f146fde6d2cde448"
+    },
+    {
+      "path": "usr/share/doc/gcc-12-base/changelog.Debian.gz",
+      "sha256": "3cfe78f97524912290c9fc4ef8fd737efb1fa29440949f0bfae980beb9ea4cbc"
+    },
+    {
+      "path": "usr/share/doc/gcc-12-base/copyright",
+      "sha256": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "coreutils": {
+    "version": "9.12",
+    "url": "https://ftp.gnu.org/gnu/coreutils/coreutils-9.12.tar.xz",
+    "archive": "coreutils-9.12.tar.xz",
+    "source": "coreutils-9.12",
+    "sha256": "a480198559733e9b3da999e90543ac6f888a2caa544d8d664c5a1f17e528e210"
+  },
+  "findutils": {
+    "version": "4.11.0",
+    "url": "https://ftp.gnu.org/gnu/findutils/findutils-4.11.0.tar.xz",
+    "archive": "findutils-4.11.0.tar.xz",
+    "source": "findutils-4.11.0",
+    "sha256": "bfd19cb06cc71f3352d567e90284d8cdac02ac89774bbeadf0b533b0c11432fd"
+  },
+  "file": {
+    "version": "5.48",
+    "url": "https://astron.com/pub/file/file-5.48.tar.gz",
+    "archive": "file-5.48.tar.gz",
+    "source": "file-5.48",
+    "sha256": "ed14656883b23a364b4057c05595d93252da9bc473d30106519519d0da141283"
+  }
+}

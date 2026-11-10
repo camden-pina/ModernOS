@@ -1,0 +1,106 @@
+{
+  "format": 1,
+  "kind": "Source header bootstrap for X11 and Kerberos APIs; ELF objects and package scripts are excluded",
+  "packages": {
+    "krb5-multidev": {
+      "version": "1.20.1-2+deb12u5",
+      "archive": "krb5-multidev_1.20.1-2+deb12u5_amd64.deb",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/k/krb5/krb5-multidev_1.20.1-2+deb12u5_amd64.deb",
+      "sha256": "c47364fbcdffdc9efd239daef34e46b6ed817669d9ca587dcb99273a0860a91d",
+      "bytes": 125716,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian-security/20261025T051000Z/pool/updates/main/k/krb5/krb5-multidev_1.20.1-2+deb12u5_amd64.deb"
+      ]
+    },
+    "libkrb5-dev": {
+      "version": "1.20.1-2+deb12u5",
+      "archive": "libkrb5-dev_1.20.1-2+deb12u5_amd64.deb",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/k/krb5/libkrb5-dev_1.20.1-2+deb12u5_amd64.deb",
+      "sha256": "98703cfcafb6377414ca5a0de9a309c7b324337e6ecf8c86157a14b85cebcb66",
+      "bytes": 15504,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian-security/20261025T051000Z/pool/updates/main/k/krb5/libkrb5-dev_1.20.1-2+deb12u5_amd64.deb"
+      ]
+    },
+    "libx11-dev": {
+      "version": "2:1.8.4-2+deb12u2",
+      "archive": "libx11-dev_1.8.4-2+deb12u2_amd64.deb",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libx/libx11/libx11-dev_1.8.4-2+deb12u2_amd64.deb",
+      "sha256": "8493220d4309af1907a1f2f6eeb204c8103dafcc368394fbc4a0858c28612ff9",
+      "bytes": 836976,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian-security/20261025T051000Z/pool/updates/main/libx/libx11/libx11-dev_1.8.4-2+deb12u2_amd64.deb"
+      ]
+    },
+    "libxkbfile-dev": {
+      "version": "1:1.1.0-1",
+      "archive": "libxkbfile-dev_1.1.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxkbfile/libxkbfile-dev_1.1.0-1_amd64.deb",
+      "sha256": "ed7efab19ec4d8167a742c0aa83cfd1ba65d77df6d1ea7d976ce271e70e81566",
+      "bytes": 86232,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/libx/libxkbfile/libxkbfile-dev_1.1.0-1_amd64.deb"
+      ]
+    },
+    "x11proto-dev": {
+      "version": "2022.1-1",
+      "archive": "x11proto-dev_2022.1-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xorgproto/x11proto-dev_2022.1-1_all.deb",
+      "sha256": "3cab66a6591774188a568f9b54c4e7956f18da76e0e0fc4a779db5f6bcc3f148",
+      "bytes": 598924,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/x/xorgproto/x11proto-dev_2022.1-1_all.deb"
+      ]
+    },
+    "comerr-dev": {
+      "version": "2.1-1.47.0-2+b2",
+      "archive": "comerr-dev_2.1-1.47.0-2+b2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/e/e2fsprogs/comerr-dev_2.1-1.47.0-2+b2_amd64.deb",
+      "sha256": "e72521fd1b8af99ad99e83af7d87926a4c4d7e8238e61846761f7818220a48a2",
+      "bytes": 51704,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/e/e2fsprogs/comerr-dev_2.1-1.47.0-2+b2_amd64.deb"
+      ]
+    },
+    "libxau-dev": {
+      "version": "1:1.0.9-1",
+      "archive": "libxau-dev_1.0.9-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxau/libxau-dev_1.0.9-1_amd64.deb",
+      "sha256": "d1a7f5d484e0879b3b2e8d512894744505e53d078712ce65903fef2ecfd824bb",
+      "bytes": 22912,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/libx/libxau/libxau-dev_1.0.9-1_amd64.deb"
+      ]
+    },
+    "libxcb1-dev": {
+      "version": "1.15-1",
+      "archive": "libxcb1-dev_1.15-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxcb/libxcb1-dev_1.15-1_amd64.deb",
+      "sha256": "c078c024114fdada06d3158af1771d7ed8763ab434cfbcbe6a334aa8a9cae358",
+      "bytes": 180776,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/libx/libxcb/libxcb1-dev_1.15-1_amd64.deb"
+      ]
+    },
+    "libxdmcp-dev": {
+      "version": "1:1.1.2-3",
+      "archive": "libxdmcp-dev_1.1.2-3_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxdmcp/libxdmcp-dev_1.1.2-3_amd64.deb",
+      "sha256": "c6733e5f6463afd261998e408be6eb37f24ce0a64b63bed50a87ddb18ebc1699",
+      "bytes": 42158,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/libx/libxdmcp/libxdmcp-dev_1.1.2-3_amd64.deb"
+      ]
+    },
+    "xtrans-dev": {
+      "version": "1.4.0-1",
+      "archive": "xtrans-dev_1.4.0-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xtrans/xtrans-dev_1.4.0-1_all.deb",
+      "sha256": "9ce1af9464faee0c679348dd11cdf63934c12e734a64e0903692b0cb5af38e06",
+      "bytes": 98740,
+      "mirrors": [
+        "https://snapshot.debian.org/archive/debian/20261025T051000Z/pool/main/x/xtrans/xtrans-dev_1.4.0-1_all.deb"
+      ]
+    }
+  }
+}

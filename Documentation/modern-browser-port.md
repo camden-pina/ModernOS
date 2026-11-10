@@ -1,3 +1,6 @@
+> Historical record: the NetSurf/WebCore browser described here is retired.
+> Use [Chromium](chromium-browser.md) and the [current rebuild guide](source-builds.md).
+
 # Modern browser port: current implementation and remaining work
 
 The native Browser now embeds genuine static WebCore/JavaScriptCore 2.54.0,

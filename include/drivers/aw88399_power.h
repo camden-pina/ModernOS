@@ -1,8 +1,8 @@
 /* ACPI resources and Intel Meteor Point GPIO programming for the verified
  * ALC287/17aa3907 machine. GPIO numbers and MMIO windows come from _CRS.
  * Register definitions follow Intel's primary pinctrl driver; no host I/O. */
-#ifndef MODERNOS_AW88399_POWER_H
-#define MODERNOS_AW88399_POWER_H
+#ifndef COAST_AW88399_POWER_H
+#define COAST_AW88399_POWER_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -93,7 +93,7 @@ def decoder_tests():
 
 
 def packaged_assets():
-    with tarfile.open(os.environ.get('MODERNOS_INITRAMFS') or ROOT / 'build/initramfs.tar') as archive:
+    with tarfile.open(os.environ.get('COAST_INITRAMFS') or ROOT / 'build/initramfs.tar') as archive:
         assert archive.getmember('bin/wallpaper-decode').mode & 0o111
         assert archive.getmember('usr/share/wallpapers').isdir()
         for name in ('alpine-lake.png', 'desert-sunset.png'):
@@ -306,7 +306,7 @@ def persistence(cpus, iso=None):
         d.expect('WALLPAPER_BACKGROUND')
 
         d.key('s', 'ctrl');
-        d.expect('CONFIG_SAVED', '/mnt/nvme1n1p1/.modernos/desktop.ini')
+        d.expect('CONFIG_SAVED', '/mnt/nvme1n1p1/.coast/desktop.ini')
         d.key('esc');
         d.key('2', 'meta_l');
         d.expect('WORKSPACE')
@@ -315,7 +315,7 @@ def persistence(cpus, iso=None):
         before = before[:d.width * (d.height - 42) * 3]
         d.exit()
 
-        output = vm.command('cat /mnt/nvme1n1p1/.modernos/desktop.ini')
+        output = vm.command('cat /mnt/nvme1n1p1/.coast/desktop.ini')
         assert 'wallpaper=5' in output and 'wallpaper_path=' + image_path in output
         assert 'wallpaper_mode=1' in output and 'wallpaper_background=2' in output
         vm.command('sync')

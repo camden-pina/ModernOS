@@ -1,5 +1,14 @@
 # Userland ports, emulator launchers, and integration checks.
-OVMF ?= $(srctree)/firmware/ovmf/OVMF.fd
+LOCAL_REPOSITORY_OUT ?= $(BUILD_DIR)/local-repository
+LOCAL_REPOSITORY_KEY ?= $(BUILD_DIR)/coast-signing-keys
+.PHONY: local-repository test-local-repository test-native-unix
+local-repository:
+	$(Q)python3 -B "$(srctree)/tools/build_local_repository.py" --output-root "$(LOCAL_REPOSITORY_OUT)" --signing-home "$(LOCAL_REPOSITORY_KEY)" --base-iso "$(BUILD_DIR)/Coast-base.iso" --ports "$(BUILD_DIR)/coast-receipts-r1/programs/BUILD.json" --arch-receipt "$(BUILD_DIR)/coast-receipts-r1/arch/BUILD.json" --support-receipt "$(BUILD_DIR)/coast-receipts-r1/support/BUILD.json" --qt-build "$(BUILD_DIR)/qt6/coast-r3/BUILD.json" --gcc-build "$(BUILD_DIR)/coast-gcc-r1/BUILD.json"
+test-local-repository:
+	$(Q)python3 -B "$(srctree)/tools/test_local_repository.py" --iso "$(BUILD_DIR)/Coast-codeoss.iso" --output-root "$(BUILD_DIR)/local-repository-test"
+test-native-unix:
+	$(Q)python3 -B "$(srctree)/tools/test_native_unix.py" --iso "$(BUILD_DIR)/Coast-codeoss.iso" --output-root "$(BUILD_DIR)/native-unix-test"
+OVMF ?= $(shell python3 "$(srctree)/tools/host_firmware.py")
 SMP ?= 4
 MEMORY ?= 2G
 REBUILD_MEMORY ?= 8G
@@ -29,10 +38,10 @@ SATA_DISK ?=
 # Keep QEMU's comma-separated options outside Make's $(if ...) arguments.
 QEMU_STORAGE :=
 ifneq ($(strip $(LINUX_DISK)),)
-QEMU_STORAGE += -drive "file=$(LINUX_DISK),format=raw,if=none,id=linuxdisk" -device nvme,drive=linuxdisk,serial=MODERNOS-SOURCE
+QEMU_STORAGE += -drive "file=$(LINUX_DISK),format=raw,if=none,id=linuxdisk" -device nvme,drive=linuxdisk,serial=COAST-SOURCE
 endif
 ifneq ($(strip $(FAT_DISK)),)
-QEMU_STORAGE += -drive "file=$(FAT_DISK),format=raw,if=none,id=fatdisk" -device nvme,drive=fatdisk,serial=MODERNOS-FAT
+QEMU_STORAGE += -drive "file=$(FAT_DISK),format=raw,if=none,id=fatdisk" -device nvme,drive=fatdisk,serial=COAST-FAT
 endif
 ifneq ($(strip $(SATA_DISK)),)
 QEMU_STORAGE += -drive "file=$(SATA_DISK),format=raw,if=none,id=satadisk" -device ide-hd,drive=satadisk,bus=ide.0
@@ -40,6 +49,40 @@ endif
 run: iso
 # Launch an existing image without rebuilding or overwriting its packaged bytes.
 .PHONY: run-image
+.PHONY: run-codeoss
+# Boot the selected qualified editor image with its tested resource defaults.
+# Command-line SMP/MEMORY/ISO_IMAGE overrides still take precedence.
+run-codeoss: SMP=2
+run-codeoss: MEMORY=16G
+run-codeoss: ISO_IMAGE=$(BUILD_DIR)/Coast-codeoss.iso
+run-codeoss: run-image
+.PHONY: chromium-browser run-browser test-chromium-browser
+CHROMIUM_BUILD ?= $(BUILD_DIR)/chromium-browser
+CHROMIUM_BASE_ISO ?= $(BUILD_DIR)/Coast-desktop-base.iso
+CHROMIUM_ISO ?= $(BUILD_DIR)/Coast-browser.iso
+# Rootless passt negotiates scaled TCP windows; slirp's 64 KiB window limits
+# throughput on higher latency links. Keep the guest's existing NAT addresses.
+CHROMIUM_QEMU_NETWORK ?= -nic passt,model=e1000e,ipv4=on,ipv6=off,mtu=1500,address=10.0.2.15/24,gateway=10.0.2.2,map-host-loopback=10.0.2.2,tcp-ports=none,udp-ports=none
+chromium-browser:
+	python3 -B "$(srctree)/tools/build_chromium_browser.py" --base-iso "$(CHROMIUM_BASE_ISO)" --output-root "$(CHROMIUM_BUILD)"
+run-browser: SMP=2
+run-browser: MEMORY=16G
+run-browser: ISO_IMAGE=$(CHROMIUM_ISO)
+run-browser: QEMU_NETWORK=$(CHROMIUM_QEMU_NETWORK)
+run-browser: run-image
+test-chromium-browser:
+	python3 -B "$(srctree)/tools/test_chromium_browser.py" --iso "$(CHROMIUM_ISO)" --output-root "$(CHROMIUM_BUILD)-test" --accel "$(QEMU_ACCEL)" --cpus "$(SMP)"
+.PHONY: serve-packages
+REPOSITORY_BIND ?= 127.0.0.1
+REPOSITORY_PORT ?= 8765
+REPOSITORY_PUBLIC_URL ?=
+REPOSITORY_CONFIG ?=
+serve-packages:
+	python3 -B "$(srctree)/tools/serve_repository.py" --repository "$(BUILD_DIR)/Coast-packages/BUILD.json" --bind "$(REPOSITORY_BIND)" --port "$(REPOSITORY_PORT)" $(if $(REPOSITORY_PUBLIC_URL),--public-url "$(REPOSITORY_PUBLIC_URL)",) $(if $(REPOSITORY_CONFIG),--config "$(REPOSITORY_CONFIG)",)
+REPOSITORY_EXPORT ?= $(BUILD_DIR)/coast-repository-server
+.PHONY: export-packages
+export-packages:
+	python3 -B "$(srctree)/tools/export_repository.py" --repository "$(BUILD_DIR)/Coast-packages/BUILD.json" --output-root "$(REPOSITORY_EXPORT)"
 run run-image:
 	@echo "QEMU: accelerator=$(QEMU_ACCEL) cpu=$(QEMU_CPU) display=$(QEMU_DISPLAY) $(QEMU_DISPLAY_ENV)"
 	@if [ "$(QEMU_ACCEL)" = tcg ]; then echo "QEMU: software CPU emulation; use make run-fast on a KVM-enabled host for faster dragging."; fi
@@ -97,75 +140,25 @@ test-mouse-live: iso
 	env $(QEMU_DISPLAY_ENV) python3 -u tools/diagnose_mouse.py --cpus $(SMP) --display $(QEMU_DISPLAY)
 test-network: iso
 	python3 -u tools/test_network.py --cpus 4
-.PHONY: javascriptcore webkit-deps webcore-deps media-deps webcore-checks webcore webcore-fixture test-webcore-render test-webcore-network test-webcore-deps test-native-browser test-browser-scheduling test-boot-files test-threads test-javascriptcore test-browser-ipc test-webkit-deps test-browser-surface
-test-browser-surface:
-	python3 tools/test_browser_surface.py
+.PHONY: javascriptcore test-javascriptcore test-threads test-native-console test-browser
 javascriptcore:
 	$(MAKE) -C $(srctree)/userland bin/jsc
-webkit-deps: javascriptcore
-	$(MAKE) -C $(srctree)/userland webkit-deps
-webcore-deps: webkit-deps
-	$(MAKE) -C $(srctree)/userland webcore-deps
-media-deps: webcore-deps
-	$(MAKE) -C $(srctree)/userland media-deps
-webcore-checks: webcore-deps
-	python3 -u tools/build_webcore_checks.py
-webcore: media-deps
-	python3 -u tools/build_webcore.py --interpreter $(WEBCORE_INTERPRETER)
-webcore-fixture: media-deps
-	python3 -u tools/build_webcore.py --interpreter $(WEBCORE_INTERPRETER) --target ModernOSRenderer
-	python3 -u tools/build_webcore_checks.py --only web-broker
-	$(MAKE) -C $(srctree)/userland bin/webcore-render-check
-test-webcore-render: webcore-fixture
-	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-render.iso
-	python3 -u tools/test_webcore_render.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-render.iso
-test-webcore-network: webcore-fixture
-	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-network.iso
-	python3 -u tools/test_webcore_network.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-network.iso
-test-native-browser: iso
-	python3 -u tools/test_native_browser.py --cpus 1 4 --iso $(ISO_IMAGE)
-.PHONY: test-native-console
-test-native-console: iso
-	python3 -u tools/test_native_console.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
-.PHONY: test-native-fetch-metadata
-test-native-fetch-metadata: iso
-	python3 -u tools/test_native_fetch_metadata.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
-.PHONY: test-native-frame-graph test-frame-tree-protocol test-frame-tree-authority
-test-native-frame-graph: iso
-	python3 -u tools/test_native_frame_graph.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
-test-frame-tree-protocol:
-	python3 -u tools/test_frame_tree_protocol.py
-test-frame-tree-authority:
-	python3 -u tools/test_frame_tree_authority.py
-test-browser-scheduling: iso
-	python3 -u tools/test_browser_scheduling.py --cpus 1 4 --iso $(ISO_IMAGE)
-test-boot-files: iso
-	python3 -u tools/test_boot_files.py --cpus 1 4 --iso $(ISO_IMAGE)
-test-webcore-deps: webcore-checks
-	$(MAKE) iso ISO_IMAGE=$(BUILD_DIR)/modern-browser/webcore-deps.iso
-	python3 -u tools/test_webcore_deps.py --cpus 1 4 --iso $(BUILD_DIR)/modern-browser/webcore-deps.iso
-test-threads: iso
-	python3 -u tools/test_threads.py --cpus 1 4
-test-browser-ipc: webkit-deps
-	$(MAKE) iso
-	python3 -u tools/test_browser_ipc.py --cpus 1 4
-test-webkit-deps: webkit-deps
-	$(MAKE) iso
-	python3 -u tools/test_webkit_deps.py --cpus 1 4
 test-javascriptcore: javascriptcore
 	$(MAKE) iso
 	python3 -u tools/test_javascriptcore.py --cpus 1 4
-test-browser: iso
-	python3 -u tools/test_native_browser.py --cpus 1 4 --iso $(ISO_IMAGE)
-	python3 tools/test_browser_protocol.py
-	python3 tools/test_browser_render.py
-	python3 tools/test_browser_script.py
-	python3 tools/test_browser_policy.py
-	python3 -u tools/test_browser_sandbox.py --cpus 1 4
-	python3 -u tools/test_browser_guest.py --cpus 4
+test-threads: iso
+	python3 -u tools/test_threads.py --cpus 1 4
+test-native-console: iso
+	python3 -u tools/test_native_console.py --cpus $(SMP) --accel $(QEMU_ACCEL) --iso $(ISO_IMAGE)
+# Chromium is the desktop browser. Standalone JSC remains for the text-core SDK.
+test-browser: test-chromium-browser
 test-toolchain-rebuild: iso
 	python3 -u tools/test_toolchain_rebuild.py --cpus $(SMP) --memory $(REBUILD_MEMORY)
 test-rebuilt-toolchain:
 	python3 -u tools/test_rebuilt_toolchain.py "$(REBUILD_CHECKPOINT)"
 
-.PHONY: run run-image run-fast test test-kernel-memory test-pixel-blend test-configure-shell test-gcc-generators test-console-input test-checkpoint test-desktop test-native test-ports test-compiler test-dark test-wallpaper test-drag test-drag-native test-host-mouse test-mouse-live test-network test-browser-surface javascriptcore webkit-deps webcore-deps media-deps webcore-checks webcore webcore-fixture test-webcore-render test-webcore-network test-native-browser test-native-console test-native-fetch-metadata test-native-frame-graph test-frame-tree-protocol test-frame-tree-authority test-browser-scheduling test-boot-files test-webcore-deps test-threads test-browser-ipc test-webkit-deps test-javascriptcore test-browser test-toolchain-rebuild test-rebuilt-toolchain
+.PHONY: run run-image run-fast test test-kernel-memory test-pixel-blend test-configure-shell test-gcc-generators test-console-input test-checkpoint test-desktop test-native test-ports test-compiler test-dark test-wallpaper test-drag test-drag-native test-host-mouse test-mouse-live test-network javascriptcore test-native-console test-threads test-javascriptcore test-browser test-toolchain-rebuild test-rebuilt-toolchain
+
+include $(srctree)/scripts/Makefile.dynamic
+
+include $(srctree)/scripts/doom.mk

@@ -1,13 +1,24 @@
+#include <credentials.h>
+#include <userns.h>
 #include <fs/file_time.h>
+#include <panic.h>
 #include <fs/vfs.h>
+#include <fs/memfd.h>
 #include <mm/pmm.h>
 #include <mm/user.h>
+#include <mm/user_ranges.h>
 #include <string.h>
 
-#define RAM_MAX_FILE (256 * 1024 * 1024)
+#define RAM_MAX_FILE USER_MAX_FILE
 
 struct ram_node {
     uint64_t ino;
+    struct ram_node *target; /* Directory aliases share this inode. */
+    unsigned links, opens;
+    unsigned shared_mappings;
+    bool materializing, imported;
+    struct ram_shared *shared;
+    uint32_t uid, gid;
     char name[OS_NAME_MAX + 1];
     unsigned mode;
     int64_t atime, mtime, ctime;
@@ -20,16 +31,30 @@ struct ram_node {
     /* Limine keeps module memory reserved. Imported file bytes can reference
        that immutable archive until a write needs private RAMFS pages. */
     const uint8_t *boot_data;
+    uint64_t write_origin; /* immutable creation-domain token, never a pointer */
 };
 
+_Static_assert(sizeof(struct ram_node)<=448,"R1 inode exceeds existing rounded allocation");
 static const struct fs_ops operations;
 static uint64_t next_inode = 1;
+static void ram_destroy(struct mount *, struct ram_node *);
+#include "ramfs_shared.inc"
 
 static void node_info(struct mount *m, struct ram_node *n, struct vnode *v) {
+    if (n->target)
+        n = n->target;
+    unsigned links = n->links;
+    if ((n->mode & 0170000) == S_IFDIR) {
+        links = 2;
+        for (struct ram_node *c = n->children; c; c = c->next)
+            links += (c->mode & 0170000) == S_IFDIR;
+    }
     *v = (struct vnode){.mount = m,
                         .id = (uintptr_t)n,
                         .size = n->size,
                         .mode = n->mode,
+                        .nlink = links,
+                        .uid = n->uid, .gid = n->gid,
                         .aux = {[3] = n->ino},
                         .atime = n->atime,
                         .mtime = n->mtime,
@@ -137,32 +162,43 @@ static long ram_read(struct vnode *v, uint64_t off, void *data, size_t size) {
 }
 
 static int ram_materialize(struct ram_node *n) {
-    if (!n->boot_data)
-        return 0;
-
-    size_t count = (n->size + PAGE_SIZE - 1) / PAGE_SIZE;
-    uint64_t *pages = count ? kmalloc(count * sizeof(*pages)) : NULL;
-    if (count && !pages)
-        return -E_NOMEM;
-
-    for (size_t i = 0; i < count; i++) {
-        pages[i] = pmm_alloc_pages(1);
-        if (!pages[i]) {
-            while (i)
-                pmm_free_pages(pages[--i], 1);
-            kfree(pages);
-            return -E_NOMEM;
-        }
-        size_t bytes = min(PAGE_SIZE, n->size - i * PAGE_SIZE);
-        memcpy(phys_ptr(pages[i]), n->boot_data + i * PAGE_SIZE, bytes);
-        if (bytes < PAGE_SIZE)
-            memset((uint8_t *)phys_ptr(pages[i]) + bytes, 0, PAGE_SIZE - bytes);
+    if (!n->boot_data) return 0;
+    /* Pins clean cached pages without holding an IRQ spinlock over file I/O
+       or a potentially large copy. Last unmap defers cache eviction here. */
+    uint64_t irq = spin_lock_irqsave(&shared_lock);
+    n->materializing = true;
+    spin_unlock_irqrestore(&shared_lock, irq);
+    size_t count = align(n->size, PAGE_SIZE) / PAGE_SIZE;
+    uint64_t *pages = count ? kmallocz(count * sizeof(*pages)) : NULL;
+    size_t done = 0;
+    if (!count || pages) for (; done < count; done++) {
+        irq = spin_lock_irqsave(&shared_lock);
+        struct ram_shared *cached = shared_index(n, done);
+        pages[done] = cached ? cached->physical : 0;
+        spin_unlock_irqrestore(&shared_lock, irq);
+        if (pages[done]) continue;
+        pages[done] = pmm_alloc_pages(1);
+        if (!pages[done]) break;
+        size_t bytes = min(PAGE_SIZE, n->size - done * PAGE_SIZE);
+        memcpy(phys_ptr(pages[done]), n->boot_data + done * PAGE_SIZE, bytes);
+        memset((uint8_t *)phys_ptr(pages[done]) + bytes, 0, PAGE_SIZE - bytes);
     }
-
-    n->pages = pages;
-    n->capacity = count;
-    n->boot_data = NULL;
-    return 0;
+    bool ok = done == count;
+    if (!ok && pages) for (size_t i = 0; i < done; i++) {
+        irq = spin_lock_irqsave(&shared_lock);
+        bool cached = shared_index(n, i) != NULL;
+        spin_unlock_irqrestore(&shared_lock, irq);
+        if (!cached) pmm_free_pages(pages[i], 1);
+    }
+    irq = spin_lock_irqsave(&shared_lock);
+    if (ok) {
+        n->pages = pages; n->capacity = count; n->boot_data = NULL;
+    }
+    n->materializing = false;
+    shared_sweep(n);
+    spin_unlock_irqrestore(&shared_lock, irq);
+    if (!ok) kfree(pages);
+    return ok ? 0 : -E_NOMEM;
 }
 
 int ramfs_import(struct vnode *v, const void *data, size_t size) {
@@ -171,9 +207,18 @@ int ramfs_import(struct vnode *v, const void *data, size_t size) {
     struct ram_node *n = (void *)(uintptr_t)v->id;
     if (n->size || n->pages || n->boot_data)
         return -E_EXIST;
+    n->imported = true; n->write_origin = 0;
     n->boot_data = data;
     n->size = v->size = size;
     return 0;
+}
+
+const void *ramfs_boot_identity(const struct vnode *v) {
+    if (!v || !v->mount || v->mount->ops != &operations ||
+        (v->mode & 0170000) != S_IFREG)
+        return NULL;
+    const struct ram_node *n = (const void *)(uintptr_t)v->id;
+    return n->size == v->size && !n->materializing ? n->boot_data : NULL;
 }
 
 static long ram_write(struct vnode *v, uint64_t off, const void *data, size_t size) {
@@ -182,6 +227,10 @@ static long ram_write(struct vnode *v, uint64_t off, const void *data, size_t si
         return -E_FBIG;
     }
 
+    /* Size-changing aliases need cross-CPU invalidation/EOF tracking.
+       Keep them explicitly unsupported while any shared leaf is alive. */
+    if (off + size > n->size && __atomic_load_n(&n->shared_mappings, __ATOMIC_ACQUIRE))
+        return -E_BUSY;
     int error = ram_materialize(n);
     if (error)
         return error;
@@ -233,6 +282,7 @@ static long ram_write(struct vnode *v, uint64_t off, const void *data, size_t si
 
 static int ram_truncate(struct vnode *v) {
     struct ram_node *n = (void *)(uintptr_t)v->id;
+    if (__atomic_load_n(&n->shared_mappings, __ATOMIC_ACQUIRE)) return -E_BUSY;
     for (size_t i = 0; n->pages && i < (n->size + PAGE_SIZE - 1) / PAGE_SIZE; i++) {
         pmm_free_pages(n->pages[i], 1);
     }
@@ -261,8 +311,26 @@ static int ram_create(const struct vnode *dir, const char *name, unsigned mode, 
         return -E_NOMEM;
     }
     n->ino = next_inode++;
+    n->links = 1;
     strcpy(n->name, name);
     n->mode = mode;
+    struct task *creator=sched_ready()?this_cpu()->current:NULL;
+    n->uid=credentials_fsuid(creator);n->gid=credentials_fsgid(creator);
+    if(d->mode&02000) {n->gid=d->gid;if((mode&0170000)==S_IFDIR)n->mode|=02000;}
+    /* Directory hardlinks are forbidden. Establish actual ancestry once at
+       creation, never reauthorize from a stale open-description path. */
+    struct ram_node *home=d;
+    bool private_home=false;
+    while(home && home->parent) {
+        if(!strcmp(home->name,"port-test") && !strcmp(home->parent->name,"home") &&
+           home->parent->parent==dir->mount->data && !strcmp(dir->mount->path,"/") &&
+           home->uid==1000 && home->gid==1000 && (home->mode&0777)==0700) {
+            private_home=true;break;
+        }
+        home=home->parent;
+    }
+    if(private_home && (mode&0170000)==S_IFREG && n->uid==1000 && n->gid==1000)
+        n->write_origin=userns_file_origin(creator);
     n->mtime = n->ctime = fs_time_now();
     d->mtime = d->ctime = n->mtime;
     attach(d, n);
@@ -295,6 +363,55 @@ static void detach(struct ram_node *n) {
     n->next = n->previous = n->hash_next = NULL;
 }
 
+static void ram_destroy(struct mount *m, struct ram_node *n) {
+    /* All callers hold shared_lock; the last PTE may be the last owner. */
+    if (n->links || n->opens || n->shared_mappings || n->materializing)
+        return;
+    struct vnode v;
+    node_info(m, n, &v);
+    ram_truncate(&v);
+    kfree(n->buckets);
+    kfree(n);
+}
+
+static void ram_retain(struct vnode *v) {
+    struct ram_node *n = (void *)(uintptr_t)v->id;
+    uint64_t irq = spin_lock_irqsave(&shared_lock);
+    n->opens++;
+    spin_unlock_irqrestore(&shared_lock, irq);
+}
+
+static void ram_release(struct vnode *v) {
+    struct ram_node *n = (void *)(uintptr_t)v->id;
+    uint64_t irq = spin_lock_irqsave(&shared_lock);
+    if (n->opens) n->opens--;
+    ram_destroy(v->mount, n);
+    spin_unlock_irqrestore(&shared_lock, irq);
+}
+
+static int ram_link(const struct vnode *source, const struct vnode *dir, const char *name) {
+    struct ram_node *n = (void *)(uintptr_t)source->id;
+    if ((n->mode & 0170000) == S_IFDIR)
+        return -E_PERM;
+    if (n->links == UINT32_MAX)
+        return -31; /* EMLINK */
+    struct ram_node *d = (void *)(uintptr_t)dir->id;
+    if (child(d, name))
+        return -E_EXIST;
+    struct ram_node *alias = kmallocz(sizeof(*alias));
+    if (!alias)
+        return -E_NOMEM;
+    alias->target = n;
+    alias->mode = n->mode;
+    strcpy(alias->name, name);
+    attach(d, alias);
+    uint64_t irq = spin_lock_irqsave(&shared_lock);
+    n->links++;
+    spin_unlock_irqrestore(&shared_lock, irq);
+    d->mtime = d->ctime = n->ctime = fs_time_now();
+    return 0;
+}
+
 static int ram_unlink(const struct vnode *dir, const char *name, bool directory) {
     struct ram_node *d = (void *)(uintptr_t)dir->id, *n = child(d, name);
     if (!n) {
@@ -306,12 +423,15 @@ static int ram_unlink(const struct vnode *dir, const char *name, bool directory)
     if (n->children) {
         return -E_NOTEMPTY;
     }
-    struct vnode v;
-    node_info(dir->mount, n, &v);
-    ram_truncate(&v);
+    struct ram_node *inode = n->target ? n->target : n;
     detach(n);
-    kfree(n->buckets);
-    kfree(n);
+    n->parent = NULL;
+    uint64_t irq = spin_lock_irqsave(&shared_lock);
+    inode->links--;
+    d->mtime = d->ctime = inode->ctime = fs_time_now();
+    if (n != inode) kfree(n);
+    ram_destroy(dir->mount, inode);
+    spin_unlock_irqrestore(&shared_lock, irq);
     return 0;
 }
 
@@ -329,7 +449,8 @@ static int ram_rename(const struct vnode *old, const char *name, const struct vn
     }
 
     struct ram_node *replaced = child(target, newname);
-    if (replaced == n) {
+    if (replaced == n || (replaced && (replaced->target ? replaced->target : replaced) ==
+                                      (n->target ? n->target : n))) {
         return 0;
     }
     if (replaced) {
@@ -351,8 +472,9 @@ static int ram_rename(const struct vnode *old, const char *name, const struct vn
     detach(n);
     strcpy(n->name, newname);
     attach(target, n);
-    n->ctime = fs_time_now();
-    d->mtime = d->ctime = target->mtime = target->ctime = n->ctime;
+    struct ram_node *inode = n->target ? n->target : n;
+    inode->ctime = fs_time_now();
+    d->mtime = d->ctime = target->mtime = target->ctime = inode->ctime;
     return 0;
 }
 
@@ -377,8 +499,9 @@ static int ram_readdir(const struct vnode *v, uint64_t *offset, struct directory
         return 0;
     }
 
-    out->id = n->ino;
-    out->mode = n->mode;
+    struct ram_node *inode = n->target ? n->target : n;
+    out->id = inode->ino;
+    out->mode = inode->mode;
     strcpy(out->name, n->name);
     (*offset)++;
     dir->iterate = n->next;
@@ -393,8 +516,21 @@ static int ram_stat(struct vnode *v) {
 
 static int ram_chmod(struct vnode *v, unsigned mode) {
     struct ram_node *n = (void *)(uintptr_t)v->id;
-    n->mode = (n->mode & 0170000) | (mode & 0777);
+    n->mode = (n->mode & 0170000) | (mode & 07777);
     v->mode = n->mode;
+    n->ctime = v->ctime = fs_time_now();
+    return 0;
+}
+
+static int ram_chown(struct vnode *v, uint32_t uid, uint32_t gid) {
+    struct ram_node *n = (void *)(uintptr_t)v->id;
+    if (uid != UINT32_MAX)
+        n->uid = uid;
+    if (gid != UINT32_MAX)
+        n->gid = gid;
+    if((n->mode&0170000)==S_IFREG)n->mode&=~06000u;
+    n->ctime = fs_time_now();
+    node_info(v->mount, n, v);
     return 0;
 }
 
@@ -406,6 +542,7 @@ static int ram_resize(struct vnode *v, uint64_t length) {
     if (length == n->size) {
         return 0;
     }
+    if (__atomic_load_n(&n->shared_mappings, __ATOMIC_ACQUIRE)) return -E_BUSY;
     if (!length) {
         return ram_truncate(v);
     }
@@ -473,7 +610,18 @@ static const struct fs_ops operations = {.root = ram_root,
                                          .chmod = ram_chmod,
                                          .resize = ram_resize,
                                          .set_times = ram_set_times,
-                                         .symlink = ram_symlink};
+                                         .symlink = ram_symlink,
+                                         .link = ram_link,
+                                         .chown = ram_chown,
+                                         .retain = ram_retain,
+                                         .release = ram_release};
+
+#if CONFIG_RAMFS_SHARED_WRITE_VERIFY
+#include "ramfs_write_selftest.inc"
+#if CONFIG_RAMFS_PARTIAL_WRITE_TEST
+#include "ramfs_partial_selftest.inc"
+#endif
+#endif
 
 int ramfs_mount(struct mount *m) {
     struct ram_node *root = kmallocz(sizeof(*root));
@@ -481,6 +629,7 @@ int ramfs_mount(struct mount *m) {
         return -E_NOMEM;
     }
     root->ino = next_inode++;
+    root->links = 1;
     root->mode = S_IFDIR | 0755;
     m->data = root;
     m->ops = &operations;

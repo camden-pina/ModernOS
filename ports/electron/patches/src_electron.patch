@@ -1,0 +1,32 @@
+diff --git a/shell/browser/javascript_environment.cc b/shell/browser/javascript_environment.cc
+index 76ef2a5..60d0480 100644
+--- a/shell/browser/javascript_environment.cc
++++ b/shell/browser/javascript_environment.cc
+@@ -44,6 +44,18 @@ namespace electron {
+ 
+ namespace {
+ 
++// Retain Node's task and isolate management while forwarding Gin's separate
++// allocator-backed zero-segment contract. Do not infer a size from the page
++// allocator or create another reservation here.
++class ElectronNodePlatform final : public node::NodePlatform {
++ public:
++  using node::NodePlatform::NodePlatform;
++
++  size_t GetZeroSegmentSize() override {
++    return gin::V8Platform::Get()->GetZeroSegmentSize();
++  }
++};
++
+ // Whether the V8 snapshot blob this process loaded (v8_context_snapshot.bin,
+ // or in the browser process under the LoadBrowserProcessSpecificV8Snapshot
+ // fuse, browser_v8_context_snapshot.bin) is the one this build shipped, as
+@@ -194,7 +206,7 @@ v8::Isolate* JavascriptEnvironment::Initialize(
+ 
+   // The V8Platform of gin relies on Chromium's task schedule, which has not
+   // been started at this point, so we have to rely on Node's V8Platform.
+-  platform_ = node::MultiIsolatePlatform::Create(
++  platform_ = std::make_unique<ElectronNodePlatform>(
+       base::RecommendedMaxNumberOfThreadsInThreadGroup(3, 8, 0.1, 0),
+       tracing_controller, gin::V8Platform::Get()->GetPageAllocator());
+ 

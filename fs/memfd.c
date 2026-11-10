@@ -1,4 +1,5 @@
 #include <fs/memfd.h>
+#include <panic.h>
 #include <mm/pmm.h>
 #include <mm/user.h>
 #include <string.h>
@@ -32,6 +33,20 @@ struct memory_object {
 static spinlock_t memory_lock;
 static struct memory_page *buckets[BUCKETS];
 static unsigned allocated_pages;
+
+bool memfd_backing_charge(void) {
+    uint64_t irq = spin_lock_irqsave(&memory_lock);
+    bool ok = allocated_pages < TOTAL_PAGES;
+    if (ok) allocated_pages++;
+    spin_unlock_irqrestore(&memory_lock, irq);
+    return ok;
+}
+void memfd_backing_uncharge(void) {
+    uint64_t irq = spin_lock_irqsave(&memory_lock);
+    kassert(allocated_pages);
+    allocated_pages--;
+    spin_unlock_irqrestore(&memory_lock, irq);
+}
 
 static unsigned bucket(uint64_t physical) {
     return (physical / PAGE_SIZE) % BUCKETS;

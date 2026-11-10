@@ -1,0 +1,10 @@
+{
+  "upstream_commit": "211a00dbedf7a224e0da0a2db3cf9cb6cb7a4bfb",
+  "upstream_url": "https://codeload.github.com/microsoft/vscode/tar.gz/211a00dbedf7a224e0da0a2db3cf9cb6cb7a4bfb",
+  "source_archive_sha256": "bc7b9fb17c96536143c0f0e7d04d81617a433fd240abaa47737905cc25158d9d",
+  "esbuild_version": "0.28.2",
+  "esbuild_tarball": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz",
+  "esbuild_sha256": "9573bb2233aab0f9ea7647d5cca9726113cc1768de61d66b17267f4db84488f6",
+  "esbuild_integrity_verified": true,
+  "scope": "Host-only compiler stored in task workspace; no global installs or host settings changes."
+}

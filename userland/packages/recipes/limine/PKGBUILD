@@ -1,0 +1,39 @@
+# Maintainer: Coast local ports
+pkgname=limine
+pkgver=12.9.0
+pkgrel=1
+pkgdesc='Native limine, built with Coast GCC'
+arch=('x86_64')
+license=('BSD-2-Clause')
+depends=('musl')
+makedepends=('gcc' 'binutils' 'make' 'coast-linux-uapi' 'nasm' 'mtools')
+source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/limine-12.9.0.tar.xz")
+sha256sums=('86107e8754365124b1871479f766697461f16ce9d847b3c23bb269335588c565')
+noextract=('limine-12.9.0.tar.xz')
+
+prepare() {
+    cd "$srcdir"
+    tar -xJf 'limine-12.9.0.tar.xz'
+}
+
+build() {
+    cd "$srcdir/limine-12.9.0"
+    TOOLCHAIN_FOR_TARGET= CFLAGS='-std=gnu11 -O2 -fno-pie -mno-avx -mno-avx2' LDFLAGS='-static -no-pie' CPPFLAGS='-idirafter /usr/lib/coast/linux-uapi/include' \
+        ./configure --prefix=/usr --build=x86_64-linux-musl --host=x86_64-linux-musl --enable-bios --enable-bios-cd --enable-uefi-x86-64 --enable-uefi-cd
+    make
+}
+
+check() {
+    cd "$srcdir/limine-12.9.0"
+    test -s bin/BOOTX64.EFI && test -s bin/limine-bios.sys
+}
+
+package() {
+    cd "$srcdir/limine-12.9.0"
+    install -Dm755 bin/limine "$pkgdir/usr/bin/limine"
+    install -Dm644 bin/limine-bios.sys "$pkgdir/usr/lib/coast/limine/limine-bios.sys"
+    install -Dm644 bin/limine-bios-cd.bin "$pkgdir/usr/lib/coast/limine/limine-bios-cd.bin"
+    install -Dm644 bin/limine-uefi-cd.bin "$pkgdir/usr/lib/coast/limine/limine-uefi-cd.bin"
+    install -Dm644 bin/BOOTX64.EFI "$pkgdir/usr/lib/coast/limine/BOOTX64.EFI"
+    install -Dm644 COPYING "$pkgdir/usr/share/licenses/limine/COPYING"
+}

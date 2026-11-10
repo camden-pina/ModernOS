@@ -1,0 +1,12 @@
+{
+  "xdg-shell.xml": {
+    "URL": "https://raw.githubusercontent.com/wayland-mirror/wayland-protocols/1.31/stable/xdg-shell/xdg-shell.xml",
+    "bytes": 59566,
+    "SHA256": "5b63a655af7147381705c32744fde4ac3f54ee6147396f709f394b0d1f711e71"
+  },
+  "fullscreen-shell-unstable-v1.xml": {
+    "URL": "https://raw.githubusercontent.com/wayland-mirror/wayland-protocols/1.31/unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml",
+    "bytes": 12272,
+    "SHA256": "fcc50bf0b48610d55bbe096a53da433e8557ea36a31feba2d77bf0cb9181bb52"
+  }
+}

@@ -1,0 +1,1 @@
+obj-y := source/components/dispatcher/ source/components/events/ source/components/executer/ source/components/hardware/ source/components/namespace/ source/components/parser/ source/components/resources/ source/components/tables/ source/components/utilities/

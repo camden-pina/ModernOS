@@ -1,0 +1,62 @@
+Code OSS native text-core M2, verified in Coast guests 2026-10-24.
+
+Genuine microsoft/vscode text core at commit
+211a00dbedf7a224e0da0a2db3cf9cb6cb7a4bfb (MIT). All 32 selected upstream modules
+match the pinned archive except the explicit platform.ts/process.ts adapters.
+PieceTree remains unmodified. COAST-PLATFORM.patch and SOURCE-MANIFEST.json
+record the changes. The native desktop Text Editor is a separate application.
+
+The standalone C-API host links the existing JavaScriptCore library. It provides
+bounded checked native file reads/saves, stdin/stdout and a real CLOCK_MONOTONIC
+performance.now subset. It does not emulate Node, Electron, navigator or a DOM.
+There is no workbench renderer, extension host, file watcher or event loop.
+
+Verified evidence:
+- 33 production file-service host cases under ASan/UBSan, including partial
+  write/fsync/close/rename failures and concurrent-destination recovery.
+- Actual guest core check: 2000 model-checked edits, UTF-16 positions, CRLF,
+  immutable snapshots and upstream position mapping.
+- Actual guest RAM and positively identified 64 MiB disposable FAT32 mount:
+  edit/save/reopen, UTF-8/BOM/mixed EOL preservation, retained originals,
+  stale-open conflict, Save As recovery/no-clobber, checked invalid input.
+- Interactive guest CLI stdin, dirty-exit guard, save/re-edit/save/reopen bytes.
+- Mode 0444 rejects saves; a positively verified FAT32 read-only remount rejects
+  saving and preserves existing bytes. No host raw disk was attached.
+The corrected storage receipt is codeoss-m2/qa/storage05/report.json in the
+executor workspace. Earlier storage03/04 attempts did not establish FAT results
+because an attempted second mount was busy; they are not counted as FAT passes.
+
+Commands in the new image:
+  codeoss-core /home/user/example.txt
+  codeoss-core --script /usr/share/codeoss/core-check-native.js
+  codeoss-core --script /usr/share/codeoss/file-service-check.js /ABS/EMPTY-QA-DIR
+CLI: show, status, insert UTF16_OFFSET "JSON text", delete OFFSET COUNT, save,
+save-as PATH, quit, quit!. NUL/invalid Unicode and split surrogate offsets are
+rejected. Text limit 4 MiB; native paths at most 511 bytes. A stale save keeps the
+unsaved model. Save retains the old version as .codeoss-original-* and refuses
+to replace an intervening destination. Backup files are deliberately retained.
+
+Limits: no transactional filesystem guarantee, immutable backup, metadata
+identity compare-and-swap, cross-process locks or guaranteed power-loss durability
+(parent directory fsync is absent). A writer with an open old inode can change a
+retained file. Host fault-injection evidence is not proof of every guest error
+path. File watching, concurrent filesystem service integration and complete upstream
+IFileService semantics remain future work. M3 adds a separate native graphical
+frontend using this genuine core in its own JSC worker; see CODEOSS-GRAPHICAL.md.
+It has a 256 KiB preview limit, bounded history, selection/find/clipboard and
+checked Save/Save As. It is not the VS Code workbench or Monaco browser view.
+
+Full Code OSS IDE prerequisites remain much larger: a supported presentation
+runtime and workbench (upstream Electron/Chromium and Node 24.22.1 at this pin),
+platform services, workspace/UI services and language/extension hosts. The Linux
+contribution build also expects X11/xkbfile/libsecret/krb5. Coast has no
+established Electron, Node or X11/Wayland port. A web workbench requires browser
+DOM/APIs and a compatible server; this native JSC CLI is neither that nor the
+full IDE. Browser allocator and trading investigations remain paused.
+
+M4 responsiveness milestone: one persistent native JSC service owns separate
+upstream models per graphical window. Document-ID checked protocol v2, bounded
+fair queues, acknowledged model release and per-window recovery caches avoid a
+large ELF reload on every open. Initial/recovery cold loading still stalls on
+the frozen loader/VFS lock. No kernel or guest access-check change. See
+CODEOSS-GRAPHICAL.md and the dated M4 handoff for measured results/tradeoffs.

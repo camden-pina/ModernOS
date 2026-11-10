@@ -1,0 +1,35 @@
+# Maintainer: Coast local ports
+pkgname=bc
+pkgver=1.08.2
+pkgrel=3
+pkgdesc='GNU arbitrary precision calculator and dc, built from local verified source'
+arch=('x86_64')
+url='https://www.gnu.org/software/bc/'
+license=('GPL-3.0-or-later')
+depends=('musl')
+makedepends=('gcc' 'make')
+source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/bc-$pkgver.tar.gz")
+sha256sums=('ae470fec429775653e042015edc928d07c8c3b2fc59765172a330d3d87785f86')
+
+build() {
+    cd "$srcdir/bc-$pkgver"
+    ./configure --build=x86_64-linux-musl --prefix=/usr --without-readline --without-libedit
+    # Build the actual programs without a Texinfo documentation generator.
+    make -C lib
+    make -C bc
+    make -C dc
+}
+
+check() {
+    cd "$srcdir/bc-$pkgver"
+    test "$(printf '6*7\n' | ./bc/bc -q)" = 42
+}
+
+package() {
+    cd "$srcdir/bc-$pkgver"
+    install -Dm755 bc/bc "$pkgdir/usr/bin/bc"
+    install -Dm755 dc/dc "$pkgdir/usr/bin/dc"
+    install -Dm644 doc/bc.1 "$pkgdir/usr/share/man/man1/bc.1"
+    install -Dm644 doc/dc.1 "$pkgdir/usr/share/man/man1/dc.1"
+    install -Dm644 COPYING "$pkgdir/usr/share/licenses/bc/COPYING"
+}

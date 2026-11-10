@@ -1,0 +1,9 @@
+{
+  "version": "1.6.0",
+  "archive": "noVNC-1.6.0.tar.gz",
+  "url": "https://codeload.github.com/novnc/noVNC/tar.gz/refs/tags/v1.6.0",
+  "sha256": "5066103959ef4e9b10f37e5a148627360dd8414e4cf8a7db92bdbd022e728aaa",
+  "source": "noVNC-1.6.0",
+  "license": "MPL-2.0 AND BSD-2-Clause AND BSD-3-Clause AND MIT AND OFL-1.1 AND CC-BY-SA-3.0",
+  "upstream": "https://github.com/novnc/noVNC/tree/v1.6.0"
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate actual GCC tables in ModernOS; compare with the same native GNU awk
+"""Generate actual GCC tables in Coast; compare with the same native GNU awk
 running on the build host. No compiler tables are supplied to the guest.
 """
 import argparse
@@ -61,7 +61,7 @@ def exercise(cpus, iso=None):
 
         vm.command('gawk --version', 'GNU Awk 5.4.0')
         vm.command('awk --version', 'GNU Awk 5.4.0')
-        shell('cd /usr/src/modernos; sha256sum -c SHA256SUMS; '
+        shell('cd /usr/src/coast; sha256sum -c SHA256SUMS; '
               '/bin/sh -n prepare-gcc-options.sh; /bin/sh -n /usr/bin/bootstrap-toolchain')
         shell('mkdir /tmp/gcc-generators')
 
@@ -70,7 +70,7 @@ def exercise(cpus, iso=None):
         names = ['gcc-14.2.0/gcc/' + f for f in files] + ['gcc-14.2.0/move-if-change']
         for index, name in enumerate(names):
             vm.command(('write' if not index else 'append') + ' /tmp/gcc-generator-files ' + shlex.quote(name))
-        shell('tar -xJf /usr/src/modernos/gcc-14.2.0.tar.xz --no-same-owner '
+        shell('tar -xJf /usr/src/coast/gcc-14.2.0.tar.xz --no-same-owner '
               '-C /tmp/gcc-generators -T /tmp/gcc-generator-files', timeout=180)
         prefix = 'cd /tmp/gcc-generators/gcc-14.2.0/gcc; '
 
@@ -112,7 +112,7 @@ def exercise(cpus, iso=None):
         assert expected['options.cc'] not in before, 'BusyBox no longer reproduces the generator fault'
         shell('touch ' + build + '/' + runtime + '/libgcc/cache-marker ' +
               build + '/' + runtime + '/libstdc++-v3/cache-marker')
-        helper = '/bin/sh /usr/src/modernos/prepare-gcc-options.sh ' + build + ' ' + runtime + ' gawk'
+        helper = '/bin/sh /usr/src/coast/prepare-gcc-options.sh ' + build + ' ' + runtime + ' gawk'
         shell(helper)
         shell('test ! -e ' + build + '/' + runtime + '/libgcc; test ! -e ' +
               build + '/' + runtime + '/libstdc++-v3')

@@ -1,3 +1,6 @@
+#include <tsc.h>
+#include <video/window.h>
+#include <uapi/pointer.h>
 #include <video/display.h>
 #include <video/fbcon.h>
 #include <video/scanout.h>
@@ -15,9 +18,17 @@ static struct {
 } canvas;
 
 static uint64_t sequence;
-static struct os_input_event events[256];
+static struct os_input_event_v2 events[256];
+static struct os_keyboard_snapshot keyboard_snapshot;
 
-static void publish(struct os_input_event event) {
+void display_keyboard_sync(const struct os_keyboard_snapshot *snapshot) {
+    uint64_t irq=spin_lock_irqsave(&event_lock);
+    keyboard_snapshot=*snapshot;
+    keyboard_snapshot.sequence=sequence;
+    spin_unlock_irqrestore(&event_lock,irq);
+}
+
+static void publish_source(struct os_input_event event, uint16_t source, uint32_t capabilities) {
     uint64_t f = spin_lock_irqsave(&event_lock);
     if (owner) {
         unsigned next = (head + 1) % 256;
@@ -26,10 +37,14 @@ static void publish(struct os_input_event event) {
             dropped++;
         }
         event.sequence = ++sequence;
-        events[head] = event;
+        events[head] = (struct os_input_event_v2){.event=event,.timestamp_us=tsc_uptime_us(),.source_id=source,.capabilities=capabilities};
         head = next;
     }
     spin_unlock_irqrestore(&event_lock, f);
+}
+
+static void publish(struct os_input_event event) {
+    publish_source(event,0,0);
 }
 
 void display_key(uint8_t key) {
@@ -50,15 +65,18 @@ bool display_hid(uint8_t usage, uint8_t ascii, uint8_t modifiers, bool pressed) 
 }
 
 void display_pointer(const mouse_event_t *event) {
-    publish((struct os_input_event){.type = INPUT_POINTER,
+    publish_source((struct os_input_event){.type = INPUT_POINTER,
                                     .code = event->flags,
                                     .dx = event->dx,
                                     .dy = event->dy,
                                     .wheel = event->wheel,
-                                    .buttons = event->buttons});
+                                    .buttons = event->buttons},event->source_id,mouse_capabilities(event->source_id));
 }
 
+bool display_owned(unsigned pid) { return pid && __atomic_load_n(&owner, __ATOMIC_ACQUIRE) == pid; }
+
 void display_drop(unsigned pid) {
+    window_drop(pid);
     mutex_lock(&display_mutex);
     uint64_t f = spin_lock_irqsave(&event_lock);
     bool release = owner == pid;
@@ -78,6 +96,19 @@ void display_drop(unsigned pid) {
 }
 
 long display_call(struct task *t, unsigned op, uint64_t pointer, uint64_t size) {
+    if (op == DISPLAY_KEYBOARD_SNAPSHOT) {
+        struct os_keyboard_snapshot request, result;
+        if(size!=sizeof(request))return -E_INVAL;
+        if(!user_copy_in(&t->space,&request,pointer,sizeof(request)))return -E_FAULT;
+        if(request.version!=OS_KEYBOARD_STATE_VERSION || request.size!=sizeof(request) ||
+           request.reserved)return -E_INVAL;
+        uint64_t irq=spin_lock_irqsave(&event_lock);
+        bool allowed=owner==t->pid && tty_is_foreground(task_input_identity(t));
+        result=keyboard_snapshot;
+        spin_unlock_irqrestore(&event_lock,irq);
+        if(!allowed)return -E_PERM;
+        return user_copy_out(&t->space,pointer,&result,sizeof(result))?0:-E_FAULT;
+    }
     struct os_display_info info;
     if (!fbcon_display_info(&info))
         return -E_NOTSUP;
@@ -98,7 +129,7 @@ long display_call(struct task *t, unsigned op, uint64_t pointer, uint64_t size) 
 
     if (op > DISPLAY_PRESENT_SWAP)
         return -E_INVAL;
-    if (!tty_is_foreground(t->pid))
+    if (!tty_is_foreground(task_input_identity(t)))
         return -E_PERM;
 
     if (op == DISPLAY_RELEASE) {
@@ -215,29 +246,36 @@ long display_call(struct task *t, unsigned op, uint64_t pointer, uint64_t size) 
     return result;
 }
 
-long display_input(struct task *t, uint64_t pointer, uint64_t capacity) {
+static long input_read(struct task *t, uint64_t pointer, uint64_t capacity, bool extended) {
     if (!capacity || capacity > 64)
         return -E_INVAL;
-    if (!user_access(&t->space, pointer, capacity * sizeof(struct os_input_event), true))
+    size_t stride=extended?sizeof(struct os_input_event_v2):sizeof(struct os_input_event);
+    if (!user_access(&t->space,pointer,capacity*stride,true))
         return -E_FAULT;
-    struct os_input_event buffer[64];
-    unsigned n = 0;
-    uint64_t f = spin_lock_irqsave(&event_lock);
-    if (owner != t->pid || !tty_is_foreground(t->pid)) {
-        spin_unlock_irqrestore(&event_lock, f);
+    struct os_input_event_v2 buffer[64];
+    unsigned n=0;
+    uint64_t irq=spin_lock_irqsave(&event_lock);
+    if(owner!=t->pid || !tty_is_foreground(task_input_identity(t))) {
+        spin_unlock_irqrestore(&event_lock,irq);
         return -E_PERM;
     }
-    if (dropped) {
-        buffer[n++] = (struct os_input_event){
-            .sequence = ++sequence, .type = INPUT_OVERFLOW, .code = dropped};
-        dropped = 0;
+    if(dropped) {
+        buffer[n++]=(struct os_input_event_v2){.event={.sequence=++sequence,.type=INPUT_OVERFLOW,.code=dropped},.timestamp_us=tsc_uptime_us()};
+        dropped=0;
     }
-    while (tail != head && n < capacity) {
-        buffer[n++] = events[tail];
-        tail = (tail + 1) % 256;
+    while(tail!=head && n<capacity) {
+        buffer[n++]=events[tail];tail=(tail+1)%256;
     }
-    spin_unlock_irqrestore(&event_lock, f);
-    if (!n)
-        return -E_AGAIN;
-    return user_copy_out(&t->space, pointer, buffer, n * sizeof(buffer[0])) ? (long)n : -E_FAULT;
+    spin_unlock_irqrestore(&event_lock,irq);
+    if(!n)return -E_AGAIN;
+    if(extended)return user_copy_out(&t->space,pointer,buffer,n*sizeof(buffer[0]))?(long)n:-E_FAULT;
+    struct os_input_event legacy[64];
+    for(unsigned i=0;i<n;i++)legacy[i]=buffer[i].event;
+    return user_copy_out(&t->space,pointer,legacy,n*sizeof(legacy[0]))?(long)n:-E_FAULT;
+}
+long display_input(struct task *t, uint64_t pointer, uint64_t capacity) {
+    return input_read(t,pointer,capacity,false);
+}
+long display_input_v2(struct task *t, uint64_t pointer, uint64_t capacity) {
+    return input_read(t,pointer,capacity,true);
 }

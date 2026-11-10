@@ -1,5 +1,5 @@
-#ifndef MODERNOS_LWIP_OPTIONS_H
-#define MODERNOS_LWIP_OPTIONS_H
+#ifndef COAST_LWIP_OPTIONS_H
+#define COAST_LWIP_OPTIONS_H
 
 /* All raw callbacks and protocol calls are serialized by network_mutex.
  * Neither NIC polling nor lwIP is invoked from an interrupt handler. */
@@ -33,10 +33,12 @@
 #define MEMP_NUM_UDP_PCB 64
 #define MEMP_NUM_PBUF 512
 #define MEMP_NUM_SYS_TIMEOUT 32
-#define PBUF_POOL_SIZE 256
+#define PBUF_POOL_SIZE 1024
 #define PBUF_POOL_BUFSIZE 1700
 #define TCP_MSS 1460
-#define TCP_WND 65535
+#define LWIP_WND_SCALE 1
+#define TCP_RCV_SCALE 5
+#define TCP_WND (1024 * 1024)
 #define TCP_SND_BUF 65535
 #define TCP_SND_QUEUELEN 192
 #define TCP_LISTEN_BACKLOG 1

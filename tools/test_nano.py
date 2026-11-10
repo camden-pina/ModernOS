@@ -49,7 +49,7 @@ def exercise(cpus, storage=False, dark=False):
             print('PASS upstream GNU nano: read-only filesystem reports actual save failure', flush=True)
 
         if dark:
-            config = base + '/.modernos' if storage else '/home/user/.config'
+            config = base + '/.coast' if storage else '/home/user/.config'
             v.command('mkdir -p ' + config)
             v.command('write ' + config + '/desktop.ini dark=1')
 

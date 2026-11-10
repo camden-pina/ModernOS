@@ -1,8 +1,19 @@
+#include <pidns.h>
+#include <filesystem.h>
+#include <waitid.h>
+#include <credentials.h>
+#include <accounts.h>
+#include <seccomp.h>
+#include <landlock.h>
+#include <video/window.h>
+#include <clipboard.h>
+#include <drivers/usb/usb_mouse.h>
 #include <sched.h>
 #include <random.h>
 #include <tty.h>
 #include <drivers/block.h>
 #include <mm/pmm.h>
+#include <mm/user_ranges.h>
 #include <console.h>
 #include <string.h>
 #include <tsc.h>
@@ -12,11 +23,13 @@
 #include <fs/file_time.h>
 #include <net/network.h>
 #include <fs/eventfd.h>
+#include <fs/inotify.h>
 #include <fs/memfd.h>
 #include <fs/unix_socket.h>
 #include <fs/epoll.h>
 #include <sandbox.h>
 #include <drivers/audio.h>
+#include <power.h>
 
 #define IO_LIMIT (16 * 1024 * 1024)
 
@@ -37,6 +50,7 @@ void syscall_cpu_init(void) {
 static int path_argument(struct task *t, uint64_t ptr, char *out) {
     char raw[OS_PATH_MAX];
     int e = user_string(&t->space, raw, ptr, sizeof(raw));
+    if(!e && raw[0]!='/')e=s1_cwd_check(t);
     return e ? e : vfs_normalize(t->cwd, raw, out);
 }
 
@@ -53,7 +67,8 @@ static int path_at(struct task *t, int fd, uint64_t ptr, char *out) {
             return -E_NOTDIR;
         base = t->fds[fd]->path;
     }
-    return vfs_normalize(base, raw, out);
+    e=s1_at_base(t,fd,raw,&base);
+    return e?e:vfs_normalize(base, raw, out);
 }
 
 struct argument_sizes {
@@ -117,6 +132,7 @@ static int arguments(struct task *t, uint64_t ptr, char **argv, char *storage, u
 }
 
 static long process_call(struct task *t, register_t *r, bool exec) {
+    if(s1_borrowed(t))return -E_NOTSUP;
     char path[OS_PATH_MAX];
     int e = path_argument(t, r->rdi, path);
     if (e)
@@ -309,24 +325,33 @@ static long process_call(struct task *t, register_t *r, bool exec) {
 
     kfree(argv);
     kfree(storage);
-    return e;
+    return !exec && e>0?(long)pidns_view(t,e):e;
 }
 
 static long io_file_call(struct task *t, register_t *r, bool write, bool positional,
                          struct file *file) {
+    if (file->flags & O_PATH)
+        return -E_BADF;
     size_t size = r->rdx;
     uint64_t address = r->rsi;
     if (positional && (file->tty || file->pipe || file->pty || file->device || file->socket ||
-                       file->unix_socket || file->event || file->epoll))
+                       file->unix_socket || file->event || file->epoll || file->inotify))
         return -E_SPIPE;
     if (positional && ((int64_t)r->r10 < 0 || size > INT64_MAX - r->r10))
         return -E_INVAL;
     if (write ? !(file->flags & 3) : (file->flags & 3) == O_WRONLY)
         return -E_BADF;
-    if (size > IO_LIMIT)
-        return -E_2BIG;
+    if (size > IO_LIMIT) {
+        /* Regular font/file streams may request their entire asset at once.
+           Return a bounded short read so libc can continue. Each syscall still
+           copies at most IO_LIMIT; other endpoint and write limits stay exact. */
+        if(write || size>INT64_MAX || (file->node.mode&0170000)!=S_IFREG)
+            return -E_2BIG;
+        size=IO_LIMIT;
+    }
     if (!user_access(&t->space, address, size, !write))
         return -E_FAULT;
+    if(file->inotify)return write?-E_BADF:inotify_read(t,file,address,size);
     if (file->event) {
         uint64_t value;
         if (size < 8 || (write && size != 8))
@@ -354,6 +379,9 @@ static long io_file_call(struct task *t, register_t *r, bool write, bool positio
             n = write ? pty_write(file, buffer, chunk) : pty_read(file, buffer, chunk);
         else if (file->tty) {
             if (write) {
+                struct os_termios mode;tty_get_config(&mode);
+                if(t->context->job_managed&&(mode.lflag&TOSTOP)&&!tty_is_foreground(task_input_identity(t)))
+                    return done?(long)done:task_background_terminal(t,22);
                 console_write((const char *)buffer, chunk);
                 n = chunk;
             } else
@@ -384,27 +412,112 @@ static long io_file_call(struct task *t, register_t *r, bool write, bool positio
 }
 
 static long io_call(struct task *t, register_t *r, bool write, bool positional) {
+    /* An unthreaded event loop owns its descriptor for the entire call. Keep
+       its process lock instead of pinning a nonblocking pipe or console through the VFS
+       lock: loading/hashing an unrelated executable must not freeze input
+       while the desktop checks an empty child-output pipe. Threaded and
+       blocking I/O retain the existing pin/unpin lifetime rules. */
+    if (!positional && !t->syscall_locked && r->rdi < OS_FD_MAX) {
+        mutex_lock(&t->context->syscall_lock);
+        struct file *stream = t->fds[r->rdi];
+        if (t->context->references == 1 && stream &&
+            ((!write && stream->pipe && (stream->flags & O_NONBLOCK)) ||
+             (write && stream->tty))) {
+            t->syscall_locked = true;
+            long result = io_file_call(t, r, write, false, stream);
+            t->syscall_locked = false;
+            mutex_unlock(&t->context->syscall_lock);
+            return result;
+        }
+        mutex_unlock(&t->context->syscall_lock);
+    }
     struct file *file = task_file_pin(t, r->rdi);
     return file ? io_file_call(t, r, write, positional, file) : -E_BADF;
+}
+
+/* Regular-file sendfile, using the same retained descriptors, sandbox checks
+   and filesystem operations as read/write. Unsupported endpoint combinations
+   return EINVAL so callers can use their normal streamed-copy fallback. */
+static long sendfile_call(struct task *t, register_t *r) {
+    struct file *out=task_file_pin(t,r->rdi),*in=task_file_pin(t,r->rsi);
+    if(!out || !in)return -E_BADF;
+    if((in->flags&O_PATH) || (out->flags&O_PATH) ||
+       (in->flags&3)==O_WRONLY || !(out->flags&3))return -E_BADF;
+    if((in->node.mode&0170000)!=S_IFREG || (out->node.mode&0170000)!=S_IFREG ||
+       out->flags&O_APPEND)return -E_INVAL;
+    /* Reading and writing the same inode is not a supported copy operation. */
+    if(in==out || (in->node.mount && in->node.mount==out->node.mount &&
+                   in->node.id==out->node.id))return -E_INVAL;
+    int64_t offset=0;
+    if(r->rdx && (!user_access(&t->space,r->rdx,8,true) ||
+                   !user_copy_in(&t->space,&offset,r->rdx,8)))return -E_FAULT;
+    if(r->rdx && offset<0)return -E_INVAL;
+    size_t count=min(r->r10,(uint64_t)IO_LIMIT),done=0;
+    long result=0;uint8_t buffer[4096];
+    mutex_lock(&vfs_mutex);
+    result=sandbox_file(in,SANDBOX_READ);
+    if(!result)result=sandbox_file(out,SANDBOX_WRITE);
+    if(!r->rdx)offset=in->offset;
+    if(!result && (offset<0 || count>(uint64_t)INT64_MAX-offset))result=-E_INVAL;
+    while(!result && done<count) {
+        struct file at=*in;at.offset=offset;
+        long n=vfs_read(&at,buffer,min(count-done,sizeof(buffer)));
+        if(n<=0){result=n;break;}
+        long written=vfs_write(out,buffer,n);
+        if(written<=0){result=written;break;}
+        offset+=written;done+=written;
+        if(!r->rdx)in->offset=offset;
+        if(written<n)break;
+    }
+    mutex_unlock(&vfs_mutex);
+    if(r->rdx && done && !user_copy_out(&t->space,r->rdx,&offset,8))return -E_FAULT;
+    return done?(long)done:result;
 }
 
 static long open_call(struct task *t, int dirfd, uint64_t pathptr, unsigned flags, unsigned mode) {
     unsigned fd = 0;
     while (fd < OS_FD_MAX && t->fds[fd])
         fd++;
-    if (fd == OS_FD_MAX)
+    if (fd == OS_FD_MAX) {
+        static unsigned logs;
+        if(userns_admitted_account(t) && __atomic_fetch_add(&logs,1,__ATOMIC_RELAXED)<16) {
+            unsigned regular=0,pipes=0,sockets=0,events=0,epolls=0,other=0;
+            for(unsigned i=0;i<OS_FD_MAX;i++) {
+                struct file *file=t->fds[i];
+                if(file->socket || file->unix_socket)sockets++;
+                else if(file->pipe)pipes++;
+                else if(file->event)events++;
+                else if(file->epoll)epolls++;
+                else if((file->node.mode&0170000)==S_IFREG)regular++;
+                else other++;
+            }
+            pr_warn("ELECTRON_FD_TABLE_LIMIT pid=%u tid=%u limit=%u regular=%u pipes=%u sockets=%u events=%u epolls=%u other=%u\n",
+                    t->tgid,t->pid,OS_FD_MAX,regular,pipes,sockets,events,epolls,other);
+        }
         return -E_MFILE;
+    }
     char path[OS_PATH_MAX];
-    int e = path_at(t, dirfd, pathptr, path);
+    int e=user_string(&t->space,path,pathptr,sizeof(path));if(e)return e;
+    mutex_lock(&vfs_mutex);struct vnode retained;
+    e=s1_at_lookup(t,dirfd,path,flags&O_NOFOLLOW,false,&retained);
+    if(e<=0) {
+        if(!e)e=vfs_open_proc_node(&retained,flags,&t->fds[fd]);
+        if(!e)t->fd_flags[fd]=(flags&O_CLOEXEC)?FD_CLOEXEC:0;
+        mutex_unlock(&vfs_mutex);return e?e:(long)fd;
+    }
+    mutex_unlock(&vfs_mutex);
+    e = path_at(t, dirfd, pathptr, path);
     if (e)
         return e;
     mutex_lock(&vfs_mutex);
-    e = vfs_open(path, flags, mode & 0777 & ~t->context->creation_mask, &t->fds[fd]);
+    e = vfs_open(path, flags, mode & 0777 & ~s1_mask(t,false,0), &t->fds[fd]);
     if (!e)
         t->fd_flags[fd] = (flags & O_CLOEXEC) ? FD_CLOEXEC : 0;
     mutex_unlock(&vfs_mutex);
     return e ? e : (long)fd;
 }
+
+#include "linux_compat.inc"
 
 static long stat_call(struct task *t, register_t *r, bool fd) {
     uint64_t destination = r->rsi;
@@ -427,23 +540,11 @@ static long stat_call(struct task *t, register_t *r, bool fd) {
         char path[OS_PATH_MAX];
         e = path_argument(t, r->rdi, path);
         if (!e)
-            e = r->rax == SYS_lstat ? vfs_lstat(path, &node) : vfs_lookup(path, &node);
+            e = r->rax == SYS_lstat ? vfs_lstat(path, &node) : vfs_lookup_stat(path, &node);
     }
     struct os_stat st = {0};
-    if (!e) {
-        st.ino = node.mount && node.mount->device ? node.id : node.aux[3];
-        st.mode = node.mode;
-        st.nlink = 1;
-        st.size = node.size;
-        st.blksize = 4096;
-        st.blocks = (node.size + 511) / 512;
-        st.atime_sec = node.atime;
-        st.mtime_sec = node.mtime;
-        st.ctime_sec = node.ctime;
-        st.dev = node.mount && node.mount->device
-                     ? (uint64_t)(node.mount->device - block_devices) + 1
-                     : 0;
-    }
+    if (!e)
+        st = node_stat(&node);
     mutex_unlock(&vfs_mutex);
     if (e)
         return e;
@@ -451,10 +552,17 @@ static long stat_call(struct task *t, register_t *r, bool fd) {
 }
 
 static long vector_call(struct task *t, register_t *r, bool write) {
-    if (r->rdx > 16)
+    struct file *file = r->rdx<=1024?task_file_pin(t,r->rdi):NULL;
+    if (r->rdx > 16 && (r->rdx>1024 || r->rdx>unix_vector_limit(t,file))) {
+        static unsigned denial_logs;
+        if (userns_admitted_account(t) && __atomic_fetch_add(&denial_logs,1,__ATOMIC_RELAXED)<32)
+            pr_warn("ELECTRON_VECTOR_LIMIT pid=%u tgid=%u write=%u fd=%llu vectors=%llu limit=16\n",
+                    t->pid,t->tgid,write,(unsigned long long)r->rdi,(unsigned long long)r->rdx);
         return -E_INVAL;
-    struct file *file = task_file_pin(t, r->rdi);
+    }
     if (!file)
+        return -E_BADF;
+    if (file->flags & O_PATH)
         return -E_BADF;
     if (file->socket || file->unix_socket)
         return network_file_syscall(t, r, file);
@@ -506,6 +614,38 @@ static long vector_call(struct task *t, register_t *r, bool write) {
     return done;
 }
 
+/* Explicit-offset vectors are used by Node's persistent bytecode cache.
+   Keep the descriptor offset unchanged, validate the complete request before
+   writing, and reuse the ordinary bounded file/sandbox transfer path. */
+static long positional_vector_call(struct task *t, register_t *r, bool write) {
+    if (r->rdx > 16 || (int64_t)r->r10 < 0 || r->r8) return -E_INVAL;
+    struct file *file = task_file_pin(t, r->rdi);
+    if (!file || (file->flags & O_PATH)) return -E_BADF;
+    if (file->tty || file->pipe || file->pty || file->device || file->socket ||
+        file->unix_socket || file->event || file->epoll || file->inotify) return -E_SPIPE;
+    if (write ? !(file->flags & 3) : (file->flags & 3) == O_WRONLY) return -E_BADF;
+    struct os_iovec vectors[16];
+    if (!user_copy_in(&t->space, vectors, r->rsi, r->rdx * sizeof(vectors[0]))) return -E_FAULT;
+    size_t total = 0;
+    for (unsigned i = 0; i < r->rdx; i++) {
+        if (vectors[i].len > IO_LIMIT - total) return -E_2BIG;
+        if (!user_access(&t->space, vectors[i].base, vectors[i].len, !write)) return -E_FAULT;
+        total += vectors[i].len;
+    }
+    if (total > INT64_MAX - r->r10) return -E_INVAL;
+    long done = 0;
+    for (unsigned i = 0; i < r->rdx; i++) {
+        if (!vectors[i].len) continue;
+        register_t part = *r;
+        part.rsi = vectors[i].base; part.rdx = vectors[i].len; part.r10 = r->r10 + done;
+        long n = io_file_call(t, &part, write, true, file);
+        if (n < 0) return done ? done : n;
+        done += n;
+        if ((uint64_t)n < vectors[i].len) break;
+    }
+    return done;
+}
+
 static long duplicate(struct task *t, unsigned old, unsigned first, bool exact, unsigned flags) {
     if (old >= OS_FD_MAX || !t->fds[old] || first >= OS_FD_MAX)
         return -E_BADF;
@@ -522,8 +662,10 @@ static long duplicate(struct task *t, unsigned old, unsigned first, bool exact, 
     if (!dest && t->fds[dest] &&
         (t->fds[dest]->tty != t->fds[old]->tty || t->fds[dest]->pty != t->fds[old]->pty))
         task_release_input(t, t->fds[dest]);
-    if (t->fds[dest])
+    if (t->fds[dest]) {
+        vfs_record_release(t->fds[dest], t->tgid);
         vfs_close(t->fds[dest]);
+    }
     t->fds[dest] = t->fds[old];
     t->fds[dest]->references++;
     t->fd_flags[dest] = flags;
@@ -534,6 +676,23 @@ static long duplicate(struct task *t, unsigned old, unsigned first, bool exact, 
 static long ioctl_call(struct task *t, register_t *r) {
     if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
         return -E_BADF;
+    if (t->fds[r->rdi]->flags & O_PATH)
+        return -E_BADF;
+    if (r->rsi == 0x5451 || r->rsi == 0x5450) { /* FIOCLEX / FIONCLEX */
+        if (r->rsi == 0x5451)
+            __atomic_fetch_or(&t->fd_flags[r->rdi], FD_CLOEXEC, __ATOMIC_RELEASE);
+        else
+            __atomic_fetch_and(&t->fd_flags[r->rdi], ~FD_CLOEXEC, __ATOMIC_RELEASE);
+        return 0;
+    }
+    if (t->fds[r->rdi]->pipe && r->rsi == 0x5421) { /* FIONBIO */
+        int value;
+        if (!user_copy_in(&t->space, &value, r->rdx, sizeof(value)))
+            return -E_FAULT;
+        struct file *f = t->fds[r->rdi];
+        f->flags = (f->flags & ~O_NONBLOCK) | (value ? O_NONBLOCK : 0);
+        return 0;
+    }
     if (t->fds[r->rdi]->socket || t->fds[r->rdi]->unix_socket) {
         int value = 0;
         long error;
@@ -555,6 +714,16 @@ static long ioctl_call(struct task *t, register_t *r) {
         return pty_ioctl(t->fds[r->rdi], r->rsi, r->rdx);
     if (!t->fds[r->rdi]->tty)
         return -E_NOTTY;
+    if (r->rsi == TIOCGPGRP) {
+        unsigned group = tty_job_foreground();
+        return user_copy_out(&t->space, r->rdx, &group, sizeof(group)) ? 0 : -E_FAULT;
+    }
+    if (r->rsi == TIOCSPGRP) {
+        unsigned group;
+        if (!user_copy_in(&t->space, &group, r->rdx, sizeof(group)))
+            return -E_FAULT;
+        return task_terminal_set(t, t->fds[r->rdi], group);
+    }
     if (r->rsi == TCGETS) {
         struct os_termios config;
         tty_get_config(&config);
@@ -572,7 +741,7 @@ static long ioctl_call(struct task *t, register_t *r) {
         return user_copy_out(&t->space, r->rdx, &size, sizeof(size)) ? 0 : -E_FAULT;
     }
     if (r->rsi == FIONREAD) {
-        if (!tty_is_foreground(t->pid))
+        if (!tty_is_foreground(task_input_identity(t)))
             return -E_PERM;
         int n = tty_available();
         return user_copy_out(&t->space, r->rdx, &n, sizeof(n)) ? 0 : -E_FAULT;
@@ -620,12 +789,67 @@ static long directory_call(struct task *t, register_t *r) {
     return done ? (long)done : -E_INVAL;
 }
 
+static bool mmap_range_valid(uint64_t address, uint64_t size) {
+    uint64_t end = USER_STACK_TOP - USER_STACK_SIZE - PAGE_SIZE;
+    return !(address & (PAGE_SIZE - 1)) && address >= USER_MIN &&
+           address < end && size <= end - address;
+}
+
+static bool mmap_range_free(struct address_space *space, uint64_t address, uint64_t size) {
+    if (!mmap_range_valid(address, size)) return false;
+    if (space->vm->budget) return user_ranges_free(space,address,size);
+    for (uint64_t offset = 0; offset < size; offset += PAGE_SIZE)
+        if (user_mapped(space, address + offset)) return false;
+    return true;
+}
+
+static bool mmap_select_address(struct address_space *space, uint64_t hint,
+                                uint64_t size, uint64_t *address) {
+    if (space->vm->budget) return user_ranges_select(space,hint,size,address);
+    /* A non-fixed address is only a hint. Round down; an occupied or invalid
+       hint must not replace existing mappings or prevent fallback allocation. */
+    hint &= ~(PAGE_SIZE - 1);
+    if (hint && mmap_range_free(space, hint, size)) {
+        *address = hint;
+        return true;
+    }
+    uint64_t start = space->vm->mmap_next;
+    if (!mmap_range_valid(start, size)) return false;
+    uint64_t run = 0;
+    /* Small requests retain the 1 GiB search-work bound. Large native build
+       mappings may scan twice their own span; resident budgets still apply. */
+    uint64_t search = max(1ULL << 30, 2 * size);
+    for (uint64_t offset = 0; offset < search; offset += PAGE_SIZE) {
+        uint64_t candidate = start + offset;
+        if (!mmap_range_valid(candidate, PAGE_SIZE)) return false;
+        if (user_mapped(space, candidate)) run = 0;
+        else run += PAGE_SIZE;
+        if (run == size) {
+            *address = candidate + PAGE_SIZE - size;
+            return true;
+        }
+    }
+    return false;
+}
+
 static long mmap_call(struct task *t, register_t *r) {
     uint64_t size = r->rsi, addr = r->rdi, prot = r->rdx, flags = r->r10;
-    if (!size || size > USER_MAX_ALLOC || prot & ~7ULL || (prot && !(prot & 1)) ||
+    /* Linux ignores these legacy/advisory hints; access permissions stay intact. */
+    flags &= ~0x21800ULL; /* MAP_DENYWRITE | MAP_EXECUTABLE | MAP_STACK */
+    bool reserve = !prot && (flags & 0x20) && (flags & 3)==2 && user_ranges_sparse(&t->space);
+    if (!size || size > (reserve ? USER_RESERVE_MAX : user_alloc_limit(&t->space)) || prot & ~7ULL || (prot && !(prot & 1)) ||
         (prot & 6) == 6 || flags & ~0x4033ULL || (flags & 3) > 2 || !(flags & 3) || r->r9 & 4095 ||
         r->r9 > INT64_MAX || size > INT64_MAX - r->r9)
+    {
+#if CONFIG_ELECTRON_PROFILE
+        if (t->space.vm->budget)
+            printk("electron-mmap-reject: size=%llu prot=%llu flags=%llu group_pages=%llu group_limit=%llu\n",
+                   (unsigned long long)size, (unsigned long long)prot, (unsigned long long)flags,
+                   (unsigned long long)user_budget_pages(t->space.vm->budget),
+                   (unsigned long long)user_budget_limit(t->space.vm->budget));
+#endif
         return -E_INVAL;
+    }
     bool anonymous = flags & 0x20;
     struct file *file = NULL;
     if (anonymous) {
@@ -633,9 +857,10 @@ static long mmap_call(struct task *t, register_t *r) {
             return -E_INVAL;
     } else {
         int fd = (int)r->r8;
-        if (fd < 0 || fd >= OS_FD_MAX || !t->fds[fd] || (t->fds[fd]->flags & 3) == O_WRONLY)
+        if (fd < 0 || fd >= OS_FD_MAX || !t->fds[fd] || (t->fds[fd]->flags & O_PATH) || (t->fds[fd]->flags & 3) == O_WRONLY)
             return -E_BADF;
         file = t->fds[fd];
+        if(file->landlock_ruleset)return -E_NODEV;
         if ((file->node.mode & 0170000) != S_IFREG)
             return -E_NODEV;
         int permission = sandbox_file(file, SANDBOX_READ);
@@ -643,31 +868,48 @@ static long mmap_call(struct task *t, register_t *r) {
             return permission;
     }
     bool shared = (flags & 3) == 1;
-    if (shared && (!file || !file->memory))
-        return -E_NOTSUP;
+    bool regular_shared = shared && file && !file->memory;
+    if (shared && !file) return -E_NOTSUP;
+    /* First genuine file-sharing milestone is RAMFS read-only data. No
+       executable/writable alias, persistent-FS fallback, or fake snapshot. */
+    uint64_t write_origin=regular_shared && (prot&2)?userns_file_origin(t):0;
+    if(regular_shared && ((prot&4) || ((prot&2) && !write_origin)))return -E_NOTSUP;
     if (file && file->memory && (prot & 4))
         return -E_ACCES;
     if (shared && (prot & 2) && (!(file->flags & 3) || sandbox_file(file, SANDBOX_WRITE)))
         return -E_ACCES;
     uint64_t requested = size;
     size = align(size, 4096ULL);
-    if (!(flags & 0x10) && t->space.vm->page_limit &&
+    if (!reserve && !(flags & 0x10) && t->space.vm->page_limit &&
         size / PAGE_SIZE > t->space.vm->page_limit - t->space.vm->pages)
         return -E_NOMEM;
-    if (!addr)
-        addr = t->space.vm->mmap_next;
-    if ((addr & 4095) || addr < USER_MIN || addr >= USER_STACK_TOP - USER_STACK_SIZE - PAGE_SIZE ||
-        size > USER_STACK_TOP - USER_STACK_SIZE - PAGE_SIZE - addr)
+    if (flags & 0x10) {
+        if (!mmap_range_valid(addr, size)) return -E_NOMEM;
+    } else if (!mmap_select_address(&t->space, addr, size, &addr))
         return -E_NOMEM;
     unsigned vmflags =
         ((prot & 1) ? VM_READ : 0) | ((prot & 2) ? VM_WRITE : 0) | ((prot & 4) ? VM_EXEC : 0);
+    if (reserve) {
+        if (!user_ranges_new_mapping(&t->space) ||
+            !user_ranges_reserve(&t->space,addr,size,flags & 0x10)) return -E_NOMEM;
+#if CONFIG_ELECTRON_PROFILE && CONFIG_ZYGOTE_TRACE
+        printk("electron-reserve: hint=%llx address=%llx size=%llu backed_pages=%llu virtual_pages=%llu records=%llu\n",
+               (unsigned long long)r->rdi,(unsigned long long)addr,(unsigned long long)size,
+               (unsigned long long)t->space.vm->pages,
+               (unsigned long long)user_budget_virtual_pages(t->space.vm->budget),
+               (unsigned long long)user_budget_records(t->space.vm->budget));
+#endif
+        t->space.vm->mmap_next=max(t->space.vm->mmap_next,addr+size);
+        return addr;
+    }
     uint64_t mapped = 0;
     int error = -E_NOMEM;
     if (file) {
         /* MAP_PRIVATE is an eager, independent snapshot. Writes never reach
            the file and the shared descriptor offset remains unchanged.
-           Whole pages beyond EOF need retained backing-file metadata and
-           page-fault handling that delivers SIGBUS; snapshots reject them. */
+           Whole pages beyond this snapshot's EOF stay charged and inaccessible
+           with explicit SIGBUS guards, including after mprotect/fork. This does
+           not implement live backing-file growth/truncation tracking. */
         mutex_lock(&vfs_mutex);
         if (file->memory) {
             file->node.size = memfd_size(file->memory);
@@ -676,27 +918,44 @@ static long mmap_call(struct task *t, register_t *r) {
             error = file->node.mount->ops->stat(&file->node);
         else
             error = 0;
-        if (error || r->r9 >= file->node.size || size > align(file->node.size - r->r9, 4096ULL)) {
+        if (!error && regular_shared) {
+            error = ramfs_shared_validate(&file->node,r->r9,size);
+            if(!error && write_origin)error=credentials_node(&file->node,6);
+            if(!error && write_origin)error=credentials_modified(&file->node);
+            if(!error && write_origin)error=ramfs_shared_validate_write(&file->node,r->r9,size,write_origin);
+        }
+        if (error || (file->memory &&
+                      (r->r9 >= file->node.size || size > align(file->node.size - r->r9, 4096ULL)))) {
             mutex_unlock(&vfs_mutex);
             return error ? error : -E_INVAL;
         }
         error = -E_NOMEM;
     }
+    if (!user_ranges_new_mapping(&t->space) ||
+        ((flags & 0x10) && t->space.vm->budget && !user_ranges_unmap(&t->space,addr,size))) {
+        if (file) mutex_unlock(&vfs_mutex);
+        return -E_NOMEM;
+    }
     for (; mapped < size; mapped += PAGE_SIZE) {
-        if (flags & 0x10)
+        if ((flags & 0x10) && !t->space.vm->budget)
             user_unmap(&t->space, addr + mapped);
         if (shared) {
-            if (!user_map_memory(&t->space, addr + mapped, vmflags, file->memory, r->r9 + mapped,
-                                 !(file->flags & 3)))
-                break;
+            bool ok = regular_shared
+                ? user_map_shared_file(&t->space,addr+mapped,vmflags,&file->node,r->r9+mapped,write_origin)
+                : user_map_memory(&t->space,addr+mapped,vmflags,file->memory,r->r9+mapped,!(file->flags & 3));
+            if (!ok) break;
             continue;
         }
-        if (!user_map(&t->space, addr + mapped, vmflags | (file ? VM_READ : 0)))
-            break;
+        if (file && !file->memory && r->r9 + mapped >= file->node.size) {
+            if (!user_map_file_eof(&t->space, addr + mapped, vmflags)) break;
+        } else if (!(file ? user_map_file(&t->space,addr+mapped,vmflags|VM_READ)
+                          : user_map(&t->space,addr+mapped,vmflags))) break;
     }
     if (mapped == size && file && !shared) {
         uint8_t buffer[PAGE_SIZE];
-        uint64_t previous = file->offset, bytes = min(requested, file->node.size - r->r9);
+        uint64_t previous = file->offset;
+        uint64_t bytes = r->r9 < file->node.size ? min(requested, file->node.size - r->r9) : 0;
+        error = 0;
         file->offset = r->r9;
         for (uint64_t done = 0; done < bytes;) {
             size_t part = min(bytes - done, (uint64_t)sizeof(buffer));
@@ -735,9 +994,10 @@ static long brk_call(struct task *t, uint64_t addr) {
     struct address_space *s = &t->space;
     if (!addr)
         return s->vm->brk_end;
-    if (addr < s->vm->brk_base || addr - s->vm->brk_base > USER_MAX_ALLOC)
+    if (addr < s->vm->brk_base || addr - s->vm->brk_base > user_alloc_limit(s))
         return s->vm->brk_end;
     uint64_t first = align(s->vm->brk_end, 4096ULL), last = align(addr, 4096ULL), mapped = first;
+    if (!user_ranges_new_mapping(s)) return s->vm->brk_end;
     for (; mapped < last; mapped += PAGE_SIZE)
         if (!user_map(s, mapped, VM_RDWR))
             break;
@@ -758,8 +1018,13 @@ static long mremap_call(struct task *t, register_t *r) {
     uint64_t address = r->rdi, old_size = r->rsi, new_size = r->rdx;
     if (r->r10)
         return -E_NOTSUP; /* Moving/aliasing needs full VMA tracking. */
+    if (t->space.vm->budget && old_size && new_size &&
+        old_size<=USER_RESERVE_MAX && new_size<=USER_RESERVE_MAX && address<USER_STACK_TOP &&
+        max(old_size,new_size)<=USER_STACK_TOP-address &&
+        user_ranges_has_sparse(&t->space,address,align(old_size,PAGE_SIZE)))
+        return user_ranges_remap(&t->space,address,align(old_size,PAGE_SIZE),align(new_size,PAGE_SIZE));
     if ((address & 4095) || address < USER_MIN || !old_size || !new_size ||
-        old_size > USER_MAX_ALLOC || new_size > USER_MAX_ALLOC)
+        old_size > user_alloc_limit(&t->space) || new_size > user_alloc_limit(&t->space))
         return -E_INVAL;
     old_size = align(old_size, PAGE_SIZE);
     new_size = align(new_size, PAGE_SIZE);
@@ -768,13 +1033,16 @@ static long mremap_call(struct task *t, register_t *r) {
     unsigned protection;
     if (!user_mapping_flags(&t->space, address, &protection))
         return -E_FAULT;
+    bool snapshot=user_file_snapshot(&t->space,address);
     for (uint64_t offset = 0; offset < old_size; offset += PAGE_SIZE) {
         unsigned flags;
         if (!user_mapping_flags(&t->space, address + offset, &flags))
             return -E_FAULT;
-        if (user_shared(&t->space, address + offset))
+        if (user_shared(&t->space, address + offset) || user_file_eof(&t->space, address + offset))
             return -E_NOTSUP;
         if (flags != protection)
+            return -E_NOTSUP;
+        if (user_file_snapshot(&t->space,address+offset)!=snapshot)
             return -E_NOTSUP;
     }
     /* Never replace an adjacent mapping or partially destroy the old range
@@ -782,9 +1050,11 @@ static long mremap_call(struct task *t, register_t *r) {
     for (uint64_t offset = old_size; offset < new_size; offset += PAGE_SIZE)
         if (user_mapped(&t->space, address + offset))
             return -E_NOMEM;
+    if (!user_ranges_new_mapping(&t->space)) return -E_NOMEM;
     uint64_t mapped = old_size;
     for (; mapped < new_size; mapped += PAGE_SIZE)
-        if (!user_map(&t->space, address + mapped, protection))
+        if (!(snapshot ? user_map_file(&t->space,address+mapped,protection)
+                       : user_map(&t->space,address+mapped,protection)))
             break;
     if (mapped < new_size) {
         while (mapped > old_size) {
@@ -814,6 +1084,11 @@ static long poll_wait(struct task *t, struct os_pollfd *fds, unsigned count, int
             else
                 fds[i].revents = vfs_poll(t->fds[fd], fds[i].events);
             ready += fds[i].revents != 0;
+            if(fds[i].revents) {
+                unsigned trace=credentials_zygote_record(t);
+                if(trace)pr_info("G1_POLL_READY seq=%u pid=%u tid=%u fd=%d events=%x revents=%x\n",
+                    trace,t->tgid,t->pid,fd,fds[i].events,fds[i].revents);
+            }
         }
         mutex_unlock(&t->context->syscall_lock);
         if (ready || (timeout >= 0 && tsc_uptime_us() - start >= (uint64_t)timeout))
@@ -1010,6 +1285,7 @@ static long timestamp_call(struct task *t, register_t *r) {
         }
     } else
         e = flags & AT_SYMLINK_NOFOLLOW ? vfs_lstat(path, &node) : vfs_lookup(path, &node);
+    if(!e && changed)e=credentials_owner(&node);
     if (!e && changed) {
         if (node.mount->readonly)
             e = -E_ROFS;
@@ -1017,6 +1293,11 @@ static long timestamp_call(struct task *t, register_t *r) {
             e = -E_NOTSUP;
         else
             e = node.mount->ops->set_times(&node, times[0].sec, times[1].sec, changed);
+        if(!e) {
+            struct file changed_file={.node=node};
+            strcpy(changed_file.path,pathptr?path:t->fds[fd]->path);
+            inotify_file(&changed_file,IN_ATTRIB);
+        }
     }
     mutex_unlock(&vfs_mutex);
     return e;
@@ -1029,16 +1310,65 @@ static int resize_node(struct vnode *node, uint64_t size) {
         return -E_ROFS;
     if (!(node->mode & 0222))
         return -E_ACCES;
+    int changed=credentials_modified(node);if(changed)return changed;
     if (node->mount->ops->resize)
         return node->mount->ops->resize(node, size);
     return !size && node->mount->ops->truncate ? node->mount->ops->truncate(node) : -E_NOTSUP;
 }
 
+/* The reaper supplies a canonical outer PID and saved session, never a local
+   namespace ID or user-selected terminal. This is the existing wait4 handoff. */
+static inline __attribute__((always_inline)) void wait_input_complete(struct task *t,unsigned pid,unsigned child_sid,int status) {
+    /* Managed forked jobs retain their group's terminal until the
+       controller reclaims it. Native spawn creates a separate session
+       root, and must return to the caller's input identity on wait. */
+    if (!t->context->job_managed || child_sid!=t->context->sid) {
+        unsigned identity=task_input_identity(t);
+        bool owned=tty_is_foreground(pid);
+        tty_transfer_foreground(pid,identity);
+        if(owned && (status&127))tty_reset_config(identity);
+        for(unsigned fd=0;fd<3;fd++) {
+            struct file *input=task_file_pin(t,fd);
+            if(input && input->pty && !input->pty_master)
+                pty_foreground(input->pty,pid,identity);
+        }
+    }
+}
+
 static long dispatch(struct task *t, register_t *r) {
     if (t->vfork_parent && (r->rax == SYS_brk || r->rax == SYS_mmap || r->rax == SYS_mprotect ||
-                            r->rax == SYS_munmap || r->rax == SYS_mremap))
+                            r->rax == SYS_munmap || r->rax == SYS_mremap || r->rax == SYS_madvise))
         return -E_NOTSUP;
     switch (r->rax) {
+    case SYS_chown:
+    case SYS_fchown:
+    case SYS_lchown:
+    case SYS_fchownat:
+        return linux_chown(t, r);
+    case SYS_statx: {
+        unsigned flags = r->rdx, mask = r->r10;
+        if ((flags & ~(AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH | 0x6800u)) ||
+            (flags & 0x6000) == 0x6000 || (mask & 0x80000000u))
+            return -E_INVAL;
+        return linux_metadata(t, r);
+    }
+    case SYS_fchmodat:
+    case SYS_fchmodat2:
+    case SYS_faccessat2:
+        return linux_permissions(t, r);
+    case SYS_link:
+    case SYS_linkat:
+        return linux_link(t, r);
+    case SYS_statfs:
+    case SYS_fstatfs:
+        return linux_statfs(t, r);
+    case SYS_flock:
+        return linux_flock(t, r);
+    case SYS_clock_nanosleep:
+        return linux_clock_sleep(t, r);
+    case SYS_close_range:
+        return linux_close_range(t, r);
+
     case SYS_futex:
         return task_futex(t, r);
 
@@ -1119,6 +1449,12 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_pwrite64:
         return io_call(t, r, true, true);
 
+    case SYS_preadv:
+        return positional_vector_call(t, r, false);
+
+    case SYS_pwritev:
+        return positional_vector_call(t, r, true);
+
     case SYS_readv:
         return vector_call(t, r, false);
 
@@ -1127,6 +1463,12 @@ static long dispatch(struct task *t, register_t *r) {
 
     case SYS_open:
         return open_call(t, AT_FDCWD, r->rdi, r->rsi, r->rdx);
+
+    case SYS_creat:
+        return open_call(t, AT_FDCWD, r->rdi, O_WRONLY | O_CREAT | O_TRUNC, r->rsi);
+
+    case SYS_sendfile:
+        return sendfile_call(t,r);
 
     case SYS_openat:
         return open_call(t, (int)r->rdi, r->rsi, r->rdx, r->r10);
@@ -1174,6 +1516,10 @@ static long dispatch(struct task *t, register_t *r) {
         mutex_unlock(&vfs_mutex);
         return error ? error : (long)fd;
     }
+
+    case SYS_inotify_init:case SYS_inotify_init1:
+    case SYS_inotify_add_watch:case SYS_inotify_rm_watch:
+        return inotify_control(t,r);
 
     case SYS_pipe:
         r->rsi = 0;
@@ -1229,6 +1575,22 @@ static long dispatch(struct task *t, register_t *r) {
         }
         if (r->rsi == F_GETFL)
             return t->fds[fd]->flags;
+        if(t->fds[fd]->landlock_ruleset && r->rsi!=F_DUPFD && r->rsi!=F_DUPFD_CLOEXEC)return -E_INVAL;
+        if ((t->fds[fd]->flags & O_PATH) && r->rsi != F_DUPFD && r->rsi != F_DUPFD_CLOEXEC)
+            return -E_BADF;
+        if (r->rsi == OS_F_GETLK || r->rsi == OS_F_SETLK) {
+            struct os_flock lock;
+            if (!user_copy_in(&t->space, &lock, r->rdx, sizeof(lock)) ||
+                (r->rsi == OS_F_GETLK && !user_access(&t->space, r->rdx, sizeof(lock), true)))
+                return -E_FAULT;
+            mutex_lock(&vfs_mutex);
+            int error = sandbox_file(t->fds[fd], SANDBOX_META);
+            if (!error) error = vfs_record_lock(t->fds[fd], t->tgid, r->rsi == OS_F_GETLK, &lock);
+            mutex_unlock(&vfs_mutex);
+            if (!error && r->rsi == OS_F_GETLK &&
+                !user_copy_out(&t->space, r->rdx, &lock, sizeof(lock))) return -E_FAULT;
+            return error;
+        }
         if (r->rsi == F_GETPIPE_SZ || r->rsi == F_SETPIPE_SZ)
             return pipe_capacity(t->fds[fd], r->rsi == F_SETPIPE_SZ, r->rdx);
         if (t->fds[fd]->memory && (r->rsi == 1033 || r->rsi == 1034)) {
@@ -1276,8 +1638,10 @@ static long dispatch(struct task *t, register_t *r) {
         if (r->rsi && !user_copy_in(&t->space, &action, r->rsi, sizeof(action)))
             return -E_FAULT;
         if (r->rsi &&
-            action.flags & ~(SA_SIGINFO | SA_RESTORER | SA_RESTART | SA_NODEFER | SA_RESETHAND))
+            action.flags & ~(SA_NOCLDSTOP | SA_SIGINFO | SA_RESTORER | SA_ONSTACK | SA_RESTART | SA_NODEFER | SA_RESETHAND))
             return -E_NOTSUP;
+        /* No alternate stack can currently be registered. As on Linux,
+           SA_ONSTACK with no installed alternate uses the normal stack. */
         if (r->rsi && action.handler > 1 &&
             (!action.restorer || !(action.flags & SA_RESTORER) ||
              !user_access(&t->space, action.handler, 1, false) ||
@@ -1345,36 +1709,70 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_rt_sigreturn:
         return signal_return(t, r);
 
-    case SYS_umask: {
-        unsigned old = t->context->creation_mask;
-        t->context->creation_mask = r->rdi & 0777;
-        return old;
-    }
+    case SYS_chroot:return s1_chroot(t,r->rdi);
+    case SYS_umask:return s1_mask(t,true,r->rdi);
 
     case SYS_fchdir: {
         if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
             return -E_BADF;
         if ((t->fds[r->rdi]->node.mode & 0170000) != S_IFDIR)
             return -E_NOTDIR;
-        strcpy(t->cwd, t->fds[r->rdi]->path);
-        return 0;
+        mutex_lock(&vfs_mutex);
+        int error=credentials_node(&t->fds[r->rdi]->node,1);
+        mutex_unlock(&vfs_mutex);
+        if(error)return error;
+        return s1_fchdir(t,&t->fds[r->rdi]->node,t->fds[r->rdi]->path);
     }
 
     case SYS_readlink:
     case SYS_readlinkat: {
-        char path[OS_PATH_MAX], buffer[OS_PATH_MAX];
+        char path[OS_PATH_MAX], buffer[OS_PATH_MAX + sizeof(" (deleted)")];
         uint64_t ptr = r->rax == SYS_readlink ? r->rsi : r->rdx,
                  size = r->rax == SYS_readlink ? r->rdx : r->r10;
         if (!size)
             return -E_INVAL;
         if (!user_access(&t->space, ptr, size, true))
             return -E_FAULT;
+        /* Linux readlinkat(fd, "", ...) reads a retained O_PATH symlink.
+           It must not treat that symlink descriptor as a directory. */
+        if (r->rax == SYS_readlinkat) {
+            char raw[OS_PATH_MAX];
+            int e = user_string(&t->space, raw, r->rsi, sizeof(raw));
+            if (e)
+                return e;
+            if (!raw[0]) {
+                if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
+                    return -E_BADF;
+                struct file *f = t->fds[r->rdi];
+                mutex_lock(&vfs_mutex);
+                e = sandbox_file(f, SANDBOX_META);
+                long n = e ? e : (f->node.mode & 0170000) != S_IFLNK ? -E_NOENT :
+                    f->node.mount->ops->read ? f->node.mount->ops->read(&f->node, 0, buffer, min(size, sizeof(buffer))) : -E_NOTSUP;
+                mutex_unlock(&vfs_mutex);
+                return n < 0 ? n : user_copy_out(&t->space, ptr, buffer, n) ? n : -E_FAULT;
+            }
+            mutex_lock(&vfs_mutex);struct vnode retained;
+            e=s1_at_lookup(t,(int)r->rdi,raw,true,true,&retained);
+            if(e<=0) {
+                long n=e?e:(retained.mode&0170000)!=S_IFLNK?-E_INVAL:
+                    retained.mount->ops->read?retained.mount->ops->read(&retained,0,buffer,min(size,sizeof(buffer))):-E_NOTSUP;
+                mutex_unlock(&vfs_mutex);
+                return n<0?n:user_copy_out(&t->space,ptr,buffer,n)?n:-E_FAULT;
+            }
+            mutex_unlock(&vfs_mutex);
+        }
         int e = path_at(t, r->rax == SYS_readlink ? AT_FDCWD : (int)r->rdi,
                         r->rax == SYS_readlink ? r->rdi : r->rsi, path);
         if (e)
             return e;
         mutex_lock(&vfs_mutex);
-        long n = vfs_readlink(path, buffer, min(size, sizeof(buffer)));
+        long n = !s1_restricted(t) && !strcmp(path,"/proc/self/exe")
+                     ? process_executable_readlink(t,path,buffer,min(size,sizeof(buffer)))
+                     : vfs_readlink(path,buffer,min(size,sizeof(buffer)));
+#if CONFIG_ELECTRON_PROFILE && CONFIG_ZYGOTE_TRACE
+        if (t->space.vm->budget)
+            printk("electron-readlink: path=%s result=%ld\n",path,n);
+#endif
         mutex_unlock(&vfs_mutex);
         return n > 0 ? (user_copy_out(&t->space, ptr, buffer, n) ? n : -E_FAULT) : n;
     }
@@ -1406,7 +1804,7 @@ static long dispatch(struct task *t, register_t *r) {
         bool extended = r->rax == SYS_prlimit64;
         /* Limits remain fixed. musl queries prlimit64 before its getrlimit
            fallback, including when WebKit discovers the main stack bounds. */
-        if (extended && ((r->rdi && r->rdi != t->tgid) || r->rdx))
+        if (extended && r->rdi && r->rdi != pidns_view(t,t->tgid))
             return -E_NOTSUP;
         uint64_t resource = extended ? r->rsi : r->rdi, output = extended ? r->r10 : r->rsi;
         if (resource > 15)
@@ -1415,28 +1813,61 @@ static long dispatch(struct task *t, register_t *r) {
         if (resource == 3)
             limit[0] = limit[1] = USER_STACK_SIZE;
         if (resource == 2)
-            limit[0] = limit[1] = USER_MAX_ALLOC;
+            limit[0] = limit[1] = user_alloc_limit(&t->space);
         if (resource == 9 && t->space.vm->page_limit)
-            limit[0] = limit[1] = t->space.vm->page_limit * PAGE_SIZE;
+            limit[0] = limit[1] = user_ranges_sparse(&t->space) ? USER_VIRTUAL_MAX : t->space.vm->page_limit * PAGE_SIZE;
         if (resource == 4)
             limit[0] = limit[1] = 0;
         if (resource == 7)
             limit[0] = limit[1] = OS_FD_MAX;
+        if (extended && r->rdx) {
+            uint64_t requested[2];
+            if (!user_copy_in(&t->space, requested, r->rdx, sizeof(requested)))
+                return -E_FAULT;
+            if (requested[0] > requested[1])
+                return -E_INVAL;
+            /* Chromium lowers limits to min(current, desired). An unchanged
+               fixed limit is a real no-op; changing it remains unsupported. */
+            if (requested[0] != limit[0] || requested[1] != limit[1])
+                return -E_NOTSUP;
+        }
         if (extended && !output)
             return 0;
         return user_copy_out(&t->space, output, limit, sizeof(limit)) ? 0 : -E_FAULT;
     }
 
+    case SYS_fallocate: {
+        if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi] ||
+            !(t->fds[r->rdi]->flags & 3) || (t->fds[r->rdi]->flags & O_PATH))
+            return -E_BADF;
+        if ((int64_t)r->rdx < 0 || (int64_t)r->r10 <= 0 ||
+            r->r10 > INT64_MAX - r->rdx)
+            return -E_INVAL;
+        struct file *f = t->fds[r->rdi];
+        if (f->pipe || f->pty || f->tty) return -E_SPIPE;
+        /* None of our filesystems reserve extents. Report filesystem-level
+           lack of support so POSIX clients can use their ftruncate fallback
+           (libwayland-cursor requires EOPNOTSUPP rather than ENOSYS). */
+        mutex_lock(&vfs_mutex);
+        int e = sandbox_file(f, SANDBOX_WRITE);
+        mutex_unlock(&vfs_mutex);
+        return e ? e : -E_NOTSUP;
+    }
     case SYS_ftruncate: {
         if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi] || !(t->fds[r->rdi]->flags & 3))
             return -E_BADF;
         struct file *f = t->fds[r->rdi];
+        if (f->flags & O_PATH)
+            return -E_BADF;
+        if(f->landlock_ruleset)return -E_INVAL;
+        if(f->landlock_deny_truncate)return -E_ACCES;
         if (f->tty || f->pipe || f->pty || (f->node.mode & 0170000) != S_IFREG)
             return -E_INVAL;
         mutex_lock(&vfs_mutex);
         int e = sandbox_file(f, SANDBOX_WRITE);
         if (!e)
             e = f->memory ? memfd_resize(f->memory, r->rsi) : resize_node(&f->node, r->rsi);
+        if(!e)inotify_file(f,IN_MODIFY);
         mutex_unlock(&vfs_mutex);
         return e;
     }
@@ -1450,7 +1881,13 @@ static long dispatch(struct task *t, register_t *r) {
         struct vnode node;
         e = vfs_lookup_write(path, &node);
         if (!e)
+            e=credentials_node(&node,2);
+        if(!e)e=landlock_path_access(path,LL_TRUNCATE,false);
+        if (!e)
             e = resize_node(&node, r->rsi);
+        if(!e) {
+            struct file changed={.node=node};strcpy(changed.path,path);inotify_file(&changed,IN_MODIFY);
+        }
         mutex_unlock(&vfs_mutex);
         return e;
     }
@@ -1459,8 +1896,15 @@ static long dispatch(struct task *t, register_t *r) {
         if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
             return -E_BADF;
         mutex_lock(&vfs_mutex);
+        if(t->fds[r->rdi]->unix_socket) {
+            unsigned trace=credentials_zygote_record(t);
+            if(trace)pr_info("G1_FD_CLOSE seq=%u pid=%u tid=%u fd=%llu slot=%llu references_before=%u\n",
+                trace,t->tgid,t->pid,(unsigned long long)r->rdi,
+                (unsigned long long)t->fds[r->rdi]->node.aux[3],t->fds[r->rdi]->references);
+        }
         if (!r->rdi)
             task_release_input(t, t->fds[r->rdi]);
+        vfs_record_release(t->fds[r->rdi], t->tgid);
         vfs_close(t->fds[r->rdi]);
         t->fds[r->rdi] = NULL;
         t->fd_flags[r->rdi] = 0;
@@ -1481,8 +1925,20 @@ static long dispatch(struct task *t, register_t *r) {
         if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
             return -E_BADF;
         struct file *f = t->fds[r->rdi];
+        if (f->flags & O_PATH)
+            return -E_BADF;
+        /* Linux null/zero devices accept every valid seek origin and reset
+           their offset to zero, including negative offsets and DATA/HOLE. */
+        if (f->device == 1 || f->device == 2) {
+            if ((unsigned)r->rdx > 4)
+                return -E_INVAL;
+            mutex_lock(&vfs_mutex);
+            f->offset = 0;
+            mutex_unlock(&vfs_mutex);
+            return 0;
+        }
         if (f->tty || f->pipe || f->pty || f->device || f->socket || f->unix_socket || f->event ||
-            f->epoll)
+            f->epoll || f->inotify)
             return -E_SPIPE;
         mutex_lock(&vfs_mutex);
         if (f->memory)
@@ -1515,13 +1971,24 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_mremap:
         return mremap_call(t, r);
 
+    case SYS_madvise: {
+        long result=user_discard(&t->space,r->rdi,r->rsi,r->rdx);
+        if(CONFIG_ELECTRON_PROFILE && t->space.vm->budget && result<0 && r->rdx==4)
+            pr_info("electron-discard: denied pid=%u address=%llx bytes=%llu result=%ld\n",
+                    t->pid,(unsigned long long)r->rdi,(unsigned long long)r->rsi,result);
+        return result;
+    }
+
     case SYS_mprotect: {
         uint64_t addr = r->rdi, size = r->rsi, prot = r->rdx;
-        if ((addr & 4095) || !size || size > USER_MAX_ALLOC || prot & ~7ULL ||
+        bool sparse = size && size<=USER_RESERVE_MAX && t->space.vm->budget &&
+                      user_ranges_has_sparse(&t->space,addr,align(size,PAGE_SIZE));
+        if ((addr & 4095) || !size || size > ((!prot && sparse) ? USER_RESERVE_MAX : user_alloc_limit(&t->space)) || prot & ~7ULL ||
             (prot && !(prot & 1)) || (prot & 6) == 6 || addr < USER_MIN || addr >= USER_TOP ||
             size > USER_TOP - addr)
             return -E_INVAL;
         size = align(size, 4096ULL);
+        if (sparse) return user_ranges_protect(&t->space,addr,size,prot);
         unsigned flags =
             ((prot & 1) ? VM_READ : 0) | ((prot & 2) ? VM_WRITE : 0) | ((prot & 4) ? VM_EXEC : 0);
         for (uint64_t va = addr; va < addr + size; va += PAGE_SIZE)
@@ -1531,8 +1998,13 @@ static long dispatch(struct task *t, register_t *r) {
     }
 
     case SYS_munmap:
+        if (t->space.vm->budget) {
+            if ((r->rdi & 4095) || !r->rsi || r->rsi>USER_RESERVE_MAX || r->rdi<USER_MIN ||
+                r->rdi>=USER_TOP || r->rsi>USER_TOP-r->rdi) return -E_INVAL;
+            return user_ranges_unmap(&t->space,r->rdi,align(r->rsi,PAGE_SIZE))?0:-E_NOMEM;
+        }
         if ((r->rdi & 4095) || !r->rsi || r->rdi < USER_MIN || r->rdi >= USER_TOP ||
-            r->rsi > USER_TOP - r->rdi || r->rsi > USER_MAX_ALLOC)
+            r->rsi > USER_TOP - r->rdi || r->rsi > user_alloc_limit(&t->space))
             return -E_INVAL;
         for (uint64_t va = r->rdi; va < r->rdi + align(r->rsi, 4096ULL); va += PAGE_SIZE)
             user_unmap(&t->space, va);
@@ -1544,6 +2016,14 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_sched_yield:
         sched_yield();
         return 0;
+
+    case SYS_sched_getscheduler:
+    case SYS_sched_getparam: {
+        long error = task_sched_query(t, (int)r->rdi);
+        if (error || r->rax == SYS_sched_getscheduler) return error;
+        int priority = 0; /* Linux struct sched_param for SCHED_OTHER. */
+        return user_copy_out(&t->space, r->rsi, &priority, sizeof(priority)) ? 0 : -E_FAULT;
+    }
 
     case SYS_nanosleep: {
         struct os_timespec ts;
@@ -1562,6 +2042,7 @@ static long dispatch(struct task *t, register_t *r) {
             if (killed)
                 task_exit(killed);
             if (signal_pending(t)) {
+                if(task_stop_checkpoint(t))continue;
                 uint64_t remaining = duration - elapsed;
                 ts = (struct os_timespec){remaining / 1000000, (remaining % 1000000) * 1000};
                 if (r->rsi && !user_copy_out(&t->space, r->rsi, &ts, sizeof(ts)))
@@ -1637,13 +2118,16 @@ static long dispatch(struct task *t, register_t *r) {
 
     case SYS_clock_gettime: {
         extern int64_t kernel_boot_epoch;
-        if (r->rdi > 3)
+        /* This TSC timebase has no frequency/offset adjustment. It supplies
+           both MONOTONIC and MONOTONIC_RAW (Linux clock 4). */
+        if (r->rdi > 4 && r->rdi != 6)
             return -E_INVAL;
         if (!r->rdi && !kernel_boot_epoch)
             return -E_NOTSUP;
         uint64_t now = tsc_uptime_us();
+        if (r->rdi == 6) now -= now % 1000; /* CLOCK_MONOTONIC_COARSE: 1 ms */
         struct os_timespec ts = {now / 1000000, (now % 1000000) * 1000};
-        if (r->rdi >= 2) {
+        if (r->rdi == 2 || r->rdi == 3) {
             uint64_t user, system;
             if (r->rdi == 3)
                 task_thread_cpu_usage(t, &user, &system);
@@ -1666,15 +2150,22 @@ static long dispatch(struct task *t, register_t *r) {
         struct os_timeval tv = {kernel_boot_epoch + now / 1000000, now % 1000000};
         if (r->rax == SYS_time)
             return !r->rdi || user_copy_out(&t->space, r->rdi, &tv.sec, 8) ? tv.sec : -E_FAULT;
-        if (r->rsi)
-            return -E_NOTSUP;
-        return !r->rdi || user_copy_out(&t->space, r->rdi, &tv, sizeof(tv)) ? 0 : -E_FAULT;
+        /* The guest clock is UTC; no timezone-setting syscall exists.
+           Linux's legacy timezone is system metadata, independent of a
+           process's libc TZ environment. Preflight both optional outputs. */
+        int32_t zone[2] = {0,0}; /* minutes west, DST correction */
+        if ((r->rdi && !user_access(&t->space,r->rdi,sizeof(tv),true)) ||
+            (r->rsi && !user_access(&t->space,r->rsi,sizeof(zone),true)))
+            return -E_FAULT;
+        if (r->rdi && !user_copy_out(&t->space,r->rdi,&tv,sizeof(tv)))return -E_FAULT;
+        if (r->rsi && !user_copy_out(&t->space,r->rsi,zone,sizeof(zone)))return -E_FAULT;
+        return 0;
     }
 
     case SYS_clock_getres: {
-        if (r->rdi > 3)
+        if (r->rdi > 4 && r->rdi != 6)
             return -E_INVAL;
-        struct os_timespec ts = {0, r->rdi >= 2 ? 1000000 : 1000};
+        struct os_timespec ts = {0, r->rdi == 2 || r->rdi == 3 || r->rdi == 6 ? 1000000 : 1000};
         return !r->rsi || user_copy_out(&t->space, r->rsi, &ts, sizeof(ts)) ? 0 : -E_FAULT;
     }
 
@@ -1704,23 +2195,57 @@ static long dispatch(struct task *t, register_t *r) {
         return tsc_uptime_us() / 10000; /* musl's CLK_TCK=100 */
     }
 
+    case SYS_setpgid:
+        return task_setpgid(t, (int)r->rdi, (int)r->rsi);
+    case SYS_getpgrp:
+        return pidns_view(t,t->context->pgid);
+    case SYS_setsid:
+        return task_private_setsid(t);
+    case SYS_getpgid:
+        return task_getpgid(t, (int)r->rdi, false);
+    case SYS_getsid:
+        return task_getpgid(t, (int)r->rdi, true);
+    case SYS_clipboard:
+        return clipboard_call(t, r->rdi, r->rsi, r->rdx, r->r10);
+    case SYS_input_v2:
+        return display_input_v2(t,r->rdi,r->rsi);
+    case SYS_pointer_info: {
+        if(r->rsi!=sizeof(struct os_pointer_inventory))return -E_INVAL;
+        struct os_pointer_inventory info;
+        usb_pointer_info(&info);
+        return user_copy_out(&t->space,r->rdi,&info,sizeof(info))?0:-E_FAULT;
+    }
+
     case SYS_getpid:
-        return t->tgid;
+        return pidns_view(t,t->tgid);
 
     case SYS_gettid:
-        return t->pid;
+        return pidns_view(t,t->pid);
 
-    case SYS_getuid:
-    case SYS_geteuid:
-    case SYS_getgid:
-    case SYS_getegid:
-        return 0;
+    case SYS_getuid:return userns_uid_view(t,credentials_ruid(t));
+    case SYS_geteuid:return userns_uid_view(t,credentials_uid(t));
+    case SYS_getgid:return userns_gid_view(t,credentials_rgid(t));
+    case SYS_getegid:return userns_gid_view(t,credentials_gid(t));
+    case SYS_account:return accounts_call(t,r);
+    case SYS_prctl:
+        if(!t->userns && (r->rdi==21 || r->rdi==22))return generic_seccomp_call(t,r);
+        return !t->userns && (r->rdi==38 || r->rdi==39)?accounts_prctl(t,r):userns_call(t,r);
+    case SYS_seccomp:return seccomp_call(t,r);
+    case SYS_landlock_create_ruleset:
+    case SYS_landlock_add_rule:
+    case SYS_landlock_restrict_self:return landlock_call(t,r);
+    case SYS_capget:case SYS_capset:case SYS_unshare:
+        return userns_call(t,r);
+    case SYS_setuid:case SYS_setgid:case SYS_setreuid:case SYS_setregid:case SYS_setfsuid:case SYS_setfsgid:
+    case SYS_getresuid: case SYS_getresgid: case SYS_setresuid: case SYS_setresgid:
+    case SYS_getgroups: case SYS_setgroups:
+        return credentials_ids(t,r);
 
     case SYS_set_tid_address:
         if (r->rdi && !user_access(&t->space, r->rdi, 4, true))
             return -E_FAULT;
         t->clear_tid = r->rdi;
-        return t->pid;
+        return pidns_view(t,t->pid);
 
     case SYS_arch_prctl: {
         if (r->rdi == 0x1002) {
@@ -1737,8 +2262,8 @@ static long dispatch(struct task *t, register_t *r) {
 
     case SYS_uname: {
         struct os_utsname name = {0};
-        strcpy(name.sysname, "ModernOS");
-        strcpy(name.nodename, "modernos");
+        strcpy(name.sysname, "Coast");
+        strcpy(name.nodename, "coast");
         strcpy(name.release, "0.2");
         strcpy(name.version, "Limine x86-64");
         strcpy(name.machine, "x86_64");
@@ -1746,9 +2271,10 @@ static long dispatch(struct task *t, register_t *r) {
     }
 
     case SYS_getppid:
-        return t->ppid;
+        return pidns_view(t,t->ppid);
 
     case SYS_mount: {
+        if(landlock_active())return -E_PERM;
         if (r->r10 & ~MS_RDONLY || r->r8)
             return -E_NOTSUP;
         char source[OS_PATH_MAX], target[OS_PATH_MAX], type[OS_PATH_MAX];
@@ -1771,6 +2297,7 @@ static long dispatch(struct task *t, register_t *r) {
     }
 
     case SYS_umount2: {
+        if(landlock_active())return -E_PERM;
         char path[OS_PATH_MAX];
         int e = path_argument(t, r->rdi, path);
         if (e)
@@ -1787,19 +2314,20 @@ static long dispatch(struct task *t, register_t *r) {
         unsigned mode = r->rax == SYS_access ? r->rsi : r->rdx;
         if (mode & ~7u)
             return -E_INVAL;
-        int e = path_at(t, r->rax == SYS_access ? AT_FDCWD : (int)r->rdi,
-                        r->rax == SYS_access ? r->rdi : r->rsi, path);
-        if (e)
-            return e;
+        int fd=r->rax==SYS_access?AT_FDCWD:(int)r->rdi;
+        uint64_t pointer=r->rax==SYS_access?r->rdi:r->rsi;
+        int e=0;struct vnode node;
+        if(mode&2) {e=path_at(t,fd,pointer,path);if(e)return e;}
+        unsigned saved_fsuid=t->context->fsuid,saved_fsgid=t->context->fsgid,saved_scope=t->context->desktop_fsuid;
+        if(!t->userns) {t->context->fsuid=credentials_ruid(t);t->context->fsgid=credentials_rgid(t);t->context->desktop_fsuid=0;}
         mutex_lock(&vfs_mutex);
-        struct vnode node;
-        e = (mode & 2) ? vfs_lookup_write(path, &node) : vfs_lookup(path, &node);
+        e=(mode&2)?vfs_lookup_write(path,&node):node_at(t,fd,pointer,0,false,&node);
+        if(!e)e=credentials_node(&node,mode);
         if (!e && (mode & 2) && node.mount->readonly)
             e = -E_ROFS;
-        if (!e && (((mode & 4) && !(node.mode & 0444)) || ((mode & 2) && !(node.mode & 0222)) ||
-                   ((mode & 1) && !(node.mode & 0111))))
-            e = -E_ACCES;
+        if(!e && (mode&1) && (node.mode&0170000)==S_IFREG && !(node.mode&0111))e=-E_ACCES;
         mutex_unlock(&vfs_mutex);
+        t->context->fsuid=saved_fsuid;t->context->fsgid=saved_fsgid;t->context->desktop_fsuid=saved_scope;
         return e;
     }
 
@@ -1809,20 +2337,24 @@ static long dispatch(struct task *t, register_t *r) {
         if (r->rdi >= OS_FD_MAX || !t->fds[r->rdi])
             return -E_BADF;
         struct file *file = t->fds[r->rdi];
+        if (file->flags & O_PATH)
+            return -E_BADF;
         if (file->tty || file->pipe || file->pty || file->socket || file->unix_socket ||
-            file->event || file->epoll)
+            file->event || file->epoll || file->inotify)
             return -E_INVAL;
         if (file->memory)
             return r->rax == SYS_fchmod ? -E_NOTSUP : 0;
         mutex_lock(&vfs_mutex);
         struct mount *m = file->node.mount;
         long e = 0;
-        if (r->rax == SYS_fchmod)
+        if(r->rax==SYS_fchmod && !e)e=credentials_owner(&file->node);
+        if (r->rax == SYS_fchmod && !e)
             e = m->readonly     ? -E_ROFS
-                : m->ops->chmod ? m->ops->chmod(&file->node, r->rsi & 0777)
+                : m->ops->chmod ? m->ops->chmod(&file->node, credentials_mode(&file->node,r->rsi))
                                 : -E_NOTSUP;
-        else if (m->ops->sync)
+        else if (r->rax!=SYS_fchmod && m->ops->sync)
             e = m->ops->sync(m);
+        if(!e && r->rax==SYS_fchmod)inotify_file(file,IN_ATTRIB);
         mutex_unlock(&vfs_mutex);
         return e;
     }
@@ -1833,36 +2365,24 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_renameat:
     case SYS_renameat2: {
         char path[OS_PATH_MAX], other[OS_PATH_MAX];
-        if (r->rax == SYS_newfstatat && r->r10 & ~AT_SYMLINK_NOFOLLOW)
+        if (r->rax == SYS_newfstatat && r->r10 & ~(AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH | 0x800))
             return -E_NOTSUP;
         if (r->rax == SYS_unlinkat && r->rdx & ~AT_REMOVEDIR)
             return -E_INVAL;
-        int e = path_at(t, (int)r->rdi, r->rsi, path);
-        if (e)
-            return e;
+        int e = 0;
         if (r->rax == SYS_newfstatat) {
-            /* Reuse the stat copy/validation path with a temporary user argument
-               avoided: resolve directly and return the same ABI layout. */
             struct vnode node;
             mutex_lock(&vfs_mutex);
-            e = r->r10 & AT_SYMLINK_NOFOLLOW ? vfs_lstat(path, &node) : vfs_lookup(path, &node);
+            e = node_at(t, (int)r->rdi, r->rsi, r->r10, false, &node);
             struct os_stat st = {0};
-            if (!e) {
-                st.ino = node.mount->device ? node.id : node.aux[3];
-                st.mode = node.mode;
-                st.nlink = 1;
-                st.size = node.size;
-                st.blksize = 4096;
-                st.blocks = (node.size + 511) / 512;
-                st.dev =
-                    node.mount->device ? (uint64_t)(node.mount->device - block_devices) + 1 : 0;
-                st.atime_sec = node.atime;
-                st.mtime_sec = node.mtime;
-                st.ctime_sec = node.ctime;
-            }
+            if (!e)
+                st = node_stat(&node);
             mutex_unlock(&vfs_mutex);
             return e ? e : user_copy_out(&t->space, r->rdx, &st, sizeof(st)) ? 0 : -E_FAULT;
         }
+        e = path_at(t, (int)r->rdi, r->rsi, path);
+        if (e)
+            return e;
         if (r->rax == SYS_renameat || r->rax == SYS_renameat2) {
             if (r->rax == SYS_renameat2 && r->r8 & ~1ULL)
                 return -E_NOTSUP;
@@ -1872,7 +2392,7 @@ static long dispatch(struct task *t, register_t *r) {
         }
         mutex_lock(&vfs_mutex);
         if (r->rax == SYS_mkdirat)
-            e = vfs_mkdir(path, (r->rdx & 0777) & ~t->context->creation_mask);
+            e = vfs_mkdir(path, (r->rdx & 01777) & ~s1_mask(t,false,0));
         else if (r->rax == SYS_unlinkat)
             e = vfs_unlink(path, r->rdx & AT_REMOVEDIR);
         else
@@ -1921,34 +2441,71 @@ static long dispatch(struct task *t, register_t *r) {
         return task_browser_grant(t->pid, r->rdi, path);
     }
 
+    case SYS_waitid: {
+        if(!CONFIG_WAITID_COMPAT_TEST)return -E_NOSYS;
+        /* Linux int/id_t widths; P_ALL ignores id. Reject unsupported options
+           before pointer checks or any child event can be consumed. */
+        unsigned options=(unsigned)r->r10;
+        if((int)r->rdi!=0 || !(options&4) || (options&~5u))return -E_INVAL;
+        if((r->rdx && !user_access(&t->space,r->rdx,sizeof(struct os_waitid_info),true)) ||
+           (r->r8 && !user_access(&t->space,r->r8,sizeof(struct os_rusage),true)))return -E_FAULT;
+        struct os_waitid_info info={0};struct os_rusage usage={0};
+        int status=0;unsigned visible_pid=0,visible_uid=0,child_sid=0;
+        int child=task_wait_exit(&status,&usage,&visible_pid,&visible_uid,&child_sid,options&1);
+        if(child<0)return child;
+        if(child>0) {
+            info.signo=17;info.code=(status&127)?2:1;
+            info.pid=visible_pid;info.uid=visible_uid;
+            info.status=(status&127)?status&127:(status>>8)&255;
+#if CONFIG_ZYGOTE_TRACE
+            unsigned before=tty_job_foreground();
+#endif
+            wait_input_complete(t,child,child_sid,status);
+#if CONFIG_ZYGOTE_TRACE
+            unsigned seq=credentials_zygote_record(t);
+            if(seq) {
+                pr_info("W1_WAITID_EVENT seq=%u caller_outer=%u child_local=%u uid_local=%u code=%d status=%d\n",seq,t->tgid,info.pid,info.uid,info.code,info.status);
+                pr_info("W2_WAIT_INPUT seq=%u child_outer=%u child_local=%u foreground_before=%u foreground_after=%u\n",seq,child,info.pid,before,tty_job_foreground());
+            }
+#endif
+        }
+        /* A late copy fault may follow a completed reap, as with wait4. */
+        if((child>0 && r->r8 && !user_copy_out(&t->space,r->r8,&usage,sizeof(usage))) ||
+           (r->rdx && !user_copy_out(&t->space,r->rdx,&info,sizeof(info))))return -E_FAULT;
+        return 0;
+    }
     case SYS_wait4: {
-        if ((int)r->rdi < -1 || (int)r->rdi == 0)
-            return -E_INVAL;
         if (r->rsi && !user_access(&t->space, r->rsi, 4, true))
             return -E_FAULT;
         if (r->r10 && !user_access(&t->space, r->r10, sizeof(struct os_rusage), true))
             return -E_FAULT;
         struct os_rusage usage = {0};
         int status = 0;
-        int pid = task_wait_usage((int)r->rdi, &status, r->rdx, &usage);
+        unsigned child_sid=0,visible_pid=0;
+        int pid=task_wait_usage((int)r->rdi,&status,r->rdx,&usage,&child_sid,&visible_pid);
         if (pid > 0) {
             bool copied = (!r->rsi || user_copy_out(&t->space, r->rsi, &status, 4)) &&
                           (!r->r10 || user_copy_out(&t->space, r->r10, &usage, sizeof(usage)));
-            bool owned = tty_is_foreground(pid);
-            tty_transfer_foreground(pid, t->tgid);
-            if (owned && (status & 127))
-                tty_reset_config(t->tgid);
-            struct file *input = task_file_pin(t, 0);
-            if (input && input->pty)
-                pty_foreground(input->pty, pid, t->tgid);
+            wait_input_complete(t,pid,child_sid,status);
             if (!copied)
                 return -E_FAULT;
         }
-        return pid;
+        return pid>0?(long)visible_pid:pid;
     }
 
-    case SYS_kill:
-        return task_kill(r->rdi, r->rsi);
+    case SYS_kill: {
+        int pid = (int)r->rdi;
+        /* Web roles may signal only their explicitly authorized processes.
+           A group selector must never widen the broker's child-only grant. */
+        if (pid <= 0 && t->context->web_role)
+            return -E_PERM;
+        if(!pid)return pidns_view(t,t->context->pgid)?task_kill_group(t->context->pgid,r->rsi):-E_SRCH;
+        if(pid<-1 && pid!=(-2147483647-1)) {
+            unsigned group=pidns_resolve(t,(unsigned)-pid);return group?task_kill_group(group,r->rsi):-E_SRCH;
+        }
+        if(pid>0){unsigned outer=pidns_resolve(t,pid);return outer?task_kill(outer,r->rsi):-E_SRCH;}
+        return -E_NOTSUP;
+    }
 
     case SYS_tkill:
         return task_tgkill(0, r->rdi, r->rsi);
@@ -1957,6 +2514,7 @@ static long dispatch(struct task *t, register_t *r) {
         return r->rdi ? task_tgkill(r->rdi, r->rsi, r->rdx) : -E_INVAL;
 
     case SYS_getcwd: {
+        if(s1_cwd_check(t))return -E_NOENT;
         size_t len = strlen(t->cwd) + 1;
         if (len > r->rsi)
             return -E_NAMETOOLONG;
@@ -1984,12 +2542,13 @@ static long dispatch(struct task *t, register_t *r) {
             e = vfs_lookup(path, &node);
             if (!e && (node.mode & 0170000) != S_IFDIR)
                 e = -E_NOTDIR;
+            if (!e)e=credentials_node(&node,1);
             if (!e)
-                strcpy(t->cwd, path);
+                s1_chdir(t,path,&node);
         } else if (r->rax == SYS_mkdir)
-            e = vfs_mkdir(path, (r->rsi & 0777) & ~t->context->creation_mask);
+            e = vfs_mkdir(path, (r->rsi & 01777) & ~s1_mask(t,false,0));
         else if (r->rax == SYS_chmod)
-            e = vfs_chmod(path, r->rsi & 0777);
+            e = vfs_chmod(path, r->rsi & 07777);
         else if (r->rax == SYS_rename)
             e = vfs_rename(path, other);
         else
@@ -2006,7 +2565,7 @@ static long dispatch(struct task *t, register_t *r) {
     }
 
     case SYS_sysinfo: {
-        if (r->rdi > INFO_NETWORK || r->rdx < 2 || r->rdx > IO_LIMIT)
+        if (r->rdi > INFO_POWER || r->rdx < 2 || r->rdx > IO_LIMIT)
             return -E_INVAL;
         size_t cap = min(r->rdx, 8192ULL);
         char *buffer = kmalloc(cap);
@@ -2019,6 +2578,10 @@ static long dispatch(struct task *t, register_t *r) {
             n = block_info(buffer, cap);
         else if (r->rdi == INFO_NETWORK)
             n = network_info(buffer, cap);
+        else if (r->rdi == INFO_ACPI)
+            n = power_acpi_info(buffer, cap);
+        else if (r->rdi == INFO_POWER)
+            n = power_info(buffer, cap);
         else {
             mutex_lock(&vfs_mutex);
             n = r->rdi == INFO_LSBLK ? vfs_lsblk_text(buffer, cap) : vfs_mounts_text(buffer, cap);
@@ -2029,6 +2592,9 @@ static long dispatch(struct task *t, register_t *r) {
         return copied ? (long)n : -E_FAULT;
     }
 
+    case SYS_window:
+        return window_call(t, r->rdi, r->rsi, r->rdx);
+
     case SYS_display:
         return display_call(t, r->rdi, r->rsi, r->rdx);
 
@@ -2038,6 +2604,9 @@ static long dispatch(struct task *t, register_t *r) {
     case SYS_audio:
         return audio_call(t, r->rdi, r->rsi, r->rdx);
 
+    case SYS_power:
+        return r->rdx ? -E_INVAL : power_request(t, r->rdi, r->rsi);
+
     default:
         return -E_NOSYS;
     }
@@ -2046,44 +2615,111 @@ static long dispatch(struct task *t, register_t *r) {
 void syscall_dispatch(register_t *r) {
     struct task *t = this_cpu()->current;
     __asm__ volatile("sti" ::: "memory");
+    power_checkpoint(); /* before reaping/process mutex/descriptor pins */
     task_reap_threads();
     uint64_t number = r->rax;
+    /* Before syscall locks, pins or any dispatched side effect. Evaluation
+       retains immutable filters; ALLOW still passes every old access check. */
+    uint32_t filter=seccomp_decide(t,r);
+    switch(filter&0xffff0000u) {
+    case SC_KILL_THREAD:task_exit(t->seccomp_mode==1?9:31);break;
+    case SC_KILL_PROCESS:task_exit_group(31);break;
+    case SC_TRAP:
+        if(!signal_seccomp(t,r,filter&0xffffu))task_exit_group(31);
+        goto user_return;
+    case SC_ERRNO:
+        r->rax=-(long)min(filter&0xffffu,4095u);
+        task_signal_checkpoint(t,r,false,t->signal_mask);
+        goto user_return;
+    }
+    credentials_zygote_syscall(t,r,number,0,true);
     uint64_t previous_mask = t->signal_mask;
     /* Serialize table/VM mutations and short syscalls within a thread group.
        Blocking I/O retains file references instead, allowing a sibling to
        produce data or close/reuse a descriptor while the operation sleeps. */
     bool independent = number == SYS_read || number == SYS_write || number == SYS_pread64 ||
                        number == SYS_pwrite64 || number == SYS_readv || number == SYS_writev ||
+                       number == SYS_preadv || number == SYS_pwritev ||
                        number == SYS_poll || number == SYS_ppoll || number == SYS_select ||
                        number == SYS_pselect6 || number == SYS_epoll_wait ||
                        number == SYS_epoll_pwait || number == SYS_futex ||
+                       /* Clock/priority reads protect their own scheduler
+                          state and use the page-validated copy path. They
+                          must not queue behind sibling file/VM mutations. */
+                       number == SYS_clock_gettime || number == SYS_clock_getres ||
+                       number == SYS_gettimeofday || number == SYS_time ||
+                       number == SYS_sched_getparam || number == SYS_sched_getscheduler ||
                        number == SYS_sched_yield || number == SYS_nanosleep ||
-                       number == SYS_wait4 || number == SYS_exit || number == SYS_exit_group ||
+                       number == SYS_flock || number == SYS_clock_nanosleep ||
+                       number == SYS_wait4 || (CONFIG_WAITID_COMPAT_TEST && number==SYS_waitid) || number == SYS_exit || number == SYS_exit_group ||
                        number == SYS_rt_sigsuspend || number == SYS_pause ||
                        (number >= SYS_socket && number <= SYS_getsockopt) || number == SYS_accept4;
     if (!independent) {
+        power_transaction_begin();
         mutex_lock(&t->context->syscall_lock);
         t->syscall_locked = true;
     }
     long result;
-    int permission = sandbox_syscall(t, r);
+    int permission = credentials_syscall(t, r);
+    if (!permission) permission = sandbox_syscall(t, r);
     if (permission)
         result = permission;
     else if (t->context->references > 1 &&
-             (number == SYS_fork || number == SYS_vfork || number == SYS_execve ||
+             /* process_clone applies the narrow native vfork admission and
+                peer freeze to both SYS_clone and SYS_vfork. */
+             (number == SYS_fork || number == SYS_execve ||
               number == SYS_spawn || number == SYS_spawn_io || number == SYS_spawnve ||
               number == SYS_spawn_browser))
         result = -E_NOTSUP;
     else
         result = dispatch(t, r);
+#ifdef COAST_NATIVE_SPAWN_TRACE
+    const char *trace_name=strrchr(t->name,'/');trace_name=trace_name?trace_name+1:t->name;
+    if(result<0 && t->user && t->space.vm && !t->space.vm->budget &&
+       !strcmp(trace_name,"clang") &&
+       ((t->vfork_parent && result!=-E_BADF && result!=-E_NOENT) ||
+        number==SYS_clone || number==435 || number==SYS_mmap ||
+        number==SYS_rt_sigaction || number==SYS_rt_sigprocmask || result==-E_INVAL)) {
+        static unsigned events;
+        if(__atomic_fetch_add(&events,1,__ATOMIC_RELAXED)<128)
+            pr_info("NATIVE_SPAWN_TRACE pid=%u tid=%u temporary=%u call=%llu arg0=%llx arg1=%llx arg2=%llx arg3=%llx result=%ld\n",
+                t->tgid,t->pid,t->vfork_parent,(unsigned long long)number,
+                (unsigned long long)r->rdi,(unsigned long long)r->rsi,
+                (unsigned long long)r->rdx,(unsigned long long)r->r10,result);
+    }
+#endif
+#if CONFIG_ELECTRON_PROFILE
+    if(result==-E_NOMEM && t->space.vm->budget &&
+       (number==SYS_mmap || number==SYS_mprotect || number==SYS_mremap)) {
+        static unsigned failures[3];
+        unsigned slot=number==SYS_mmap?0:number==SYS_mprotect?1:2;
+        unsigned index=__atomic_fetch_add(&failures[slot],1,__ATOMIC_RELAXED);
+        if(index<16)pr_warn("ELECTRON_VM_NOMEM pid=%u tid=%u call=%llu address=%llx bytes=%llu arg3=%llx arg4=%llx vm_pages=%llu group_pages=%llu virtual_pages=%llu records=%llu free_bytes=%llu\n",
+            t->tgid,t->pid,(unsigned long long)number,(unsigned long long)r->rdi,
+            (unsigned long long)r->rsi,(unsigned long long)r->rdx,(unsigned long long)r->r10,
+            (unsigned long long)t->space.vm->pages,
+            (unsigned long long)user_budget_pages(t->space.vm->budget),
+            (unsigned long long)user_budget_virtual_pages(t->space.vm->budget),
+            (unsigned long long)user_budget_records(t->space.vm->budget),
+            (unsigned long long)pmm_get_total_memory_free());
+    }
+#endif
+    credentials_trace(t,r,result);
+    credentials_zygote_syscall(t,r,number,result,false);
     if (t->syscall_locked) {
         t->syscall_locked = false;
         mutex_unlock(&t->context->syscall_lock);
     }
     task_files_unpin(t);
+    if (!independent)
+        power_transaction_end();
+    if (number == SYS_power)
+        power_request_ready(t->pid); /* only after generic cleanup */
+    power_checkpoint();
     r->rax = result;
     bool restart =
-        result == -E_INTR && (number == SYS_read || number == SYS_write || number == SYS_wait4);
+        result == -E_INTR && (number == SYS_read || number == SYS_write || number == SYS_wait4 ||
+                             (CONFIG_WAITID_COMPAT_TEST && number==SYS_waitid));
     if (restart)
         r->rcx = number;
     /* A temporary wait mask remains active while its handler executes. Restore
@@ -2094,8 +2730,8 @@ void syscall_dispatch(register_t *r) {
                  number == SYS_pselect6 || number == SYS_epoll_pwait)
             ? previous_mask
             : t->signal_mask;
-    if (!task_pending_signal(t))
-        signal_deliver(t, r, restart, return_mask);
+    task_signal_checkpoint(t, r, restart, return_mask);
+user_return:
     unsigned signal = task_pending_signal(t);
     if (signal)
         task_exit_group(signal);
@@ -2111,3 +2747,26 @@ void syscall_dispatch(register_t *r) {
     if (number == SYS_rt_sigreturn)
         r->interrupt = 257;
 }
+
+#if CONFIG_ELECTRON_PROFILE_SELFTEST
+#include <panic.h>
+void electron_reservation_syscall_selftest(void) {
+    struct task *t=kmallocz(sizeof(*t));
+    struct user_budget *g=user_budget_create(262144);
+    kassert(t && g && user_space_create(&t->space) && user_space_budget_attach(&t->space,g,0));
+    uint64_t base=0x2000000000ULL;
+    register_t r={.rdi=base,.rsi=USER_RESERVE_MAX,.rdx=0,.r10=0x22,.r8=(uint64_t)-1};
+    kassert(mmap_call(t,&r)==(long)base && !t->space.vm->pages);
+    r.rsi=USER_RESERVE_MAX+PAGE_SIZE;kassert(mmap_call(t,&r)==-E_INVAL);
+    r.rsi=user_alloc_limit(&t->space)+PAGE_SIZE;r.rdx=VM_RDWR;kassert(mmap_call(t,&r)==-E_INVAL);
+    r.rsi=3*PAGE_SIZE;r.rdx=VM_RDWR;r.r10=0x32;r.rdi=base+PAGE_SIZE;
+    kassert(mmap_call(t,&r)==(long)r.rdi && t->space.vm->pages==3);
+    kassert(user_access(&t->space,base+PAGE_SIZE,1,true) && !user_access(&t->space,base,1,false));
+    r.rdx=0;kassert(mmap_call(t,&r)==(long)r.rdi && !t->space.vm->pages);
+    kassert(user_ranges_unmap(&t->space,base,USER_RESERVE_MAX));
+    user_space_limit(&t->space,131072);r.rdi=base;r.rsi=USER_RESERVE_MAX;r.r10=0x22;
+    kassert(mmap_call(t,&r)==-E_INVAL && !t->space.vm->virtual_pages);
+    user_space_destroy(&t->space);user_budget_put(g);kfree(t);
+    printk("ELECTRON_RESERVATION_SYSCALL_SELFTEST_PASS mmap flags/fixed replacement/restricted bounds\n");
+}
+#endif

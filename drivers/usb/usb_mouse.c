@@ -2,6 +2,7 @@
 #include <drivers/usb/hid_mouse.h>
 #include <printk.h>
 #include <string.h>
+#include <sync.h>
 
 typedef struct {
     bool attached;
@@ -15,6 +16,38 @@ typedef struct {
 
 static usb_mouse_binding_t bindings[USB_MOUSE_MAX_BINDINGS];
 static uint64_t invalid_reports;
+static spinlock_t inventory_lock;
+static struct {
+    usb_device_t *device;
+    uint16_t source;
+    bool touchpad, supported;
+} inventory[USB_MOUSE_MAX_BINDINGS];
+
+static void record_pointer(usb_device_t *device, uint16_t source, bool touchpad, bool supported) {
+    uint64_t irq=spin_lock_irqsave(&inventory_lock);
+    unsigned slot=USB_MOUSE_MAX_BINDINGS;
+    for(unsigned i=0;i<USB_MOUSE_MAX_BINDINGS;i++) {
+        if(inventory[i].device==device && inventory[i].source==source) {slot=i;break;}
+        if(slot==USB_MOUSE_MAX_BINDINGS && (!inventory[i].device || !inventory[i].device->connected))slot=i;
+    }
+    if(slot<USB_MOUSE_MAX_BINDINGS) {
+        inventory[slot].device=device;inventory[slot].source=source;
+        inventory[slot].touchpad=touchpad;inventory[slot].supported=supported;
+    }
+    spin_unlock_irqrestore(&inventory_lock,irq);
+}
+void usb_pointer_info(struct os_pointer_inventory *out) {
+    memset(out,0,sizeof(*out));out->version=1;out->size=sizeof(*out);
+    uint64_t irq=spin_lock_irqsave(&inventory_lock);
+    for(unsigned i=0;i<USB_MOUSE_MAX_BINDINGS;i++) {
+        if(!inventory[i].device || !inventory[i].device->connected)continue;
+        if(inventory[i].touchpad) {
+            if(inventory[i].supported)out->relative_touchpads++;
+            else out->unsupported_touchpads++;
+        } else if(inventory[i].supported)out->mice++;
+    }
+    spin_unlock_irqrestore(&inventory_lock,irq);
+}
 /* Enumeration is serialized. Runtime completion never uses this buffer. */
 static uint8_t report_descriptor[USB_DESCRIPTOR_BUFFER_SIZE];
 
@@ -40,6 +73,7 @@ bool usb_mouse_supports_interface(const usb_hid_interface_t *interface) {
 void usb_mouse_init(void) {
     memset(bindings, 0, sizeof(bindings));
     invalid_reports = 0;
+    memset(inventory, 0, sizeof(inventory));
     mouse_init();
 }
 
@@ -52,6 +86,10 @@ static void disconnect_binding(usb_mouse_binding_t *binding) {
 }
 
 void usb_mouse_disconnect(usb_device_t *device) {
+    uint64_t irq=spin_lock_irqsave(&inventory_lock);
+    for(unsigned i=0;i<USB_MOUSE_MAX_BINDINGS;i++)
+        if(inventory[i].device==device)memset(&inventory[i],0,sizeof(inventory[i]));
+    spin_unlock_irqrestore(&inventory_lock,irq);
     if (!device)
         return;
     for (unsigned i = 0; i < USB_MOUSE_MAX_BINDINGS; ++i)
@@ -121,6 +159,11 @@ bool usb_mouse_bind(usb_device_t *device, const usb_hid_interface_t *interface) 
             parsed = hid_mouse_parse_descriptor(report_descriptor, actual, &binding->layout) &&
                      hid_mouse_layout_fits(&binding->layout, interface->endpoint.max_packet_size);
     }
+    if (binding->layout.touchpad && (!parsed || binding->layout.mouse_application)) {
+        record_pointer(device, source, true, false);
+        kprintf("USB touchpad detected: source %u, unsupported report layout\n\r",source);
+        return false; /* Absolute/multitouch is not mouse emulation. */
+    }
     if (parsed) {
         /* Non-boot interfaces already use report protocol and must not
          * receive SET_PROTOCOL, which is only defined for boot interfaces.
@@ -141,11 +184,18 @@ bool usb_mouse_bind(usb_device_t *device, const usb_hid_interface_t *interface) 
     binding->endpoint_address = interface->endpoint.address;
     binding->source_id = source;
     binding->attached = true;
+    uint32_t capabilities=(binding->layout.touchpad?OS_POINTER_TOUCHPAD:OS_POINTER_MOUSE)|OS_POINTER_RELATIVE;
+    for(unsigned i=0;i<binding->layout.report_count;i++) {
+        if(binding->layout.reports[i].axes&4)capabilities|=OS_POINTER_WHEEL;
+        if(binding->layout.reports[i].axes&8)capabilities|=OS_POINTER_HWHEEL;
+    }
+    mouse_set_capabilities(source,capabilities);
     if (!usb_submit_interrupt_in(device, binding->endpoint_address, mouse_report_complete,
                                  binding)) {
         disconnect_binding(binding);
         return false;
     }
+    record_pointer(device,source,binding->layout.touchpad,true);
     kprintf("USB mouse ready: port %u device %u interface %u endpoint %u source %u (%s)\n\r",
             device->root_port, device->id, interface->interface_number, interface->endpoint.address,
             source, binding->boot_protocol ? "boot" : "report");

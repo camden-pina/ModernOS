@@ -92,7 +92,7 @@ static void check_pipe_capacity(void) {
 }
 
 static void identify(void) {
-    CHECK(syscall(MODERNOS_WEB_IDENTITY,&identity)==0 && identity.process==(unsigned)getpid());
+    CHECK(syscall(COAST_WEB_IDENTITY,&identity)==0 && identity.process==(unsigned)getpid());
 }
 
 static void wait_ok(int pid) {
@@ -116,7 +116,7 @@ static int start(unsigned role, const char *path, char *const args[], int ipc, i
                                 .stderr_fd = out,
                                 .origin = (uintptr_t)origin,
                                 .home = role == OS_WEB_BROKER ? (uintptr_t)"/home/user" : 0};
-    return syscall(MODERNOS_SPAWN_WEB, path, args, &spec);
+    return syscall(COAST_SPAWN_WEB, path, args, &spec);
 }
 
 static void send_caps(int fd, const int *rights, unsigned count, const void *text, size_t length) {
@@ -164,10 +164,24 @@ static void receive_owned(int channel, int owned[2]) {
     memcpy(owned, CMSG_DATA(c), 2 * sizeof(int));
 }
 
+static void deny_record_locks(void) {
+    const int commands[] = {F_GETLK,F_SETLK,F_SETLKW,36,37,38};
+    struct flock lock = {.l_type=F_WRLCK,.l_whence=SEEK_SET,.l_len=1};
+    for (unsigned i=0;i<sizeof(commands)/sizeof(commands[0]);i++) {
+        errno=0;
+        CHECK(syscall(SYS_fcntl,1,commands[i],&lock)==-1 && errno==EPERM);
+    }
+}
+
 static void renderer_denials(void) {
+    deny_record_locks();
     check_self_signals();
     errno = 0;
-    CHECK(syscall(MODERNOS_AUDIO,OS_AUDIO_RESET,0,0)==-1 && errno==EPERM);
+    CHECK(syscall(COAST_AUDIO,OS_AUDIO_RESET,0,0)==-1 && errno==EPERM);
+    for(unsigned service=414;service<=416;service++) {
+        errno=0;
+        CHECK(syscall(service,0,0,0,0)==-1 && errno==EPERM);
+    }
     errno = 0;
     CHECK(fcntl(1,F_SETPIPE_SZ,256*1024)==-1 && errno==EPERM);
     errno = 0;
@@ -187,15 +201,23 @@ static void renderer_denials(void) {
     errno = 0;
     CHECK(syscall(403,0,0)==-1 && errno==EPERM);
     errno = 0;
+    CHECK(syscall(417,0,0,0)==-1 && errno==EPERM);
+    const int private_linux[] = {73,86,92,93,94,137,138,230,260,265,268,332,436,439,452};
+    for (unsigned i=0;i<sizeof(private_linux)/sizeof(private_linux[0]);i++) {
+        errno=0;
+        CHECK(syscall(private_linux[i],-1,0,0,0,0,0)==-1 && errno==EPERM);
+    }
+
+    errno = 0;
     CHECK(syscall(408,getpid(),"/tmp/web-private")==-1 && errno==EPERM);
     errno = 0;
-    CHECK(syscall(MODERNOS_SPAWN_WEB,0,0,0)==-1 && errno==EPERM);
+    CHECK(syscall(COAST_SPAWN_WEB,0,0,0)==-1 && errno==EPERM);
     errno = 0;
     CHECK(syscall(SYS_execve,"/bin/hello",NULL,NULL)==-1 && errno==EPERM);
     errno = 0;
     CHECK(syscall(SYS_mount,0,0,0,0,0)==-1 && errno==EPERM);
     struct os_memory_usage memory;
-    CHECK(!syscall(MODERNOS_MEMORY_USAGE,&memory));
+    CHECK(!syscall(COAST_MEMORY_USAGE,&memory));
     CHECK(memory.mapped_bytes && memory.peak_mapped_bytes>=memory.mapped_bytes && memory.limit_bytes==768ULL*1024*1024);
     struct rlimit limit, legacy;
     CHECK(!getrlimit(RLIMIT_STACK,&limit) && limit.rlim_cur==8*1024*1024 && limit.rlim_max==limit.rlim_cur);
@@ -223,7 +245,7 @@ static void *renderer_thread(void *arg) {
     struct os_web_identity own;
     CHECK(tls_value==27);
     tls_value = 89;
-    CHECK(syscall(MODERNOS_WEB_IDENTITY,&own)==0 && own.role==OS_WEB_RENDERER);
+    CHECK(syscall(COAST_WEB_IDENTITY,&own)==0 && own.role==OS_WEB_RENDERER);
     CHECK(own.domain==identity.domain && !strcmp(own.origin,identity.origin));
     renderer_denials();
     return NULL;
@@ -282,7 +304,7 @@ static int renderer(const char *origin) {
     CHECK(fd==-1 && (flags&MSG_CTRUNC));
     CHECK(pixels[0]==offer.word && pixels[1]==identity.process);
     struct os_web_identity after;
-    CHECK(syscall(MODERNOS_WEB_IDENTITY,&after)==0 && !memcmp(&identity,&after,sizeof(after)));
+    CHECK(syscall(COAST_WEB_IDENTITY,&after)==0 && !memcmp(&identity,&after,sizeof(after)));
     CHECK(munmap(pixels,4096)==0);
     CHECK(write(0,"B",1)==1);
     return 0;
@@ -291,7 +313,7 @@ static int renderer(const char *origin) {
 static void *broker_worker(void *arg) {
     (void)arg;
     struct os_web_identity own;
-    CHECK(syscall(MODERNOS_WEB_IDENTITY,&own)==0 && own.role==OS_WEB_BROKER);
+    CHECK(syscall(COAST_WEB_IDENTITY,&own)==0 && own.role==OS_WEB_BROKER);
     check_self_signals();
     while (!atomic_load(&stop_worker))
         usleep(1000);
@@ -321,6 +343,7 @@ static void run_component(const char *path, const char *file) {
 }
 
 static int broker(void) {
+    deny_record_locks();
     identify();
     CHECK(identity.role==OS_WEB_BROKER && identity.domain==identity.process && !identity.origin[0]);
     no_extra_fds();

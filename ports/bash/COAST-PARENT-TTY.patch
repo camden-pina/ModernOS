@@ -1,0 +1,61 @@
+--- a/jobs.c
++++ b/jobs.c
+@@ -564,7 +564,7 @@
+ 
+   BLOCK_CHILD (set, oset);
+ 
+-#if defined (PGRP_PIPE)
++#if defined (PGRP_PIPE) && !defined (COAST_PARENT_TTY)
+   /* The parent closes the process group synchronization pipe. */
+   sh_closepipe (pgrp_pipe);
+ #endif
+@@ -728,13 +728,26 @@
+ 	   *
+ 	   */
+ 	   /* 09/08/2023 - rely on child processes to set the terminal pgrp */
++#if defined (COAST_PARENT_TTY)
++          /* Coast retains terminal transfer authority in the controller.
++             Transfer before releasing children from the existing pgrp pipe;
++             do not weaken the kernel's foreground ownership checks. */
++          if (job_control && newjob->pgrp && (subshell_environment&SUBSHELL_ASYNC) == 0 && running_in_background == 0)
++            if (maybe_give_terminal_to (shell_pgrp, newjob->pgrp, 0) < 0)
++              sys_error (_("Coast foreground handoff"));
++#else
+ #if 0
+ 	  if (job_control && newjob->pgrp && (subshell_environment&SUBSHELL_ASYNC) == 0 && running_in_background == 0)
+ 	    maybe_give_terminal_to (shell_pgrp, newjob->pgrp, 0);
+ #endif
+-	}
+-    }
+-
++#endif
++	}
++    }
++
++#if defined (PGRP_PIPE) && defined (COAST_PARENT_TTY)
++  /* Every foreground stage must observe the parent's handoff before exec. */
++  sh_closepipe (pgrp_pipe);
++#endif
+   stop_making_children ();
+   UNBLOCK_CHILD (oset);
+   return (newjob ? i : js.j_current);
+@@ -2396,12 +2409,18 @@
+ 	     In this case, we don't want to give the terminal to the
+ 	     shell's process group (we could be in the middle of a
+ 	     pipeline, for example). */
++#if !defined (COAST_PARENT_TTY)
+ 	  if ((flags & FORK_NOTERM) == 0 && async_p == 0 && pipeline_pgrp != shell_pgrp && ((subshell_environment&(SUBSHELL_ASYNC|SUBSHELL_PIPE)) == 0) && running_in_background == 0)
+ 	    give_terminal_to (pipeline_pgrp, 0);
++#endif
+ 
+ #if defined (PGRP_PIPE)
++#if defined (COAST_PARENT_TTY)
++          if (pipeline_pgrp != shell_pgrp)
++#else
+ 	  if (pipeline_pgrp == mypid)
+-	    pipe_read (pgrp_pipe);
++#endif
++            pipe_read (pgrp_pipe);
+ #endif
+ 	}
+       else			/* Without job control... */

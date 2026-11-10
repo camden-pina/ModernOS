@@ -2,15 +2,38 @@
 
 uint32_t theme_color(uint32_t light) {
     if (!desk.dark_mode) {
-        return light;
+        switch (light) {
+        case 0xFFFFFF: return 0xFAFAFC;
+        case 0xF9FAF9: return 0xF2F2F5;
+        case 0xF5F7F6: return 0xECECEF;
+        case 0xEEF2F5: return 0xEEEEF0;
+        case 0xE0EDE7: case 0xEAF0EF: return 0xE3EAF6;
+        case 0xE8ECEB: case 0xDBE3E3: return 0xD5D7DF;
+        case 0x2D3D44: return 0x272A35;
+        case 0x3C4B50: return 0x424653;
+        case 0x121E2F: return 0x162242;
+        case 0x8E9D9F:
+        case 0x899B9C:
+        case 0x919EA2:
+        case 0x9BA5A8:
+        case 0x9DA8AB:
+            return 0x647780;
+        case 0xA3ADAF:
+        case 0xAAB4B5:
+            return 0x74858C;
+        default:
+            return light;
+        }
     }
     switch (light) {
+    case 0xEEF2F5:
+        return 0x303035;
     case 0xFFFFFF:
-        return 0x19252D;
+        return 0x232327;
     case 0xF9FAF9:
-        return 0x202D36;
+        return 0x2B2B30;
     case 0xF5F7F6:
-        return 0x1C2931;
+        return 0x252529;
     case 0xFAFCFB:
         return 0x17232B;
     case 0x2D3D44:

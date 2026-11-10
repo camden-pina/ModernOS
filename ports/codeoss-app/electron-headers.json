@@ -1,0 +1,7 @@
+{
+  "version": "43.7.3",
+  "archive": "node-v43.7.3-headers.tar.gz",
+  "url": "https://artifacts.electronjs.org/headers/dist/v43.7.3/node-v43.7.3-headers.tar.gz",
+  "sha256": "742755401cbd563d016b5031d91a32128cdde1408a47c95d13a0378dddee050b",
+  "checksum_url": "https://artifacts.electronjs.org/headers/dist/v43.7.3/SHASUMS256.txt"
+}

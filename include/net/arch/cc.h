@@ -1,5 +1,5 @@
-#ifndef MODERNOS_LWIP_CC_H
-#define MODERNOS_LWIP_CC_H
+#ifndef COAST_LWIP_CC_H
+#define COAST_LWIP_CC_H
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>

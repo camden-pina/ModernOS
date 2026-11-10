@@ -1,0 +1,12 @@
+[
+  {
+    "name": "@rollup/rollup-linux-x64-gnu",
+    "version": "4.60.4",
+    "archive": "rollup-linux-x64-gnu-4.60.4.tgz",
+    "url": "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.60.4.tgz",
+    "sha256": "7f9aec7c700ab8acbc22432e4cccd3522d74f6fc9bc95851f870c28cc2acda87",
+    "integrity": "sha512-Boiz5+MsaROEWDf+GGEwF8VMHGhlUoQMtIPjOgA5fv4osupqTVnJteQNKJwUcnUog2G55jYXH7KZFFiJe0TEzQ==",
+    "license": "MIT",
+    "role": "Linux host build tool only; never a Coast runtime input"
+  }
+]

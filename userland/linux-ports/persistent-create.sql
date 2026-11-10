@@ -1,0 +1,10 @@
+PRAGMA journal_mode=DELETE;
+CREATE TABLE persisted(n INTEGER PRIMARY KEY, content TEXT);
+BEGIN IMMEDIATE;
+INSERT INTO persisted VALUES(1,replace(hex(zeroblob(65536)),'00','Ab'));
+COMMIT;
+BEGIN IMMEDIATE;
+UPDATE persisted SET content='must roll back';
+ROLLBACK;
+PRAGMA user_version=420;
+PRAGMA integrity_check;

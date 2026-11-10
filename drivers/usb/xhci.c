@@ -3,6 +3,7 @@
 #include <drivers/usb/usb_platform.h>
 #include <printk.h>
 #include <string.h>
+#include <uapi/abi.h>
 
 #define XHCI_PAGE_SIZE USB_DMA_PAGE_SIZE
 #define XHCI_RING_TRBS 256u
@@ -95,6 +96,7 @@ typedef struct {
     uint64_t status_trb;
 } xhci_control_wait_t;
 
+static volatile uint16_t *power_pci_command;
 static struct {
     bool initialized;
     bool running;
@@ -719,6 +721,7 @@ bool xhci_init_controller(pci_device_header_t *pci_hdr) {
         kprintf("xHCI: ACPI PM timer unavailable or not advancing\n\r");
         return false;
     }
+    power_pci_command = (void *)((uintptr_t)pci_hdr + 4);
     if (!usb_platform_prepare_pci(pci_hdr)) {
         kprintf("xHCI: implement usb_platform_prepare_pci() first\n\r");
         return false;
@@ -945,4 +948,23 @@ bool xhci_is_running(void) {
 
 uint8_t xhci_root_port_count(void) {
     return hc.ports;
+}
+
+bool xhci_power_ready(void) {
+    return !hc.failed && (!hc.mmio || (hc.op && hc.running));
+}
+
+int xhci_power_stop(void) {
+    if (!hc.mmio)
+        return 0;
+    if (!xhci_power_ready() || hc.command_wait.pending || hc.control_wait.pending)
+        return -E_BUSY;
+    hc.op->usbcmd &= ~(USBCMD_RUN | USBCMD_INTE);
+    if (!wait_bits(&hc.op->usbsts, USBSTS_HALTED, USBSTS_HALTED, XHCI_TIMEOUT_MS))
+        return -E_TIMEDOUT;
+    hc.running = false;
+    if (power_pci_command)
+        *power_pci_command &= ~4u;
+    /* Pending interrupt-IN buffers/rings/contexts are retained until poweroff. */
+    return power_pci_command && (*power_pci_command & 4) ? -E_IO : 0;
 }

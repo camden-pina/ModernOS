@@ -1,5 +1,5 @@
-#ifndef MODERNOS_LWIP_STDLIB_H
-#define MODERNOS_LWIP_STDLIB_H
+#ifndef COAST_LWIP_STDLIB_H
+#define COAST_LWIP_STDLIB_H
 
 /* lwIP uses only atoi() for interface-name indices. Never include or link a
  * host libc into the freestanding kernel. Other allocation stays in lwIP. */

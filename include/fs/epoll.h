@@ -1,5 +1,5 @@
-#ifndef MODERNOS_EPOLL_H
-#define MODERNOS_EPOLL_H
+#ifndef COAST_EPOLL_H
+#define COAST_EPOLL_H
 #include <fs/vfs.h>
 
 struct task;

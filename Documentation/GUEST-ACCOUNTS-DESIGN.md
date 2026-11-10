@@ -1,0 +1,20 @@
+# Guest accounts and optional privilege elevation: design only
+
+2026-10-24. No authentication, credentials, privilege elevation or account enforcement is implemented by this UI pass. Desktop profiles remain preference sets. Existing open windows, files, home directory, clipboard and process privileges are shared.
+
+## Inspected foundation
+
+`kernel/sched/syscall.c` handles getuid/geteuid/getgid/getegid by returning 0 in the inspected source. However, the current packaged kernel was not rebuilt from that source in this pass: GNU Bash in the actual candidate image reports UID/EUID as 4294967295 (unsigned -1). Source and runtime identity behavior must not be conflated; a usable guest identity API is not established. `include/uapi/abi.h` has identity queries but no setuid/setgid/setgroups/setresuid interfaces. RAMFS stores UID/GID metadata (`fs/ramfs.c`), but metadata alone does not establish process identities or account isolation. VFS has browser sandbox path/file checks; that is a separate mechanism and is not evidence of a complete discretionary account permission system. No identity or filesystem permission enforcement changes were made here. The Terminal shell selection does not change the guest process identity.
+
+## Required implementation order
+
+1. Specify real/effective/saved UID/GID and supplementary groups in process credentials; define fork, spawn, exec and session inheritance. Enforce ID changes in the kernel, consistently across native and Linux compatibility entry points. Audit all file/device/process/IPC operations and the display, clipboard, mount and capability interfaces. Preserve browser sandbox constraints.
+2. Enforce directory search and file read/write/execute permissions in the common filesystem path, including handle inheritance, rename/link/unlink and race handling. Test cross-user denials. Choose a storage backend with durable ownership/mode protection. FAT32 profile preference files must not become a credential database or be treated as private user storage.
+3. Add a trusted local guest login/session service and a root-owned account database. Password setup must use a guest-local secure input dialog, never chat. Use a reviewed password KDF, unique cryptographic salt and a verified entropy source; keep secret buffers bounded and clear them, omit credentials from logs, and fail closed on malformed data or storage errors. No plaintext password or cosmetic lock screen is acceptable.
+4. Associate a preference profile with a verified account identity only after a successful login. Separate home directories, process/session access, files, clipboard/display access, services and logout cleanup. Existing preference profiles migrate as preferences; selecting a name must never authenticate or elevate a process.
+5. Optional sudo requires a trusted, narrowly scoped elevation broker, root-owned policy, local authentication, denial by default, auditable allowed commands and bounded expiry. Define environment/path handling and descriptor inheritance. A Settings boolean cannot implement sudo; do not enable unrestricted helpers, setuid binaries or persistent privileged access as a shortcut.
+6. Verify negative tests in a disposable guest: user A cannot read B's files or signal B's processes; ordinary users cannot alter account policy, mount disks or access privileged devices; wrong/empty/malformed credentials fail; interrupted login/elevation fails closed; profile switching alone changes no UID or authorization. Verify recovery and migration without changing host accounts or security.
+
+## Action-time approval boundary
+
+A future implementation requires explicit approval for the concrete guest identity and permission-enforcement changes, credential creation/storage and any privilege-elevation broker/policy being enabled. Present the reviewed code, test plan, storage location and recovery plan at that time. No credentials or privileged access are created by this document or by the staged Settings capability labels. Host accounts, passwords, sudo configuration and security settings are outside scope.

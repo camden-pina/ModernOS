@@ -1,0 +1,42 @@
+# Maintainer: Coast local ports
+pkgname=nasm
+pkgver=2.16.03
+pkgrel=2
+pkgdesc='NASM x86 assembler and disassembler, built with native Coast GCC'
+arch=('x86_64')
+url='https://www.nasm.us/'
+license=('BSD-2-Clause')
+depends=('musl')
+makedepends=('gcc' 'make' 'xz')
+source=("${COAST_REPOSITORY_URL:-http://10.0.2.2:8765}/distfiles/nasm-$pkgver.tar.xz")
+sha256sums=('1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148')
+noextract=("nasm-$pkgver.tar.xz")
+
+prepare() {
+    # Coast's file -z probe identifies this stream as XZ. Extract the verified
+    # tar explicitly with the same native tar/XZ path used by the OS source kit.
+    cd "$srcdir"
+    tar -xJf "nasm-$pkgver.tar.xz"
+}
+
+build() {
+    cd "$srcdir/nasm-$pkgver"
+    CFLAGS='-std=gnu11 -O2 -fno-pie -mno-avx -mno-avx2' LDFLAGS='-static -no-pie' \
+        ./configure --prefix=/usr --build=x86_64-linux-musl --host=x86_64-linux-musl
+    make nasm ndisasm
+}
+
+check() {
+    cd "$srcdir/nasm-$pkgver"
+    ./nasm --version | grep -q "$pkgver"
+    printf 'bits 64\nmov eax, 42\nret\n' > coast-check.asm
+    ./nasm -f bin coast-check.asm -o coast-check.bin
+    test "$(od -An -tx1 coast-check.bin | tr -d ' \n')" = b82a000000c3
+}
+
+package() {
+    cd "$srcdir/nasm-$pkgver"
+    install -Dm755 nasm "$pkgdir/usr/bin/nasm"
+    install -Dm755 ndisasm "$pkgdir/usr/bin/ndisasm"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/nasm/LICENSE"
+}

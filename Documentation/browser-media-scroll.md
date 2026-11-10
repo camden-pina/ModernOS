@@ -1,6 +1,9 @@
+> Historical record: the NetSurf/WebCore browser described here is retired.
+> Use [Chromium](chromium-browser.md) and the [current rebuild guide](source-builds.md).
+
 # Native browser media, frames and animated scrolling
 
-These changes extend the preserved v38 browser baseline. They run in ModernOS
+These changes extend the preserved v38 browser baseline. They run in Coast
 under Limine UEFI; no host browser, remote rendering service or external media
 player is involved. Tests use actual guest input, decoded canvas/display pixels,
 and QEMU recordings of the kernel audio device.
@@ -89,7 +92,7 @@ validation-results42.json and evidence42/ retain the exact result/log/screenshot
 
 ## Implementation
 
-`userland/modern-browser/port/MediaModernOS.cpp` embeds the pinned static FFmpeg
+`userland/modern-browser/port/MediaCoast.cpp` embeds the pinned static FFmpeg
 9.0.2 CPU decoders. Network bytes still pass through WebCore's media resource
 loader and the certificate-checking Soup broker. FFmpeg has no network/device
 protocols. MP4 H.264/AAC and WebM VP8/VP9/Opus/Vorbis video use bounded HTTP
@@ -128,7 +131,7 @@ they are not measurements of physical scanout or vblank. This follows the
 upstream software renderer's timestamp approach. No callback, DOM timer or
 media-clock value is synthesized to satisfy YouTube.
 
-`MediaSourceModernOS.inc` implements MP4 H.264/AAC Media Source Extensions.
+`MediaSourceCoast.inc` implements MP4 H.264/AAC Media Source Extensions.
 WebCore handles coded frames, timestamp offsets, append windows, removals,
 eviction and seek queues. The native backend parses complete MP4 fragments,
 preserves partial moof/mdat input and decodes real samples in timestamp order,
@@ -200,8 +203,9 @@ GPP_A12 on INTC1084 `\_SB.PGPI`. Its second memory resource supplies the MMIO
 base. The separate GPIO171 interrupt is left untouched. The driver verifies
 resource identity/bounds, ownership/locks and pad configuration, then performs
 one shared high/low/high reset with 1-ms holds before loading either firmware.
-LAI now reads actual NVS/SystemMemory, I/O and PCI resources with real time
-hooks. SPKR has no separate `_PR0`/`_PS0` in this table; I2C2's `_PS0` is empty.
+Those candidate kernels used LAI for NVS/SystemMemory, I/O and PCI resources
+with real time hooks. The later [ACPICA migration](acpica.md) replaces this path;
+the historical listening result does not validate the new interpreter on hardware. SPKR has no separate `_PR0`/`_PS0` in this table; I2C2's `_PS0` is empty.
 The actual resource/parser/GPIO code passes ASan/UBSan. `/bin/speaker-check`
 passes recorded QEMU HDA stereo and measured pause/device-clock/resume checks;
 physical audible output was confirmed by the user after the

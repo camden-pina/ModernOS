@@ -13,6 +13,15 @@ The current published candidate38 uses byte-identical kernel, speaker-check
 and amplifier firmware. The physical result is retained on those matching
 components; no separate physical boot of candidate38 is claimed.
 
+## ACPICA migration scope
+
+The listening results above apply to the earlier LAI-based candidate kernels.
+The [ACPICA migration](acpica.md) changes the interpreter and resource-evaluation
+path, so those physical results do not establish a listening pass for a new
+ACPICA image. Repeat the procedure below on that exact image before claiming
+physical speaker coverage. A build also needs the locally supplied
+`aw88399_acf.bin`; the repository does not contain that optional firmware.
+
 ## What the copied firmware establishes
 
 `build/physical-audio-acpi/DSDT.aml` is the user's copied Lenovo table:
@@ -31,8 +40,8 @@ ACPICA disassembly is preserved as `build/physical-audio-acpi/legion.dsl`.
 - SPKR has no `_PR0`, `_PS0`, or `_DSD` in this table. I2C2's `_PS0` is
   empty. PCI D0 and LPSS reset are handled by the existing I2C driver.
 
-The kernel evaluates these resources with LAI and maps the real firmware NVS
-fields. It checks the supported codec/subsystem and GPIO controller, resource
+The current kernel evaluates these resources with ACPICA and reuses mapped
+firmware NVS fields. It checks the supported codec/subsystem and GPIO controller, resource
 bounds, pad ownership, configuration/transmit locks, pin mode and pull-up.
 It resets the shared line high/low/high, holding each phase for 1 ms, once
 before loading either amp. Failure returns without enabling speaker playback.
@@ -54,7 +63,7 @@ partition change has been performed by the agent. The following checks use the
 running OS's console and RAM filesystem.
 
 1. Disconnect headphones, HDMI/DisplayPort audio devices and Bluetooth audio.
-   At the ModernOS console, run `speaker-check --info`, then `speaker-check`.
+   At the Coast console, run `speaker-check --info`, then `speaker-check`.
 2. Confirm the 440-Hz first tone comes only from the physical left speaker,
    the 660-Hz second tone only from the right, and the third tone from both.
 3. Confirm two seconds of silence during `PAUSE`, and that `RESUME` restores

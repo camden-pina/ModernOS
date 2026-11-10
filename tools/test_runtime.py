@@ -24,10 +24,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORK = ROOT / "build" / "runtime-tests"
 SECTOR = 512
 ANSI = re.compile(rb"\x1b\[[0-9;=?]*[A-Za-z]")
+PASST_OPTIONS = ('passt,ipv4=on,ipv6=off,mtu=1500,address=10.0.2.15/24,'
+                 'gateway=10.0.2.2,'
+                 'map-host-loopback=10.0.2.2,tcp-ports=none,udp-ports=none')
 
 
 def default_iso():
-    return pathlib.Path(os.environ.get('MODERNOS_ISO') or ROOT / 'build/os.iso').resolve()
+    return pathlib.Path(os.environ.get('COAST_ISO') or ROOT / 'build/os.iso').resolve()
 
 
 def normalize_checkpoint_firmware(configuration):
@@ -143,7 +146,7 @@ def prepare():
             f.truncate(mib * 1024 * 1024)
 
         if fs == "fat":
-            run("mkfs.fat", "-F", "32", "-n", "MODERNOS", volume)
+            run("mkfs.fat", "-F", "32", "-n", "COAST", volume)
         else:
             run("mkfs." + fs, "-q", "-F", "-b", "4096", "-d", tree,
                 "-E", "lazy_itable_init=0", volume)
@@ -154,18 +157,35 @@ def prepare():
 
 
 class VM:
-    def __init__(self, cpus, bios=False, storage=True, iso=None, buffered=True, memory="2G", label=None, network=True, resume=None, cpu=None, accel="tcg", display="none", trace_display=False, make_run=False, trace_pointer=False, audio_capture=None, audio_device="ac97", network_model="e1000e"):
+    def __init__(self, cpus, bios=False, storage=True, iso=None, buffered=True, memory="2G", label=None, network=True, resume=None, cpu=None, accel="tcg", display="none", trace_display=False, make_run=False, trace_pointer=False, audio_capture=None, audio_device="ac97", network_model="e1000e", extra_args=None, audio_capture_rate=None, boot_timeout=None, root_commands=True, network_backend="user"):
+        self.secure_console=False
+        self.root_commands=root_commands
+        self.qa_password='Coast-QA-only-2026!'
         iso = pathlib.Path(iso).resolve() if iso is not None else default_iso()
         cpu = cpu or ('host' if accel == 'kvm' else 'max')
+        # Full browser/runtime images can still be loading their large module
+        # under TCG at40s. Keep lean images at40s and give full images a bounded
+        #120s cold-boot budget; functional waits/assertions remain unchanged.
+        boot_timeout = boot_timeout if boot_timeout is not None else (120 if iso.stat().st_size >= 512 * 1024 * 1024 else 40)
+        assert type(boot_timeout) is int and 0 < boot_timeout <= 300
+        self.boot_timeout_seconds = boot_timeout
         WORK.mkdir(parents=True, exist_ok=True)
         self.configuration = dict(cpus=cpus, bios=bios, storage=storage, buffered=buffered,
                                   memory=memory, network=network,
                                   iso=str(iso))
+        if extra_args:
+            self.configuration['extra_args'] = [str(argument) for argument in extra_args]
         if network_model != 'e1000e':
             self.configuration['network_model'] = network_model
+        assert network_backend in ('user', 'passt')
+        if network_backend != 'user': self.configuration['network_backend'] = network_backend
+        if audio_capture_rate is not None:
+            assert audio_capture and type(audio_capture_rate) is int and audio_capture_rate > 0
         if audio_capture:
             self.configuration['audio_capture'] = str(pathlib.Path(audio_capture).resolve())
             self.configuration['audio_device'] = audio_device
+            if audio_capture_rate is not None:
+                self.configuration['audio_capture_rate'] = audio_capture_rate
         if cpu != 'max':
             self.configuration['cpu'] = cpu
         if accel != 'tcg':
@@ -201,18 +221,23 @@ class VM:
                 "VGA,vgamem_mb=32,refresh_rate=120" + ("" if buffered else ",mmio=off")]
 
         assert network_model in ('e1000e', 'e1000', 'igb'), network_model
-        cmd += ["-nic", "user,model=" + network_model if network else "none"]
+        backend = PASST_OPTIONS if network_backend == 'passt' else 'user'
+        cmd += ["-nic", backend + ",model=" + network_model if network else "none"]
 
         if audio_capture:
             assert audio_device in ('ac97', 'hda')
-            cmd += ['-audiodev', f'wav,id=audio0,path={pathlib.Path(audio_capture).resolve()}']
+            backend = f'wav,id=audio0,path={pathlib.Path(audio_capture).resolve()}'
+            if audio_capture_rate is not None:
+                backend += f',out.fixed-settings=on,out.frequency={audio_capture_rate},out.channels=2,out.format=s16'
+            cmd += ['-audiodev', backend]
             if audio_device == 'hda':
                 cmd += ['-device', 'intel-hda', '-device', 'hda-duplex,audiodev=audio0']
             else:
                 cmd += ['-device', 'AC97,audiodev=audio0']
 
         if not bios:
-            cmd += ["-bios", str(ROOT / "firmware/ovmf/OVMF.fd")]
+            from host_firmware import ovmf
+            cmd += ["-bios", str(ovmf())]
         cmd += ["-device", "qemu-xhci,id=xhci", "-device", "usb-kbd,bus=xhci.0",
                 "-device", "usb-mouse,bus=xhci.0"]
 
@@ -261,6 +286,10 @@ class VM:
             cmd += ['-msg', 'timestamp=on', '-trace',
                     f'events={events},file={WORK / (self.name + ".display-trace")}']
 
+        if extra_args:
+            cmd += [str(argument) for argument in extra_args]
+
+        boot_started = time.monotonic()
         self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, bufsize=0)
         self.log = (WORK / (self.name + ".log")).open("wb")
@@ -277,8 +306,35 @@ class VM:
 
                 # The saved shell is already at its prompt; request a new one.
                 self.send('\n')
-            self.until_prompt(40)
-        except BaseException:
+            self.until_prompt(boot_timeout)
+            self.boot_elapsed_seconds = time.monotonic() - boot_started
+            if root_commands:
+                probe=self.raw_command('id -u')
+                if re.search(r'\n1000\n',probe):
+                    self.secure_console=True
+                    self.configuration['qa_password_initialized_in_disposable_guest']=True
+                    self.send('passwd\n')
+                    prompt=self.until(rb'Current password:|New password:',30)
+                    if 'Current password:' in prompt:
+                        self.send(self.qa_password+'\n');self.until(rb'New password:',30)
+                    self.send(self.qa_password+'\n');self.until(rb'Confirm new password:',30)
+                    self.send(self.qa_password+'\n')
+                    assert 'Password updated' in self.until_prompt(30)
+            (WORK / (self.name + '.boot.json')).write_text(json.dumps(dict(result='passed',timeout_seconds=boot_timeout,elapsed_seconds=self.boot_elapsed_seconds,iso_bytes=iso.stat().st_size,configuration=self.configuration),indent=2)+'\n')
+        except BaseException as boot_error:
+            # Keep the original failure and timeout. Capture evidence while the
+            # disposable VM still exists, before normal owned teardown.
+            failure = dict(error=str(boot_error), configuration=self.configuration,timeout_seconds=boot_timeout,elapsed_seconds=time.monotonic()-boot_started)
+            try:
+                screenshot = WORK / (self.name + ".boot-failure.ppm")
+                self.qmp('screendump', {'filename': str(screenshot)})
+                failure['screenshot'] = str(screenshot)
+                failure['qmp_status'] = self.qmp('query-status')
+                failure['block_stats'] = self.qmp('query-blockstats')
+                failure['registers'] = self.qmp('human-monitor-command', {'command-line':'info registers'})
+            except BaseException as diagnostic_error:
+                failure['diagnostic_error'] = str(diagnostic_error)
+            (WORK / (self.name + ".boot-failure.json")).write_text(json.dumps(failure,indent=2)+'\n')
             self.close()
             raise
 
@@ -290,8 +346,38 @@ class VM:
         while time.monotonic() < deadline:
             plain = ANSI.sub(b"", bytes(self.pending)).replace(b"\r", b"")
             if b"PANIC:" in plain:
+                # Serial can split the panic prefix from its assertion. Keep
+                # the complete diagnostic before collecting/closing the VM.
+                panic_deadline = time.monotonic() + 0.5
+                while time.monotonic() < panic_deadline:
+                    if self.selector.select(0.05):
+                        data = os.read(self.process.stdout.fileno(), 65536)
+                        if not data: break
+                        self.pending.extend(data); self.log.write(data); self.log.flush()
+                plain = ANSI.sub(b"", bytes(self.pending)).replace(b"\r", b"")
                 raise AssertionError(plain.decode(errors="replace"))
-            if re.search(pattern, plain):
+            matched = False
+            if isinstance(pattern, bytes) and pattern.endswith(rb"\$ $"):
+                # The shell emits idle prompts without terminal escapes, even
+                # after command output without a newline. Per-key redraws use
+                # CR+CSI erase and must never satisfy a completed-command wait.
+                # Background output after a real prompt also leaves it valid.
+                raw = bytes(self.pending)
+                prompts = list(re.finditer(rb"(?<!\r\x1b\[2K)(os:[^\r\n\x1b]*\$ )", raw))
+                alternative = re.search(pattern, plain)
+                if alternative is not None and not alternative.group().endswith(b"$ "):
+                    # Patterns such as READY|prompt also accept the readiness
+                    # branch, which does not require an idle shell prompt.
+                    matched = True
+                else:
+                    for prompt in reversed(prompts):
+                        prefix = ANSI.sub(b"", raw[:prompt.end()]).replace(b"\r", b"")
+                        if re.search(pattern, prefix):
+                            matched = True
+                            break
+            else:
+                matched = re.search(pattern, plain) is not None
+            if matched:
                 self.pending.clear()
                 return plain.decode(errors="replace")
 
@@ -309,14 +395,49 @@ class VM:
         self.process.stdin.write(text.encode())
         self.process.stdin.flush()
 
+    def raw_command(self,line,timeout=30):
+        self.send(line+'\n');return self.until_prompt(timeout)
+
+    def owner_console(self):
+        current=self.raw_command('id -u')
+        if re.search(r'\n1000\n',current):return
+        self.send('login 1000\n');self.until(rb'Profile password:',30)
+        self.send(self.qa_password+'\n')
+        assert 'Console account switched' in self.until_prompt(30)
+
+    def privileged_send(self,line,pattern,timeout):
+        self.owner_console()
+        # Authenticate a separate, fixed validation command. A program under
+        # test may print its own sudo prompt (including through a pipe); it
+        # must never make the harness type a password into the console.
+        self.send('sudo -S -v\n')
+        ready=self.until(rb'\[sudo\] Password:|os:[^\n]*\$ $',timeout)
+        if '[sudo] Password:' in ready:
+            self.send(self.qa_password+'\n');ready=self.until_prompt(timeout)
+        assert 'sudo: ' not in ready,ready
+        assert line.startswith('sudo -S '),line
+        self.send('sudo -n '+line[len('sudo -S '):]+'\n')
+        return self.until(pattern,timeout)
+
     def command(self, line, expect=None, timeout=30):
-        self.send(line + "\n")
-        output = self.until_prompt(timeout)
+        if self.secure_console and self.root_commands:
+            # The legacy ABI check deliberately expects init as its parent.
+            wrapped='sudo -S /bin/check' if line=='check' else 'sudo -S /bin/coast-sh -c '+shlex.quote(line)
+            if len(wrapped.encode())>=511:raise ValueError('Privileged guest command exceeds the console input limit')
+            output=self.privileged_send(wrapped,rb'os:[^\n]*\$ $',timeout)
+        else:
+            output=self.raw_command(line,timeout)
         if expect is not None and expect not in output:
             raise AssertionError(f"{self.name}: {line!r} expected {expect!r}\n{output}")
         return output
 
-    def shell_command(self, script, expect=None, timeout=30):
+    def user_command(self,line,expect=None,timeout=30):
+        if self.secure_console:self.owner_console()
+        output=self.raw_command(line,timeout)
+        if expect is not None:assert expect in output,output
+        return output
+
+    def shell_command(self, script, expect=None, timeout=30, as_user=False):
         """Wait for this guest shell command, even after a saved old prompt.
 
         The markers are formatted by the actual guest shell. Their complete
@@ -331,8 +452,14 @@ class VM:
             raise ValueError('Guest shell probe exceeds the console input limit')
         pattern = (rb'\n' + token.encode() + rb'B\n([\s\S]*)\n' +
                    token.encode() + rb'E([0-9]+)\n[\s\S]*os:[^\n]*\$ $')
-        self.send(line + '\n')
-        output = self.until(pattern, timeout)
+        if self.secure_console and self.root_commands and not as_user:
+            line='sudo -S /bin/build-sh -c '+shlex.quote(wrapped)
+            if len(line.encode())>=511:raise ValueError('Privileged guest shell probe exceeds the console input limit')
+            output=self.privileged_send(line,pattern,timeout)
+        else:
+            if as_user and self.secure_console:self.owner_console()
+            self.send(line + '\n')
+            output = self.until(pattern, timeout)
         match = re.search(pattern, output.encode())
         result = '\n' + match[1].decode() + '\n'
         if match[2] != b'0':
@@ -381,7 +508,8 @@ class VM:
         result = dict(self.configuration)
         paths = [pathlib.Path(result['iso'])]
         if not result['bios']:
-            paths.append(ROOT / 'firmware/ovmf/OVMF.fd')
+            from host_firmware import ovmf
+            paths.append(ovmf())
         result['image_hashes'] = {}
         for path in paths:
             with path.open('rb') as file:
@@ -485,7 +613,7 @@ def shell_and_desktop(vm):
 
     assert "eof-commits-line\n" in vm.until_prompt()
     vm.command("echo clean\x1b[D", "clean\n")
-    vm.command("uname -a", "ModernOS modernos 0.2")
+    vm.command("uname -a", "Coast coast 0.2")
     vm.command("uptime", "up ")
     vm.command("which edit head gui", "/bin/gui")
     assert_success(vm.command("mkdir -p /tmp/docs/drafts"))
@@ -557,7 +685,7 @@ def shell_and_desktop(vm):
     assert_success(vm.command("mkdir -p /home/user/Projects"))
     assert_success(vm.command("write /home/user/Projects/gui-note.txt GUI_PREVIEW_MARKER"))
     vm.send("gui\n")
-    vm.until(rb"GUI_READY: ModernOS desktop")
+    vm.until(rb"GUI_READY: Coast desktop")
     desktop = WORK / (vm.name + "-desktop.ppm")
     vm.qmp("screendump", {"filename": str(desktop)})
     width, height = map(int, desktop.read_bytes().split(b"\n", 3)[1].split())

@@ -7,6 +7,7 @@ static struct {
     mouse_event_t events[MOUSE_QUEUE_SIZE];
     mouse_state_t states[MOUSE_MAX_SOURCES];
     bool known[MOUSE_MAX_SOURCES];
+    uint32_t capabilities[MOUSE_MAX_SOURCES];
     uint16_t head;
     uint16_t tail;
     uint64_t sequence;
@@ -43,6 +44,7 @@ bool mouse_attach(uint16_t source_id) {
         return false;
     mouse.known[source_id] = true;
     mouse.states[source_id] = (mouse_state_t){.connected = true};
+    mouse.capabilities[source_id] = OS_POINTER_MOUSE | OS_POINTER_RELATIVE;
     enqueue(source_id, MOUSE_EVENT_CONNECTED, 0, 0, 0, 0, 0, 0);
     return true;
 }
@@ -92,6 +94,13 @@ bool mouse_get_state(uint16_t source_id, mouse_state_t *out) {
     return true;
 }
 
+uint32_t mouse_capabilities(uint16_t source_id) {
+    return source_id && source_id < MOUSE_MAX_SOURCES ? mouse.capabilities[source_id] : 0;
+}
+void mouse_set_capabilities(uint16_t source_id, uint32_t capabilities) {
+    if (source_id && source_id < MOUSE_MAX_SOURCES && mouse.states[source_id].connected)
+        mouse.capabilities[source_id] = capabilities;
+}
 uint64_t mouse_dropped_events(void) {
     return mouse.dropped;
 }

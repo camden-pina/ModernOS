@@ -1,5 +1,5 @@
-#ifndef MODERNOS_IGC_H
-#define MODERNOS_IGC_H
+#ifndef COAST_IGC_H
+#define COAST_IGC_H
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>

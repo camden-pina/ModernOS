@@ -10,7 +10,7 @@ make run SMP=4
 ```
 
 The output is `build/os.iso`. It contains the kernel, the Limine bootloader,
-and an initramfs with `/bin/modernos-sh`, POSIX `/bin/sh`, `edit`, `gui`, upstream `nano`, `env`, `stty`,
+and an initramfs with `/bin/coast-sh`, POSIX `/bin/sh`, `edit`, `gui`, upstream `nano`, `env`, `stty`,
 `tty`, `reset`, `head`, `tail`, `wc`, `grep`, `find`, `hexdump`, and the
 `hello`, `check`, `posix-check`, `spin`, `fault`, and `exec-test`
 diagnostics. The ISO supports BIOS and UEFI. Limine's MP response starts
@@ -119,7 +119,7 @@ Within a mount, `mv` can also rename directories. Across mounts it copies a
 regular file and then removes the source. An ext source is read-only, so use
 `cp` when copying from Linux. Existing destination names are not replaced by
 rename. Open files and directories used as working directories cannot be
-removed or renamed. The OS command console (`modernos-sh`) uses simple command
+removed or renamed. The OS command console (`coast-sh`) uses simple command
 syntax. `sh`, `ash` and `build-sh` provide real POSIX scripts, pipelines,
 redirection and wildcard expansion.
 
@@ -254,13 +254,14 @@ semantics, limits, rendering and desktop validation.
   exFAT are not supported. FAT32's per-file size limit is 4 GiB minus one byte.
   FAT32 has no journal; mutations are not atomic across a power failure.
 * RAM filesystem: writable root and temporary storage, including initramfs
-  executables, real symlinks and replacement of closed rename targets.
+  executables, real symlinks, shared-inode hard links, stored owner/group metadata
+  and open-file lifetime across unlink/rename.
   Persistent destinations must be on a writable disk mount. The VFS provides
   actual /dev/null and /dev/zero character devices independently of terminals.
 
 ## Build a program
 
-Inside ModernOS, the included GCC/G++ SDK can compile your own source directly:
+Inside Coast, the included GCC/G++ SDK can compile your own source directly:
 
 ```text
 gcc -O2 -Wall /tmp/hello.c -o /tmp/hello
@@ -272,15 +273,19 @@ build-sh -c 'make -j2'
 The drivers default to static non-PIE executables. `/usr/include`, `/usr/lib`
 and GCC's versioned include/runtime directories contain actual development
 files, with libc, libgcc and libstdc++. Source examples and verified archives
-live under `/usr/src/modernos`. See `native-tools.md` for rebuilding the compiler.
+live under `/usr/src/coast`. See `native-tools.md` for rebuilding the compiler.
 The following minimal-library workflow remains available for kernel-ABI tools
 built on the host.
 
-Programs must be static, little-endian x86-64 `ET_EXEC` ELFs using the supported
-ABI. Dynamic linking, PIE, executable stacks, overlapping load pages,
-and segments that are both writable and executable are rejected. A Linux
-executable is usable only if its startup and syscall requirements fit this
-subset; a general static glibc executable needs additional compatibility work.
+Programs must use the supported little-endian x86-64 ELF64 ABI. `ET_EXEC`,
+PIE `ET_DYN`, and a bounded ELF interpreter are supported. The supplied dynamic
+profile uses musl 1.2.5 at `/lib/ld-musl-x86_64.so.1`; `gcc-dynamic` and
+`g++-dynamic` select the shared profiles. Executable stacks, overlapping load
+pages and writable/executable segments remain rejected. See
+[ELF dynamic linking](dynamic-linking.md), [shared C++](dynamic-cpp.md) and
+[binary compatibility](binary-compatibility.md). A Linux-target executable is
+usable only when its loader, libraries, startup and syscall requirements fit
+this subset; arbitrary distribution binaries have not been established.
 Validated static `PT_TLS` templates are supported and initialized by upstream
 musl from the ELF auxiliary vector. The shipped nano and `posix-check` use
 static musl. Musl pthread clone/TLS, shared thread-group context and private-VM
@@ -328,14 +333,16 @@ are defined in `include/uapi/abi.h`.
 | --- | --- |
 | `read`, `write`, `open`, `close`, `stat`, `lstat`, `fstat`, `lseek` | Real files, pipes, `/dev/tty` and PTYs; special streams reject seeking; `O_NOFOLLOW` checks the final component |
 | `pipe`, `pipe2` | Two real pipe endpoints; `O_CLOEXEC` and `O_NONBLOCK`; EOF after the last writer closes, `-EPIPE` without readers |
-| `openat`, `newfstatat`, `mkdirat`, `unlinkat`, `renameat`, `faccessat` | Real directory descriptors or `AT_FDCWD`; absolute paths ignore dirfd. `newfstatat` supports `AT_SYMLINK_NOFOLLOW`, `unlinkat` supports `AT_REMOVEDIR` |
+| `openat`, `newfstatat`, `mkdirat`, `unlinkat`, `renameat`, `faccessat` | Real directory descriptors or `AT_FDCWD`; absolute paths ignore dirfd. `newfstatat` supports `AT_SYMLINK_NOFOLLOW`/`AT_EMPTY_PATH`, `unlinkat` supports `AT_REMOVEDIR` |
 | `getdents64`, `getcwd`, `chdir`, `fchdir`, `readlink`, `readlinkat` | Directory enumeration, working directories and reading real symlink targets |
-| `pread64`, `pwrite64`, `readv`, `writev` | Positional I/O preserves file offset; vectors are validated before I/O, limited to 16 vectors and 16 MiB total |
+| `pread64`, `pwrite64`, `preadv`, `pwritev`, `readv`, `writev` | Positional I/O preserves file offset; vectors are validated before I/O, limited to 16 vectors and 16 MiB total |
+| `fallocate` | Validates descriptor, write access and range; reports `EOPNOTSUPP` because extent reservation is unsupported, enabling libwayland-cursor's `ftruncate` fallback |
 | `dup`, `dup2`, `dup3`, `fcntl` | Shared file descriptions and offsets; per-descriptor close-on-exec flags; `F_DUPFD`, `F_DUPFD_CLOEXEC`, `F_GETFD`, `F_SETFD`, `F_GETFL`, `F_SETFL` (append/nonblocking), bounded `F_GETPIPE_SZ`/`F_SETPIPE_SZ` |
 | `ioctl` | `TCGETS`, `TCSETS/W/F`, `TIOCGWINSZ`, `FIONREAD`; PTYs also support `TIOCSWINSZ`, `TCFLSH` and `OS_PTY_GET_FOREGROUND`; console settings require foreground ownership |
 | `poll`, `ppoll`, `select`, `pselect6` | Actual readiness, EOF/HUP/invalid-fd reporting, waits and temporary signal masks; up to 128 descriptors, including sets across the 64-bit boundary |
 | `access`, `fchmod`, `fsync`, `fdatasync` | Mode checks, descriptor permission changes, and durable disk flushes |
-| `mkdir`, `rmdir`, `unlink`, `rename`, `chmod`, `sync`, `umask`, `truncate`, `ftruncate` | Writable mount mutations; creation honors umask; RAM/FAT resizing preserves offsets and zero-fills exposed bytes; closed RAM rename targets can be replaced; FAT occupied targets are refused |
+| `mkdir`, `rmdir`, `unlink`, `rename`, `chmod`, `sync`, `umask`, `truncate`, `ftruncate` | Writable mount mutations; creation honors umask; RAM/FAT resizing preserves offsets and zero-fills exposed bytes; RAM rename targets retain open inode lifetime; FAT occupied targets are refused |
+| `link`, `linkat`, `chown`, `fchown`, `lchown`, `fchownat`, `statx`, `statfs`, `fstatfs`, `fchmodat`, `fchmodat2`, `faccessat2`, `flock`, `clock_nanosleep`, `close_range` | Bounded Linux command-tool profile with real metadata, links, ownership, locking and descriptor/timer semantics; see [Linux command tools](linux-command-tools.md) for exact scope and unsupported operations |
 | `symlink`, `symlinkat` | Create real RAM links; FAT32 returns `-ENOTSUP` |
 | `utime`, `utimes`, `futimesat`, `utimensat` | Update actual RAM/FAT timestamps, including UTIME_NOW/OMIT; FAT precision/range limits apply |
 | `renameat2` | Flags zero or RENAME_NOREPLACE; exchange/whiteout are unsupported; native desktop refuses replacement |
@@ -362,8 +369,9 @@ are defined in `include/uapi/abi.h`.
 | `fork`, `vfork`, `clone` | Private fork or parent-blocking VM-borrowed vfork; single-thread musl posix_spawn; musl pthread shared VM/FS/FILES/SIGHAND/THREAD flags, TLS/TID registration and clear-TID wakeup; thread groups stay on one CPU; multi-threaded fork/vfork is rejected |
 | `execve`, `exit`, `exit_group`, `wait4` | Bounded argv/envp image replacement, static ELF or checked absolute-interpreter shebang scripts (four levels); per-thread exit, group exit/fatal termination and child reaping after final live worker; `WNOHANG`; status reports exit code or signal; multi-threaded exec/spawn is rejected |
 | `spawn` (400) | `(path, argv, flags)` creates a process; flags 0 foreground, 1 background; inherits cwd, environment and pipe/PTY standard streams when present, otherwise gets terminal descriptors |
-| `sysinfo` (401) | `(kind, buffer, capacity)` returns text for CPUs, processes, disks, mounts, or lsblk; kinds 0–4 |
-| `display` (402), `input` (403) | Versioned ModernOS display/input API; see below |
+| `sysinfo` (401) | `(kind, buffer, capacity)` returns bounded text for CPUs/processes/disks/mounts/lsblk (0–4), network (5), cached ACPI/telemetry (6), or coordinated-power status (7); see [System & Power](system-power.md) |
+| `power` (413) | `(action, flags=0)` requests asynchronous coordinated shutdown (1), reset (2), or reversible-phase cancellation (3); acceptance/coalescing is not hardware success; browser roles denied |
+| `display` (402), `input` (403) | Versioned Coast display/input API; see below |
 | `spawn_io` (404) | `(path, argv, os_spawn_io*)` creates a background child with validated explicit stdin/stdout/stderr and optional cwd, retaining the caller's foreground/display ownership |
 | `spawnve` (405) | `(path, argv, envp, flags)` creates a process with actual supplied environment strings; used by `env` |
 | `pty` (406) | `(int pair[2], flags)` allocates master/slave descriptors; flags `O_NONBLOCK`/`O_CLOEXEC`; real line discipline, I/O, readiness and geometry |
@@ -446,14 +454,15 @@ musl build provides `errno`, allocation, stdio and TLS; the actual GNU nano
 port is validated on this ABI. Other upstream programs must be tested
 individually. Vim, BusyBox/ash and GNU make are validated ports; see
 [native-tools.md](native-tools.md). IPv4 sockets, getrandom and eventfd support
-network ports; see [browser-network.md](browser-network.md). Dynamic linking,
-named Unix/IPv6 sockets, general coherent file mappings, process groups and credential
-isolation remain unsupported. Musl pthreads/private-VM futexes have specific
+network ports; see [browser-network.md](browser-network.md). Shared musl C/C++
+and bounded foreground process groups are supported. Named Unix/IPv6 sockets,
+general coherent file mappings and credential isolation remain unsupported. Musl pthreads/private-VM futexes have specific
 tested limits described in [modern-browser-port.md](modern-browser-port.md).
 No general Linux or POSIX compatibility is claimed.
 
-`wait4` accepts a child PID or -1 and an optional checked Linux-layout resource-usage
-buffer. It reports the reaped child's sampled user/kernel CPU time and accumulated
+`wait4` accepts a child PID, -1 for any child, 0 for the caller's process
+group or a negative process-group selector, plus an optional checked
+Linux-layout resource-usage buffer. It reports the reaped child's sampled user/kernel CPU time and accumulated
 reaped descendants; untracked resource fields remain zero. Exit codes are
 shifted left eight bits; termination signals occupy the low seven bits.
 Unknown syscalls return `-ENOSYS`. `spawn`, `spawnve` and `spawn_io` inherit

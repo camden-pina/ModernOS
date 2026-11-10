@@ -66,7 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--firmware', type=Path, default=Path('/lib/firmware/aw88399_acf.bin'))
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(prefix='modernos-audio-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='coast-audio-') as temporary:
         path = Path(temporary);
         source = path / 'check.c';
         binary = path / 'check';

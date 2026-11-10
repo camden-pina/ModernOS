@@ -1,0 +1,11 @@
+--- a/src/grep.c
++++ b/src/grep.c
+@@ -1783,7 +1783,7 @@ drain_input (int fd, struct stat const *st)
+       /* Should be faster, since it need not copy data to user space.  */
+       nbytes = splice (fd, nullptr, STDOUT_FILENO, nullptr,
+                        good_readsize, SPLICE_F_MOVE);
+-      if (0 <= nbytes || errno != EINVAL)
++      if (0 <= nbytes || (errno != EINVAL && errno != ENOSYS))
+         {
+           while (0 < nbytes)
+             nbytes = splice (fd, nullptr, STDOUT_FILENO, nullptr,

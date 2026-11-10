@@ -1,0 +1,428 @@
+{
+  "schema": 1,
+  "repository": "Doom-Utils/deutex",
+  "repository_url": "https://github.com/Doom-Utils/deutex",
+  "ref": "v5.2.3",
+  "commit": "870ca04ec16f39b474a7bebe900faf53d36a8d6d",
+  "tree": "892ed2be697cbd456ad0b0bbff14cbca8be37a72",
+  "directory": "deutex-5.2.3",
+  "license": "GPL-2.0-or-later; see upstream LICENSE for components",
+  "file_count": 59,
+  "total_bytes": 522713,
+  "retrieval": "Official GitHub connector fetch_file with encoding=base64; decoded size and Git blob SHA1 independently verified.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha": "086fa11cf1df0cc773b6f72143b240f08f08062f",
+      "size": 214,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/.gitignore"
+    },
+    {
+      "path": ".travis.yml",
+      "sha": "55c5bfa7ca766924ea057b93f083cb8cc9503631",
+      "size": 97,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/.travis.yml"
+    },
+    {
+      "path": "AUTHORS",
+      "sha": "d7b9f84e770f9175a5b5ef4bfdc94b822f5f3c78",
+      "size": 231,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/AUTHORS"
+    },
+    {
+      "path": "COPYING",
+      "sha": "d159169d1050894d3ea3b98e1c965c4058208fe1",
+      "size": 18092,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/COPYING"
+    },
+    {
+      "path": "COPYING.LIB",
+      "sha": "4362b49151d7b34ef83b3067a8f9c9f877d72a0e",
+      "size": 26530,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/COPYING.LIB"
+    },
+    {
+      "path": "LICENSE",
+      "sha": "ed3cfa5f1618c87d3af4e072ebb00eaeeb91ea33",
+      "size": 3162,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/LICENSE"
+    },
+    {
+      "path": "Makefile.am",
+      "sha": "ec1e8dbae316e78c5bb4cf3886f8ba2b900a999a",
+      "size": 261,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/Makefile.am"
+    },
+    {
+      "path": "NEWS.adoc",
+      "sha": "0e4fe74fbc9861800cb6e744fd9b2d6731e4c7df",
+      "size": 33240,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/NEWS.adoc"
+    },
+    {
+      "path": "README.adoc",
+      "sha": "4b5306054eae1d35931f84de93e71df2d1f50882",
+      "size": 3501,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/README.adoc"
+    },
+    {
+      "path": "bootstrap",
+      "sha": "7c590a31ea7d35bc4823ef148f27ee1ee71f01e8",
+      "size": 25,
+      "mode": "100755",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/bootstrap"
+    },
+    {
+      "path": "configure.ac",
+      "sha": "3eef1a9c9246cb08d9a815284b7223202bdc0867",
+      "size": 1226,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/configure.ac"
+    },
+    {
+      "path": "man/.gitignore",
+      "sha": "3d283d04bebc103121c0ff974c90280f938b8b09",
+      "size": 15,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/man/.gitignore"
+    },
+    {
+      "path": "man/Makefile.am",
+      "sha": "6946a5b6557ff58880f89152ab63673471c63ef6",
+      "size": 211,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/man/Makefile.am"
+    },
+    {
+      "path": "man/deutex.txt.in",
+      "sha": "21150daec6a7f7a2c903715428a5a04b3c53292f",
+      "size": 11075,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/man/deutex.txt.in"
+    },
+    {
+      "path": "pkg.w32/.gitignore",
+      "sha": "da12678606425dbcef833bfb5e3748e0792825a3",
+      "size": 36,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/pkg.w32/.gitignore"
+    },
+    {
+      "path": "pkg.w32/Makefile",
+      "sha": "3eeeeea5d02a3d8af765982ada5f5c52e1d9d555",
+      "size": 756,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/pkg.w32/Makefile"
+    },
+    {
+      "path": "pkg.w32/config.make.in",
+      "sha": "7dd54435795d15a14417d35b26eee57f4752fdf6",
+      "size": 90,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/pkg.w32/config.make.in"
+    },
+    {
+      "path": "pkg.w32/cp-with-libs",
+      "sha": "fca641c1f1ace9f4e34886d038499999f3f5f148",
+      "size": 6268,
+      "mode": "100755",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/pkg.w32/cp-with-libs"
+    },
+    {
+      "path": "src/.gitignore",
+      "sha": "646c7b0acc8bcafb83e98029db17912c23cfe830",
+      "size": 23,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/.gitignore"
+    },
+    {
+      "path": "src/Makefile.am",
+      "sha": "f05810096a053f26c981bc3c1ec7e536a95144bf",
+      "size": 459,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/Makefile.am"
+    },
+    {
+      "path": "src/color.c",
+      "sha": "cfddf138f39cc30a374c32cf6e19c65fb71349e2",
+      "size": 9617,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/color.c"
+    },
+    {
+      "path": "src/color.h",
+      "sha": "ed4664100ab45257382f51365ddfbd4d93ccda0d",
+      "size": 862,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/color.h"
+    },
+    {
+      "path": "src/compose.c",
+      "sha": "c2f327207e292db7635ff9a721d0feaef786b9fd",
+      "size": 27717,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/compose.c"
+    },
+    {
+      "path": "src/deutex.c",
+      "sha": "66079b30de05a42316ac254989025a96c63fb318",
+      "size": 38818,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/deutex.c"
+    },
+    {
+      "path": "src/deutex.h",
+      "sha": "63d86be57f49c933ceec6fbdaa7699a4c5279e1d",
+      "size": 6158,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/deutex.h"
+    },
+    {
+      "path": "src/endianio.c",
+      "sha": "db01f86c90c0b880b0413414c0b3dab75794d4d4",
+      "size": 3377,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/endianio.c"
+    },
+    {
+      "path": "src/endianio.h",
+      "sha": "1e6643008e16aa8d03f1d5ed286d9e6e620d812e",
+      "size": 697,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/endianio.h"
+    },
+    {
+      "path": "src/endianm.c",
+      "sha": "5a904f8d3931d44d97f5533c8a023f5a358ffaf1",
+      "size": 3537,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/endianm.c"
+    },
+    {
+      "path": "src/endianm.h",
+      "sha": "85f107168abc8ed0d97a7ec912e58ca5e6ae52a0",
+      "size": 849,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/endianm.h"
+    },
+    {
+      "path": "src/extract.c",
+      "sha": "9fa5e25882ec2dda4a9a32f1734dcca02ea11af7",
+      "size": 39592,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/extract.c"
+    },
+    {
+      "path": "src/extract.h",
+      "sha": "c57b04f0fc3dad5460268a79c762ff319b98d438",
+      "size": 1029,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/extract.h"
+    },
+    {
+      "path": "src/ident.c",
+      "sha": "6b8d9ef483165242a37c7707e045aed53fb48767",
+      "size": 31891,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/ident.c"
+    },
+    {
+      "path": "src/ident.h",
+      "sha": "e3168ac1c006ec39331d757856d56cc538db1529",
+      "size": 1236,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/ident.h"
+    },
+    {
+      "path": "src/listdir.c",
+      "sha": "ee7896f706a4e8eff5f96098e28537c1fefb7f73",
+      "size": 20944,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/listdir.c"
+    },
+    {
+      "path": "src/lists.c",
+      "sha": "1bc07eca651638bcfaeadffeb0691764c5211f09",
+      "size": 19682,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/lists.c"
+    },
+    {
+      "path": "src/lists.h",
+      "sha": "8b7a9ebdef427e70af73a879315a2a4fa604a071",
+      "size": 654,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/lists.h"
+    },
+    {
+      "path": "src/lzw.c",
+      "sha": "56b4d0a5af2fe21576b61271f7f26a6c611a65a5",
+      "size": 17006,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/lzw.c"
+    },
+    {
+      "path": "src/merge.c",
+      "sha": "053f94cb92e1ed2f95cf44a558f85c4209812553",
+      "size": 18996,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/merge.c"
+    },
+    {
+      "path": "src/merge.h",
+      "sha": "6717d8bd26fd94a364d1b7ba763e0c4c29b343ed",
+      "size": 923,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/merge.h"
+    },
+    {
+      "path": "src/mkwad.c",
+      "sha": "14d32d1beed545e2476505bb2a90164090fcd0a1",
+      "size": 25618,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/mkwad.c"
+    },
+    {
+      "path": "src/mkwad.h",
+      "sha": "b57332f48b992e2bb0e834a645cfb6edd7af1985",
+      "size": 3744,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/mkwad.h"
+    },
+    {
+      "path": "src/picture.c",
+      "sha": "7cce540e0ff9c4fdd748f0cd76e948a0066996de",
+      "size": 53395,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/picture.c"
+    },
+    {
+      "path": "src/picture.h",
+      "sha": "8efb3b7535617409efa7d231bb2d3408abf3e6ef",
+      "size": 1591,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/picture.h"
+    },
+    {
+      "path": "src/png_tools.c",
+      "sha": "484a1d13034c8840e970c658868cb7a04167d64f",
+      "size": 4255,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/png_tools.c"
+    },
+    {
+      "path": "src/png_tools.h",
+      "sha": "cf4c83a19f848e593dc922f095093d5e81dcdc8e",
+      "size": 514,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/png_tools.h"
+    },
+    {
+      "path": "src/sound.c",
+      "sha": "f9e6e1879a4bdfc44234fbd4183383462d50bce3",
+      "size": 10873,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/sound.c"
+    },
+    {
+      "path": "src/sound.h",
+      "sha": "4f16449f7c4badda1fb94efc6c44b194b4619519",
+      "size": 652,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/sound.h"
+    },
+    {
+      "path": "src/sscript.c",
+      "sha": "a47301b458e268f7f9de9a4d2f87059fd991d79d",
+      "size": 5441,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/sscript.c"
+    },
+    {
+      "path": "src/sscript.h",
+      "sha": "d4aeb3f44cffd65fca278e794d602361494e885c",
+      "size": 389,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/sscript.h"
+    },
+    {
+      "path": "src/text.c",
+      "sha": "b5fa39535a666d25f6170d7ee7fed4c776a35821",
+      "size": 16763,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/text.c"
+    },
+    {
+      "path": "src/text.h",
+      "sha": "048449d1e148449aedb4487b53e57bb60974f46a",
+      "size": 1955,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/text.h"
+    },
+    {
+      "path": "src/texture.c",
+      "sha": "49a508610e3f9bc05c4c85ce42a616ac22af36dd",
+      "size": 24756,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/texture.c"
+    },
+    {
+      "path": "src/texture.h",
+      "sha": "7b6950ff0cb3b3b92822ea96ad90f09d1239df6d",
+      "size": 1695,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/texture.h"
+    },
+    {
+      "path": "src/tools.c",
+      "sha": "72987cef0f80fd1067eb4528701001ec011b72ed",
+      "size": 12887,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/tools.c"
+    },
+    {
+      "path": "src/tools.h",
+      "sha": "376d03fc3535d7156303c734d532537d3eecbc43",
+      "size": 2276,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/tools.h"
+    },
+    {
+      "path": "src/usedidx.c",
+      "sha": "aed769c2733191bc5ce340b44e02f65b6b8fd7c5",
+      "size": 2708,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/usedidx.c"
+    },
+    {
+      "path": "src/usedidx.h",
+      "sha": "93573adbfba04e97c6fc36b73f9090588629c22e",
+      "size": 1042,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/usedidx.h"
+    },
+    {
+      "path": "src/wadio.c",
+      "sha": "cd0e4e2c1010fc65f6f9b9715e3cfff7b01c99a0",
+      "size": 2306,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/wadio.c"
+    },
+    {
+      "path": "src/wadio.h",
+      "sha": "aa1842a772fd9375637c09d632719943bd7b8bf4",
+      "size": 756,
+      "mode": "100644",
+      "raw_url": "https://raw.githubusercontent.com/Doom-Utils/deutex/870ca04ec16f39b474a7bebe900faf53d36a8d6d/src/wadio.h"
+    }
+  ]
+}

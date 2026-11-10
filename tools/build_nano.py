@@ -2,7 +2,7 @@
 """Build pinned, unmodified upstream GNU nano with static musl and ncurses.
 
 Sources are vendored and verified, so rebuilding never requires a network.
-ModernOS supplies the x86-64 syscall ABI. Linux virtual-console extensions are
+Coast supplies the x86-64 syscall ABI. Linux virtual-console extensions are
 disabled; curses uses its embedded VT100/xterm descriptions, not host files.
 """
 import hashlib
@@ -40,7 +40,7 @@ for tool in ('gcc', 'make', 'ar', 'tic', 'infocmp'):
         raise SystemExit(
             f'Native nano requires the host build tool {tool}. See userland/vendor/README.md.')
 
-stamp = BUILD / 'modernos-nano.stamp'
+stamp = BUILD / 'coast-nano.stamp'
 key = hashlib.sha256(Path(__file__).read_bytes() + str(ROOT).encode() + ''.join(PACKAGES.values()).encode()).hexdigest()
 binary = BUILD / 'nano-8.7/src/nano'
 

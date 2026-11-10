@@ -1,0 +1,82 @@
+{
+  "ninja": {
+    "version": "1.13.2",
+    "url": "https://codeload.github.com/ninja-build/ninja/tar.gz/refs/tags/v1.13.2",
+    "archive": "ninja-1.13.2.tar.gz",
+    "source": "ninja-1.13.2",
+    "sha256": "974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17",
+    "provenance": "https://github.com/ninja-build/ninja/releases/tag/v1.13.2"
+  },
+  "pkgconf": {
+    "version": "2.5.1",
+    "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-2.5.1.tar.xz",
+    "archive": "pkgconf-2.5.1.tar.xz",
+    "source": "pkgconf-2.5.1",
+    "sha256": "cd05c9589b9f86ecf044c10a2269822bc9eb001eced2582cfffd658b0a50c243",
+    "provenance": "https://github.com/pkgconf/pkgconf"
+  },
+  "m4": {
+    "version": "1.4.21",
+    "url": "https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.xz",
+    "archive": "m4-1.4.21.tar.xz",
+    "source": "m4-1.4.21",
+    "sha256": "f25c6ab51548a73a75558742fb031e0625d6485fe5f9155949d6486a2408ab66",
+    "provenance": "https://www.gnu.org/software/m4/"
+  },
+  "patch": {
+    "version": "2.8.1",
+    "url": "https://ftp.gnu.org/gnu/patch/patch-2.8.1.tar.xz",
+    "archive": "patch-2.8.1.tar.xz",
+    "source": "patch-2.8.1",
+    "sha256": "3240c7959c5347c8ed347e3c4201c0337bf4240d5cf09d68889e58eeaba30e17",
+    "provenance": "https://www.gnu.org/software/patch/"
+  },
+  "gperf": {
+    "version": "3.3",
+    "url": "https://ftp.gnu.org/gnu/gperf/gperf-3.3.tar.gz",
+    "archive": "gperf-3.3.tar.gz",
+    "source": "gperf-3.3",
+    "sha256": "fd87e0aba7e43ae054837afd6cd4db03a3f2693deb3619085e6ed9d8d9604ad8",
+    "provenance": "https://www.gnu.org/software/gperf/"
+  },
+  "bc": {
+    "version": "1.08.2",
+    "url": "https://ftp.gnu.org/gnu/bc/bc-1.08.2.tar.gz",
+    "archive": "bc-1.08.2.tar.gz",
+    "source": "bc-1.08.2",
+    "sha256": "ae470fec429775653e042015edc928d07c8c3b2fc59765172a330d3d87785f86",
+    "provenance": "https://lists.gnu.org/archive/html/info-gnu/2025-05/msg00006.html"
+  },
+  "zstd": {
+    "version": "1.5.7",
+    "url": "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+    "archive": "zstd-1.5.7.tar.gz",
+    "source": "zstd-1.5.7",
+    "sha256": "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+    "provenance": "https://github.com/facebook/zstd/releases/tag/v1.5.7"
+  },
+  "lz4": {
+    "version": "1.11.0",
+    "url": "https://github.com/lz4/lz4/releases/download/v1.11.0/lz4-1.11.0.tar.gz",
+    "archive": "lz4-1.11.0.tar.gz",
+    "source": "lz4-1.11.0",
+    "sha256": "247e5fa64da5f7b75ee3dd3bed484076396c9ebe8254d9ccf693eb62800c5e26",
+    "provenance": "https://github.com/lz4/lz4/releases/tag/v1.11.0"
+  },
+  "xz": {
+    "version": "5.8.4",
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz",
+    "archive": "xz-5.8.4.tar.xz",
+    "source": "xz-5.8.4",
+    "sha256": "4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b",
+    "provenance": "https://github.com/tukaani-project/xz/releases/tag/v5.8.4"
+  },
+  "rsync": {
+    "version": "3.5.2",
+    "url": "https://download.samba.org/pub/rsync/src/rsync-3.5.2.tar.gz",
+    "archive": "rsync-3.5.2.tar.gz",
+    "source": "rsync-3.5.2",
+    "sha256": "a10d591825251e070f74c98df3daad195def4ed81b4a2de16169026aea33f6c8",
+    "provenance": "https://download.samba.org/pub/rsync/NEWS.html"
+  }
+}

@@ -42,3 +42,15 @@ void audio_init(void) {
     if (audio_driver == 2)
         aw88399_init();
 }
+
+bool hda_power_ready(void);
+int hda_power_stop(void);
+int ac97_power_stop(void);
+
+bool audio_power_ready(void) {
+    return audio_driver != 2 || hda_power_ready();
+}
+
+int audio_power_stop(void) {
+    return audio_driver == 1 ? ac97_power_stop() : audio_driver == 2 ? hda_power_stop() : 0;
+}

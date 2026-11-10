@@ -84,3 +84,29 @@ void apic_send_eoi_if_necessary(unsigned char vector) {
     if (apic_read(0x100 + (vector / 32) * 16) & (1u << (vector % 32)))
         apic_write(0xb0, 0);
 }
+
+/* Fixed physical runtime IPI, distinct from boot INIT/SIPI semantics. */
+bool apic_send_ipi(uint32_t destination, uint8_t vector) {
+    if (vector < 32 || vector == 255)
+        return false;
+    if (msr_read(0x1b) & 0x400) {
+        msr_write(0x830, ((uint64_t)destination << 32) | vector);
+        return true;
+    }
+    if (destination > 255)
+        return false;
+    uint64_t start = tsc_uptime_us();
+    while (apic_read(0x300) & (1u << 12)) {
+        if (tsc_uptime_us() - start > 100000)
+            return false;
+        __asm__ volatile("pause" ::: "memory");
+    }
+    apic_write(0x310, destination << 24);
+    apic_write(0x300, vector);
+    while (apic_read(0x300) & (1u << 12)) {
+        if (tsc_uptime_us() - start > 100000)
+            return false;
+        __asm__ volatile("pause" ::: "memory");
+    }
+    return true;
+}

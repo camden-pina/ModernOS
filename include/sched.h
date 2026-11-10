@@ -6,13 +6,45 @@
 #include <sync.h>
 #include <mm/user.h>
 #include <fs/vfs.h>
+#include <userns.h>
 
-#define TASK_MAX 128
+/* App domain206 plus the existing32 slots for kernel/native helpers. */
+#define TASK_MAX 238
 #define TASK_STACK_PAGES 16
 
-enum task_state { TASK_UNUSED, TASK_NEW, TASK_RUNNABLE, TASK_RUNNING, TASK_SLEEPING, TASK_ZOMBIE };
+enum task_state { TASK_UNUSED, TASK_NEW, TASK_RUNNABLE, TASK_RUNNING, TASK_SLEEPING, TASK_STOPPED, TASK_ZOMBIE };
 struct task_context {
+    unsigned fork_owner;
+    /* Linux real/effective/saved/filesystem identities. */
+    unsigned uid, gid;
+    unsigned ruid, suid, fsuid, rgid, sgid, fsgid;
+    unsigned group_count, groups[32];
+    unsigned desktop_login_uid, pending_login_uid, pending_login_generation;
+    unsigned account_session, account_owner;
+    bool account_console;
+    unsigned desktop_fsuid; /* Root broker applies DAC for personal file actions. */
+    unsigned account_uid; /* Guest login identity, retained across sudo/exec. */
+    bool account_nnp;
+    /* Granted only by the root-owned Chromium display bridge. Namespace
+       renderers never receive native network access, even when inherited. */
+    bool browser_network;
+    bool gid_dropped;
     unsigned references, live, tgid, creation_mask;
+    unsigned pgid, sid;
+    bool job_managed, executed;
+    /* Explicit root supervisor adoption; not inherited by forked contexts. */
+    bool child_subreaper;
+    /* A controller may reclaim only the exact terminal/group it handed off.
+       This owns a VFS reference; fork never inherits the capability. */
+    struct file *job_terminal;
+    /* One retained loader file per process context; threads share this owner. */
+    struct file *executable;
+    unsigned job_foreground;
+    struct os_termios job_termios;
+    /* Group stops are requested asynchronously, completed only at safe user
+       boundaries. wait events do not imply process death or resource reaping. */
+    unsigned stop_requested, stop_signal;
+    bool stopped, stop_event, continue_event;
     bool exiting;
     int exit_status;
     uint64_t user_ticks, system_ticks;
@@ -29,9 +61,16 @@ struct task_context {
 };
 
 struct task {
+    struct generic_seccomp_filter *seccomp_filter;
+    unsigned seccomp_mode, seccomp_signal_frames;
+    struct userns_credential *userns;
+    struct userns_budget_claim userns_budget_claim;
+    mutex_t *waiting_mutex;
     unsigned pid, tgid, ppid, cpu;
     enum task_state state;
     bool user, idle;
+    unsigned held_mutexes, no_park_depth, power_role;
+    struct task *power_creator;
     int exit_status;
     unsigned kill_signal;
     uint64_t signal_pending, signal_mask, clear_tid;
@@ -64,6 +103,8 @@ struct task {
     /* A syscall retains descriptors across waits and concurrent close/reuse. */
     struct file *file_pins[OS_FD_MAX];
     unsigned pin_count;
+    /* Fits the existing alignment gap before the saved FPU state. */
+    struct landlock_domain *landlock_domain;
     uint8_t fpu[512] __attribute__((aligned(16)));
 };
 
@@ -78,6 +119,8 @@ struct cpu_local {
     uintptr_t handoff;      /* GS:24: scheduler lock held across stack switch */
     unsigned id, lapic_id;
     bool online;
+    unsigned held_mutexes, no_park_depth, irq_depth;
+    uint64_t park_seen_epoch, park_ack_epoch, resume_ack_epoch, commit_ack_epoch;
     struct task *current, *head, *tail;
     uint64_t ticks, switches;
     unsigned fpu_pid;
@@ -94,12 +137,16 @@ static inline struct cpu_local *this_cpu(void) {
 void sched_init(struct boot_smp *smp);
 void sched_start(void);
 bool sched_ready(void);
+unsigned sched_cpu_count(void);
+struct cpu_local *sched_cpu(unsigned);
+bool sched_power_drained(void);
 register_t *sched_interrupt(register_t *frame);
 void sched_finish_switch(void);
 void sched_yield(void);
 void sched_sleep(uint64_t us);
 void task_exit(int status);
 void task_exit_group(int status);
+long task_subreaper(struct task *,register_t *);
 void task_reap_threads(void);
 void task_context_bind(struct task *, struct task_context *);
 struct file *task_file_pin(struct task *, unsigned fd);
@@ -107,13 +154,31 @@ void task_files_unpin(struct task *);
 long task_futex(struct task *, register_t *);
 struct task *task_allocate(const char *name, bool user, unsigned ppid, int cpu);
 void task_discard(struct task *task);
-void task_publish(struct task *task);
+int task_publish(struct task *task);
+int task_publish_s1(struct task *,struct task *);
+int task_publish_thread_p1(struct task *,struct task *,uint64_t,uint64_t);
+int task_publish_private_fork(struct task *,struct task *,unsigned);
+bool private_fork_fault(unsigned,unsigned);
+void private_fork_scope_selftest(void);
+void private_fork_barrier_selftest(void);
 int task_kernel(const char *name, void (*entry)(void *), void *arg, unsigned cpu);
 int task_wait(int pid, int *status, unsigned options);
-int task_wait_usage(int pid, int *status, unsigned options, struct os_rusage *usage);
+int task_wait_usage(int pid, int *status, unsigned options, struct os_rusage *usage, unsigned *child_sid,unsigned *view_pid);
+int task_wait_exit(int *status,struct os_rusage *,unsigned *view_pid,unsigned *view_uid,unsigned *child_sid,bool nonblock);
 void task_cpu_usage(struct task *, bool children, uint64_t *user_us, uint64_t *system_us);
 void task_thread_cpu_usage(struct task *, uint64_t *user_us, uint64_t *system_us);
+long task_sched_query(struct task *, int pid);
 int task_kill(unsigned pid, unsigned signal);
+void task_account_revoke(unsigned uid);
+int task_kill_group(unsigned group, unsigned signal);
+int task_signal_foreground(unsigned identity, unsigned signal);
+unsigned task_input_identity(const struct task *);
+long task_getpgid(struct task *, int pid, bool session);
+int task_setpgid(struct task *, int pid, int group);
+long task_private_setsid(struct task *);
+long task_terminal_set(struct task *, struct file *, unsigned group);
+bool task_terminal_access(struct task *, struct file *);
+int task_terminal_cwd(struct file *, unsigned, char [OS_PATH_MAX]);
 int task_tgkill(unsigned tgid, unsigned tid, unsigned signal);
 size_t sched_info(char *out, size_t cap, bool processes);
 bool sched_path_busy(const char *path);
@@ -139,9 +204,15 @@ int process_spawn_browser(const char *, char *const[], unsigned, const char *,
 int process_spawn_web(const char *, char *const[], unsigned, const char *, struct file *const[3],
                       unsigned, unsigned, const char *);
 int task_browser_grant(unsigned parent, unsigned pid, const char *path);
+void task_stop_request_locked(struct task *, unsigned signal);
+bool task_stop_checkpoint(struct task *t);
+void task_signal_checkpoint(struct task *, register_t *, bool restart, uint64_t return_mask);
+int task_background_terminal(struct task *, unsigned signal);
 bool signal_pending(struct task *);
 bool signal_deliver(struct task *, register_t *, bool restart, uint64_t return_mask);
 bool signal_fault(struct task *, register_t *, unsigned signal, int code, uint64_t address);
 long signal_suspend(struct task *, uint64_t mask);
 long signal_return(struct task *, register_t *);
+/* Caller holds vfs_mutex. No arbitrary-PID executable query is exposed. */
+long process_executable_readlink(const struct task *, const char *, void *, size_t);
 #endif

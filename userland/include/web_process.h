@@ -1,9 +1,9 @@
-#ifndef MODERNOS_WEB_PROCESS_H
-#define MODERNOS_WEB_PROCESS_H
+#ifndef COAST_WEB_PROCESS_H
+#define COAST_WEB_PROCESS_H
 #include <stdint.h>
 
-#define MODERNOS_SPAWN_WEB 409
-#define MODERNOS_WEB_IDENTITY 410
+#define COAST_SPAWN_WEB 409
+#define COAST_WEB_IDENTITY 410
 
 enum { OS_WEB_NONE, OS_WEB_BROKER, OS_WEB_RENDERER };
 struct os_spawn_web {

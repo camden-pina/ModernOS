@@ -1,0 +1,1995 @@
+diff --git a/include/gpu/ganesh/GrDirectContext.h b/include/gpu/ganesh/GrDirectContext.h
+index 9dc6f62..8ccf5a4 100644
+--- a/include/gpu/ganesh/GrDirectContext.h
++++ b/include/gpu/ganesh/GrDirectContext.h
+@@ -320,14 +320,34 @@ public:
+     bool wait(int numSemaphores, const GrBackendSemaphore* waitSemaphores,
+               bool deleteSemaphoresAfterWait = true);
+ 
++    /*
++     * Result of a flush call. A flush can be successful w/ or w/o any semaphores being flushed.
++     * In some circumstances an unsuccessful flush can still have flushed the semaphores but
++     * the rendering results should be discarded.
++     */
++    struct FlushResult {
++        // This implicit cast is temporary and recreates the success/semaphore-submission
++        // conflation of the old API. This can be removed when all clients have been
++        // updated to the new return value.
++        operator GrSemaphoresSubmitted() const {
++            return fSuccess ? GrSemaphoresSubmitted::kYes : GrSemaphoresSubmitted::kNo;
++        }
++
++        bool fSuccess = false;                    // Did the flush succeed
++        // Were any semaphores submitted during the flush process. Will be kNo if no
++        // semaphores were specified.
++        GrSemaphoresSubmitted fSubmitted = GrSemaphoresSubmitted::kNo;
++    };
++
+     /**
+      * Call to ensure all drawing to the context has been flushed and submitted to the underlying 3D
+      * API. This is equivalent to calling GrContext::flush with a default GrFlushInfo followed by
+      * GrContext::submit(sync).
+      */
+-    void flushAndSubmit(GrSyncCpu sync = GrSyncCpu::kNo) {
+-        this->flush(GrFlushInfo());
+-        this->submit(sync);
++    FlushResult flushAndSubmit(GrSyncCpu sync = GrSyncCpu::kNo) {
++        FlushResult result = this->flush(GrFlushInfo());
++        result.fSuccess &= this->submit(sync);
++        return result;
+     }
+ 
+     /**
+@@ -341,22 +361,22 @@ public:
+      *         buffer or encoder objects. However, these objects are not sent to the gpu until a
+      *         submission occurs.
+      *
+-     * If the return is GrSemaphoresSubmitted::kYes, only initialized GrBackendSemaphores will be
+-     * submitted to the gpu during the next submit call (it is possible Skia failed to create a
+-     * subset of the semaphores). The client should not wait on these semaphores until after submit
+-     * has been called, and must keep them alive until then. If this call returns
+-     * GrSemaphoresSubmitted::kNo, the GPU backend will not submit any semaphores to be signaled on
+-     * the GPU. Thus the client should not have the GPU wait on any of the semaphores passed in with
+-     * the GrFlushInfo. Regardless of whether semaphores were submitted to the GPU or not, the
+-     * client is still responsible for deleting any initialized semaphores.
++     * If FlushResult.fSubmitted is GrSemaphoresSubmitted::kYes, only initialized
++     * GrBackendSemaphores will be submitted to the gpu during the next submit call (it is possible
++     * Skia failed to create a subset of the semaphores). The client should not wait on these
++     * semaphores until after submit has been called, and must keep them alive until then. If
++     * fSubmitted is GrSemaphoresSubmitted::kNo, the GPU backend will not submit any semaphores
++     * to be signaled on the GPU. Thus the client should not have the GPU wait on any of the
++     * semaphores passed in with the GrFlushInfo. Regardless of whether semaphores were submitted
++     * to the GPU or not, the client is still responsible for deleting any initialized semaphores.
+      * Regardless of semaphore submission the context will still be flushed. It should be
+-     * emphasized that a return value of GrSemaphoresSubmitted::kNo does not mean the flush did not
+-     * happen. It simply means there were no semaphores submitted to the GPU. A caller should only
+-     * take this as a failure if they passed in semaphores to be submitted.
++     * emphasized that a fSubmitted value of GrSemaphoresSubmitted::kNo does not mean the flush
++     * did not happen. It simply means there were no semaphores submitted to the GPU. A caller
++     * should only take this as a failure if they passed in semaphores to be submitted.
+      */
+-    GrSemaphoresSubmitted flush(const GrFlushInfo& info);
++    FlushResult flush(const GrFlushInfo& info);
+ 
+-    void flush() { this->flush(GrFlushInfo()); }
++    void flush() { (void) this->flush(GrFlushInfo()); }
+ 
+     /** Flushes any pending uses of texture-backed images in the GPU backend. If the image is not
+      *  texture-backed (including promise texture images) or if the GrDirectContext does not
+@@ -367,13 +387,18 @@ public:
+      *  @param image    the non-null image to flush.
+      *  @param info     flush options
+      */
+-    GrSemaphoresSubmitted flush(const sk_sp<const SkImage>& image, const GrFlushInfo& info);
+-    void flush(const sk_sp<const SkImage>& image);
++    FlushResult flush(const sk_sp<const SkImage>& image, const GrFlushInfo& info);
++
++    void flush(const sk_sp<const SkImage>& image) { (void) this->flush(image, {}); }
+ 
+     /** Version of flush() that uses a default GrFlushInfo. Also submits the flushed work to the
+-     *   GPU.
++     *  GPU.
+      */
+-    void flushAndSubmit(const sk_sp<const SkImage>& image);
++    FlushResult flushAndSubmit(const sk_sp<const SkImage>& image) {
++        FlushResult result = this->flush(image, {});
++        result.fSuccess &= this->submit();
++        return result;
++    }
+ 
+     /** Issues pending SkSurface commands to the GPU-backed API objects and resolves any SkSurface
+      *  MSAA. A call to GrDirectContext::submit is always required to ensure work is actually sent
+@@ -400,19 +425,20 @@ public:
+      *  The GrFlushInfo describes additional options to flush. Please see documentation at
+      *  GrFlushInfo for more info.
+      *
+-     *  If the return is GrSemaphoresSubmitted::kYes, only initialized GrBackendSemaphores will be
+-     *  submitted to the gpu during the next submit call (it is possible Skia failed to create a
+-     *  subset of the semaphores). The client should not wait on these semaphores until after submit
+-     *  has been called, but must keep them alive until then. If a submit flag was passed in with
+-     *  the flush these valid semaphores can we waited on immediately. If this call returns
+-     *  GrSemaphoresSubmitted::kNo, the GPU backend will not submit any semaphores to be signaled on
+-     *  the GPU. Thus the client should not have the GPU wait on any of the semaphores passed in
+-     *  with the GrFlushInfo. Regardless of whether semaphores were submitted to the GPU or not, the
+-     *  client is still responsible for deleting any initialized semaphores.
+-     *  Regardless of semaphore submission the context will still be flushed. It should be
+-     *  emphasized that a return value of GrSemaphoresSubmitted::kNo does not mean the flush did not
+-     *  happen. It simply means there were no semaphores submitted to the GPU. A caller should only
+-     *  take this as a failure if they passed in semaphores to be submitted.
++     *  If FlushResult.fSubmitted is GrSemaphoresSubmitted::kYes, only initialized
++     *  GrBackendSemaphores will be submitted to the gpu during the next submit call (it is
++     *  possible Skia failed to create a subset of the semaphores). The client should not wait on
++     *  these semaphores until after submit has been called, but must keep them alive until then.
++     *  If a submit flag was passed in with the flush these valid semaphores can we waited on
++     *  immediately. If this fSubmitted is GrSemaphoresSubmitted::kNo, the GPU backend will not
++     *  submit any semaphores to be signaled on the GPU. Thus the client should not have the GPU
++     *  wait on any of the semaphores passed in with the GrFlushInfo. Regardless of whether
++     *  semaphores were submitted to the GPU or not, the client is still responsible for deleting
++     *  any initialized semaphores. Regardless of semaphore submission the context will still be
++     *  flushed. It should be emphasized that a fSubmitted value of GrSemaphoresSubmitted::kNo
++     *  does not mean the flush did not happen. It simply means there were no semaphores submitted
++     *  to the GPU. A caller should only take this as a failure if they passed in semaphores to
++     *  be submitted.
+      *
+      *  Pending surface commands are flushed regardless of the return result.
+      *
+@@ -420,9 +446,9 @@ public:
+      *  @param access  type of access the call will do on the backend object after flush
+      *  @param info    flush options
+      */
+-    GrSemaphoresSubmitted flush(SkSurface* surface,
+-                                SkSurfaces::BackendSurfaceAccess access,
+-                                const GrFlushInfo& info);
++    FlushResult flush(SkSurface* surface,
++                      SkSurfaces::BackendSurfaceAccess access,
++                      const GrFlushInfo& info);
+ 
+     /**
+      *  Same as above except:
+@@ -443,9 +469,16 @@ public:
+      *  @param info     flush options
+      *  @param newState optional state change request after flush
+      */
+-    GrSemaphoresSubmitted flush(SkSurface* surface,
+-                                const GrFlushInfo& info,
+-                                const skgpu::MutableTextureState* newState = nullptr);
++    FlushResult flush(SkSurface* surface,
++                      const GrFlushInfo& info,
++                      const skgpu::MutableTextureState* newState = nullptr);
++
++    /**
++     * Flushes the given surface with the default GrFlushInfo.
++     *
++     *  Has no effect on a CPU-backed surface.
++     */
++    void flush(SkSurface* surface) { (void) this->flush(surface, GrFlushInfo(), nullptr); }
+ 
+     /** Call to ensure all reads/writes of the surface have been issued to the underlying 3D API.
+      *  Skia will correctly order its own draws and pixel operations. This must to be used to ensure
+@@ -455,14 +488,7 @@ public:
+      *
+      *  Has no effect on a CPU-backed surface.
+      */
+-    void flushAndSubmit(SkSurface* surface, GrSyncCpu sync = GrSyncCpu::kNo);
+-
+-    /**
+-     * Flushes the given surface with the default GrFlushInfo.
+-     *
+-     *  Has no effect on a CPU-backed surface.
+-     */
+-    void flush(SkSurface* surface);
++    FlushResult flushAndSubmit(SkSurface* surface, GrSyncCpu sync = GrSyncCpu::kNo);
+ 
+     /**
+      * Submit outstanding work to the gpu from all previously un-submitted flushes. The return
+diff --git a/include/gpu/ganesh/SkSurfaceGanesh.h b/include/gpu/ganesh/SkSurfaceGanesh.h
+index 18fdfc5..64b8d0d 100644
+--- a/include/gpu/ganesh/SkSurfaceGanesh.h
++++ b/include/gpu/ganesh/SkSurfaceGanesh.h
+@@ -11,6 +11,7 @@
+ #include "include/core/SkImageInfo.h"
+ #include "include/core/SkRefCnt.h"
+ #include "include/core/SkSurface.h"
++#include "include/gpu/ganesh/GrDirectContext.h"
+ #include "include/gpu/ganesh/GrTypes.h"
+ #include "include/private/base/SkAPI.h"
+ 
+@@ -209,10 +210,12 @@ namespace skgpu::ganesh {
+ // Clients should strive to call GrDirectContext::flush directly. However, there exist some
+ // places where the GrDirectContext is hard to find, these helpers allow for the flushing of the
+ // provided surface. This is a no-op if the surface is nullptr or not GPU backed.
+-SK_API GrSemaphoresSubmitted Flush(sk_sp<SkSurface>);
+-SK_API GrSemaphoresSubmitted Flush(SkSurface*);
+-SK_API void FlushAndSubmit(sk_sp<SkSurface>);
+-SK_API void FlushAndSubmit(SkSurface*);
++SK_API GrDirectContext::FlushResult Flush(sk_sp<SkSurface>);
++SK_API GrDirectContext::FlushResult Flush(SkSurface*);
++
++SK_API GrDirectContext::FlushResult FlushAndSubmit(sk_sp<SkSurface>);
++SK_API GrDirectContext::FlushResult FlushAndSubmit(SkSurface*);
++
+ }  // namespace skgpu::ganesh
+ 
+ #endif
+diff --git a/include/private/chromium/GrVkSecondaryCBDrawContext.h b/include/private/chromium/GrVkSecondaryCBDrawContext.h
+index 80bed15..ede4db8 100644
+--- a/include/private/chromium/GrVkSecondaryCBDrawContext.h
++++ b/include/private/chromium/GrVkSecondaryCBDrawContext.h
+@@ -11,6 +11,7 @@
+ #include "include/core/SkRefCnt.h"
+ #include "include/core/SkSurfaceProps.h"
+ #include "include/core/SkTypes.h"
++#include "include/gpu/ganesh/GrDirectContext.h"
+ 
+ #include <memory>
+ 
+@@ -72,7 +73,7 @@ public:
+ 
+     // Records all the draws to the imported secondary command buffer and sets any dependent
+     // offscreen draws to the GPU.
+-    void flush();
++    GrDirectContext::FlushResult flush();
+ 
+     /** Inserts a list of GPU semaphores that Skia will have the driver wait on before executing
+         commands for this secondary CB. The wait semaphores will get added to the VkCommandBuffer
+diff --git a/relnotes/flush-error.md b/relnotes/flush-error.md
+new file mode 100644
+index 0000000..2f436c3
+--- /dev/null
++++ b/relnotes/flush-error.md
+@@ -0,0 +1 @@
++The error handling associated with Ganesh's GrDirectContext flushing has been updated. Instead of returning a GrSemaphoresSubmitted value which conflates semaphore submission and flush success, a new FlushResult struct is returned - which explicitly separates the two concerns. FlushResult has an implicit cast which allows clients to still use the old GrSemaphoresSubmitted-based API.
+diff --git a/src/core/SkCachedData.cpp b/src/core/SkCachedData.cpp
+index 522d650..d6a42f3 100644
+--- a/src/core/SkCachedData.cpp
++++ b/src/core/SkCachedData.cpp
+@@ -65,7 +65,12 @@ void SkCachedData::internalRef(bool fromCache) const {
+ }
+ 
+ void SkCachedData::internalUnref(bool fromCache) const {
+-    if (AutoMutexWritable(this)->inMutexUnref(fromCache)) {
++    bool shouldDelete = false;
++    {
++        AutoMutexWritable amw(this);
++        shouldDelete = amw->inMutexUnref(fromCache);
++    }
++    if (shouldDelete) {
+         // can't delete inside doInternalUnref, since it is locking a mutex (which we own)
+         delete this;
+     }
+diff --git a/src/gpu/ganesh/Device.cpp b/src/gpu/ganesh/Device.cpp
+index b79bd00..48635eb 100644
+--- a/src/gpu/ganesh/Device.cpp
++++ b/src/gpu/ganesh/Device.cpp
+@@ -1274,15 +1274,16 @@ void Device::asyncRescaleAndReadPixels(const SkImageInfo& info,
+                                        RescaleGamma rescaleGamma,
+                                        RescaleMode rescaleMode,
+                                        ReadPixelsCallback callback,
+-                                       ReadPixelsContext context) {
++                                       ReadPixelsContext callbackContext) {
+     auto* sdc = fSurfaceDrawContext.get();
+     // Context TODO: Elevate direct context requirement to public API.
+     auto dContext = sdc->recordingContext()->asDirectContext();
+     if (!dContext) {
++        callback(callbackContext, nullptr);
+         return;
+     }
+     sdc->asyncRescaleAndReadPixels(dContext, info, srcRect, rescaleGamma, rescaleMode, callback,
+-                                   context);
++                                   callbackContext);
+ }
+ 
+ void Device::asyncRescaleAndReadPixelsYUV420(SkYUVColorSpace yuvColorSpace,
+@@ -1293,11 +1294,12 @@ void Device::asyncRescaleAndReadPixelsYUV420(SkYUVColorSpace yuvColorSpace,
+                                              RescaleGamma rescaleGamma,
+                                              RescaleMode rescaleMode,
+                                              ReadPixelsCallback callback,
+-                                             ReadPixelsContext context) {
++                                             ReadPixelsContext callbackContext) {
+     auto* sdc = fSurfaceDrawContext.get();
+     // Context TODO: Elevate direct context requirement to public API.
+     auto dContext = sdc->recordingContext()->asDirectContext();
+     if (!dContext) {
++        callback(callbackContext, nullptr);
+         return;
+     }
+     sdc->asyncRescaleAndReadPixelsYUV420(dContext,
+@@ -1309,7 +1311,7 @@ void Device::asyncRescaleAndReadPixelsYUV420(SkYUVColorSpace yuvColorSpace,
+                                          rescaleGamma,
+                                          rescaleMode,
+                                          callback,
+-                                         context);
++                                         callbackContext);
+ }
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+diff --git a/src/gpu/ganesh/GrBufferAllocPool.cpp b/src/gpu/ganesh/GrBufferAllocPool.cpp
+index 1bb7a95..14946bd 100644
+--- a/src/gpu/ganesh/GrBufferAllocPool.cpp
++++ b/src/gpu/ganesh/GrBufferAllocPool.cpp
+@@ -120,9 +120,10 @@ void GrBufferAllocPool::reset() {
+     VALIDATE();
+ }
+ 
+-void GrBufferAllocPool::unmap() {
++bool GrBufferAllocPool::unmap() {
+     VALIDATE();
+ 
++    bool success = true;
+     if (fBufferPtr) {
+         BufferBlock& block = fBlocks.back();
+         GrBuffer* buffer = block.fBuffer.get();
+@@ -131,12 +132,13 @@ void GrBufferAllocPool::unmap() {
+                 UNMAP_BUFFER(block);
+             } else {
+                 size_t flushSize = block.fBuffer->size() - block.fBytesFree;
+-                this->flushCpuData(fBlocks.back(), flushSize);
++                success = this->flushCpuData(fBlocks.back(), flushSize);
+             }
+         }
+         fBufferPtr = nullptr;
+     }
+     VALIDATE();
++    return success;
+ }
+ 
+ #ifdef SK_DEBUG
+@@ -338,7 +340,11 @@ bool GrBufferAllocPool::createBlock(size_t requestSize) {
+             if (static_cast<GrGpuBuffer*>(buffer)->isMapped()) {
+                 UNMAP_BUFFER(prev);
+             } else {
+-                this->flushCpuData(prev, prev.fBuffer->size() - prev.fBytesFree);
++                if (!this->flushCpuData(prev, prev.fBuffer->size() - prev.fBytesFree)) {
++                    fBufferPtr = nullptr;
++                    this->destroyBlock();
++                    return false;
++                }
+             }
+         }
+         fBufferPtr = nullptr;
+@@ -390,7 +396,7 @@ void GrBufferAllocPool::resetCpuData(size_t newSize) {
+                                         : GrCpuBuffer::Make(newSize);
+ }
+ 
+-void GrBufferAllocPool::flushCpuData(const BufferBlock& block, size_t flushSize) {
++bool GrBufferAllocPool::flushCpuData(const BufferBlock& block, size_t flushSize) {
+     SkASSERT(block.fBuffer.get());
+     SkASSERT(!block.fBuffer.get()->isCpuBuffer());
+     GrGpuBuffer* buffer = static_cast<GrGpuBuffer*>(block.fBuffer.get());
+@@ -405,11 +411,12 @@ void GrBufferAllocPool::flushCpuData(const BufferBlock& block, size_t flushSize)
+         if (data) {
+             memcpy(data, fBufferPtr, flushSize);
+             UNMAP_BUFFER(block);
+-            return;
++            return true;
+         }
+     }
+-    buffer->updateData(fBufferPtr, /*offset=*/0, flushSize, /*preserve=*/false);
++    bool result = buffer->updateData(fBufferPtr, /*offset=*/0, flushSize, /*preserve=*/false);
+     VALIDATE(true);
++    return result;
+ }
+ 
+ sk_sp<GrBuffer> GrBufferAllocPool::getBuffer(size_t size) {
+diff --git a/src/gpu/ganesh/GrBufferAllocPool.h b/src/gpu/ganesh/GrBufferAllocPool.h
+index ee6b064..1f09d41 100644
+--- a/src/gpu/ganesh/GrBufferAllocPool.h
++++ b/src/gpu/ganesh/GrBufferAllocPool.h
+@@ -68,7 +68,7 @@ public:
+      * Ensures all buffers are unmapped and have all data written to them.
+      * Call before drawing using buffers from the pool.
+      */
+-    void unmap();
++    [[nodiscard]] bool unmap();
+ 
+     /**
+      *  Invalidates all the data in the pool, unrefs non-preallocated buffers.
+@@ -162,7 +162,7 @@ private:
+     bool createBlock(size_t requestSize);
+     void destroyBlock();
+     void deleteBlocks();
+-    void flushCpuData(const BufferBlock& block, size_t flushSize);
++    [[nodiscard]] bool flushCpuData(const BufferBlock& block, size_t flushSize);
+     void resetCpuData(size_t newSize);
+ #ifdef SK_DEBUG
+     void validate(bool unusedBlockAllowed = false) const;
+diff --git a/src/gpu/ganesh/GrBufferTransferRenderTask.cpp b/src/gpu/ganesh/GrBufferTransferRenderTask.cpp
+index 6f33d10..90e3df4 100644
+--- a/src/gpu/ganesh/GrBufferTransferRenderTask.cpp
++++ b/src/gpu/ganesh/GrBufferTransferRenderTask.cpp
+@@ -39,10 +39,11 @@ GrBufferTransferRenderTask::GrBufferTransferRenderTask(sk_sp<GrGpuBuffer> src,
+ 
+ GrBufferTransferRenderTask::~GrBufferTransferRenderTask() = default;
+ 
+-bool GrBufferTransferRenderTask::onExecute(GrOpFlushState* flushState) {
+-    return flushState->gpu()->transferFromBufferToBuffer(fSrc,
+-                                                         fSrcOffset,
+-                                                         fDst,
+-                                                         fDstOffset,
+-                                                         fSize);
++GrRenderTask::ExecutionResult GrBufferTransferRenderTask::onExecute(GrOpFlushState* flushState) {
++    bool success = flushState->gpu()->transferFromBufferToBuffer(fSrc,
++                                                                 fSrcOffset,
++                                                                 fDst,
++                                                                 fDstOffset,
++                                                                 fSize);
++    return ExecutionResult::Ran(success);
+ }
+diff --git a/src/gpu/ganesh/GrBufferTransferRenderTask.h b/src/gpu/ganesh/GrBufferTransferRenderTask.h
+index 35518fb..e9f8627 100644
+--- a/src/gpu/ganesh/GrBufferTransferRenderTask.h
++++ b/src/gpu/ganesh/GrBufferTransferRenderTask.h
+@@ -44,7 +44,7 @@ private:
+     ExpectedOutcome onMakeClosed(GrRecordingContext*, SkIRect* targetUpdateBounds) override {
+         return ExpectedOutcome::kTargetUnchanged;  // no target
+     }
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "BufferTransfer"; }
+diff --git a/src/gpu/ganesh/GrBufferUpdateRenderTask.cpp b/src/gpu/ganesh/GrBufferUpdateRenderTask.cpp
+index 4db7256..50c82ac 100644
+--- a/src/gpu/ganesh/GrBufferUpdateRenderTask.cpp
++++ b/src/gpu/ganesh/GrBufferUpdateRenderTask.cpp
+@@ -31,6 +31,7 @@ GrBufferUpdateRenderTask::GrBufferUpdateRenderTask(sk_sp<SkData> src,
+ 
+ GrBufferUpdateRenderTask::~GrBufferUpdateRenderTask() = default;
+ 
+-bool GrBufferUpdateRenderTask::onExecute(GrOpFlushState* flushState) {
+-    return fDst->updateData(fSrc->data(), fDstOffset, fSrc->size(), /*preserve=*/true);
++GrRenderTask::ExecutionResult GrBufferUpdateRenderTask::onExecute(GrOpFlushState* flushState) {
++    bool success = fDst->updateData(fSrc->data(), fDstOffset, fSrc->size(), /*preserve=*/true);
++    return ExecutionResult::Ran(success);
+ }
+diff --git a/src/gpu/ganesh/GrBufferUpdateRenderTask.h b/src/gpu/ganesh/GrBufferUpdateRenderTask.h
+index 9871b3b..92213c9 100644
+--- a/src/gpu/ganesh/GrBufferUpdateRenderTask.h
++++ b/src/gpu/ganesh/GrBufferUpdateRenderTask.h
+@@ -37,7 +37,7 @@ private:
+     ExpectedOutcome onMakeClosed(GrRecordingContext*, SkIRect* targetUpdateBounds) override {
+         return ExpectedOutcome::kTargetUnchanged;  // no target
+     }
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "BufferUpdate"; }
+diff --git a/src/gpu/ganesh/GrCopyRenderTask.cpp b/src/gpu/ganesh/GrCopyRenderTask.cpp
+index db010ec..01272fc 100644
+--- a/src/gpu/ganesh/GrCopyRenderTask.cpp
++++ b/src/gpu/ganesh/GrCopyRenderTask.cpp
+@@ -85,18 +85,20 @@ GrRenderTask::ExpectedOutcome GrCopyRenderTask::onMakeClosed(GrRecordingContext*
+     return ExpectedOutcome::kTargetDirty;
+ }
+ 
+-bool GrCopyRenderTask::onExecute(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult GrCopyRenderTask::onExecute(GrOpFlushState* flushState) {
+     if (!fSrc) {
+         // Did nothing, just like we're supposed to.
+-        return true;
++        return ExecutionResult::RanAndSucceeded();
+     }
+     GrSurfaceProxy* dstProxy = this->target(0);
+     if (!fSrc->isInstantiated() || !dstProxy->isInstantiated()) {
+-        return false;
++        return ExecutionResult::RanButFailed();
+     }
+     GrSurface* srcSurface = fSrc->peekSurface();
+     GrSurface* dstSurface = dstProxy->peekSurface();
+     SkIRect srcRect = GrNativeRect::MakeIRectRelativeTo(fOrigin, srcSurface->height(), fSrcRect);
+     SkIRect dstRect = GrNativeRect::MakeIRectRelativeTo(fOrigin, dstSurface->height(), fDstRect);
+-    return flushState->gpu()->copySurface(dstSurface, dstRect, srcSurface, srcRect, fFilter);
++    bool success = flushState->gpu()->copySurface(dstSurface, dstRect, srcSurface, srcRect,
++                                                  fFilter);
++    return ExecutionResult::Ran(success);
+ }
+diff --git a/src/gpu/ganesh/GrCopyRenderTask.h b/src/gpu/ganesh/GrCopyRenderTask.h
+index a8d359c..2141465 100644
+--- a/src/gpu/ganesh/GrCopyRenderTask.h
++++ b/src/gpu/ganesh/GrCopyRenderTask.h
+@@ -51,7 +51,7 @@ private:
+     bool onIsUsed(GrSurfaceProxy* proxy) const override { return proxy == fSrc.get(); }
+     void gatherProxyIntervals(GrResourceAllocator*) const override;
+     ExpectedOutcome onMakeClosed(GrRecordingContext*, SkIRect* targetUpdateBounds) override;
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "Copy"; }
+diff --git a/src/gpu/ganesh/GrDDLTask.cpp b/src/gpu/ganesh/GrDDLTask.cpp
+index 2d9b341..42b76c4 100644
+--- a/src/gpu/ganesh/GrDDLTask.cpp
++++ b/src/gpu/ganesh/GrDDLTask.cpp
+@@ -95,15 +95,13 @@ void GrDDLTask::onPrepare(GrOpFlushState* flushState) {
+     }
+ }
+ 
+-bool GrDDLTask::onExecute(GrOpFlushState* flushState) {
+-    bool anyCommandsIssued = false;
++GrRenderTask::ExecutionResult GrDDLTask::onExecute(GrOpFlushState* flushState) {
++    ExecutionResult result;
+     for (auto& task : fDDL->priv().renderTasks()) {
+-        if (task->execute(flushState)) {
+-            anyCommandsIssued = true;
+-        }
++        result.accum(task->execute(flushState));
+     }
+ 
+-    return anyCommandsIssued;
++    return result;
+ }
+ 
+ #if defined(GPU_TEST_UTILS)
+diff --git a/src/gpu/ganesh/GrDDLTask.h b/src/gpu/ganesh/GrDDLTask.h
+index 15b7b28..0337dd4 100644
+--- a/src/gpu/ganesh/GrDDLTask.h
++++ b/src/gpu/ganesh/GrDDLTask.h
+@@ -61,7 +61,7 @@ private:
+ 
+     void onPrepare(GrOpFlushState*) override;
+ 
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     void dump(const SkString& label,
+diff --git a/src/gpu/ganesh/GrDirectContext.cpp b/src/gpu/ganesh/GrDirectContext.cpp
+index c0c399e..0659458 100644
+--- a/src/gpu/ganesh/GrDirectContext.cpp
++++ b/src/gpu/ganesh/GrDirectContext.cpp
+@@ -222,7 +222,8 @@ void GrDirectContext::freeGpuResources() {
+         return;
+     }
+ 
+-    this->flushAndSubmit();
++    // TODO: bubble this error up to the client
++    (void) this->flushAndSubmit();
+ #if !defined(SK_ENABLE_OPTIMIZE_SIZE)
+     if (fSmallPathAtlasMgr) {
+         fSmallPathAtlasMgr->reset();
+@@ -431,7 +432,7 @@ skgpu::GpuStatsFlags GrDirectContext::supportedGpuStats() const {
+     return this->caps()->supportedGpuStats();
+ }
+ 
+-GrSemaphoresSubmitted GrDirectContext::flush(const GrFlushInfo& info) {
++GrDirectContext::FlushResult GrDirectContext::flush(const GrFlushInfo& info) {
+     ASSERT_SINGLE_OWNER
+     if (this->abandoned()) {
+         if (info.fFinishedProc) {
+@@ -440,7 +441,7 @@ GrSemaphoresSubmitted GrDirectContext::flush(const GrFlushInfo& info) {
+         if (info.fSubmittedProc) {
+             info.fSubmittedProc(info.fSubmittedContext, false);
+         }
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     return this->drawingManager()->flushSurfaces(
+@@ -460,37 +461,28 @@ bool GrDirectContext::submit(const GrSubmitInfo& info) {
+     return fGpu->submitToGpu(info);
+ }
+ 
+-GrSemaphoresSubmitted GrDirectContext::flush(const sk_sp<const SkImage>& image,
+-                                             const GrFlushInfo& flushInfo) {
++GrDirectContext::FlushResult GrDirectContext::flush(const sk_sp<const SkImage>& image,
++                                                    const GrFlushInfo& flushInfo) {
+     if (!image) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     auto ib = as_IB(image);
+     if (!ib->isGaneshBacked()) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     auto igb = static_cast<const SkImage_GaneshBase*>(image.get());
+     return igb->flush(this, flushInfo);
+ }
+ 
+-void GrDirectContext::flush(const sk_sp<const SkImage>& image) {
+-    this->flush(image, {});
+-}
+-
+-void GrDirectContext::flushAndSubmit(const sk_sp<const SkImage>& image) {
+-    this->flush(image, {});
+-    this->submit();
+-}
+-
+-GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
+-                                             SkSurfaces::BackendSurfaceAccess access,
+-                                             const GrFlushInfo& info) {
++GrDirectContext::FlushResult GrDirectContext::flush(SkSurface* surface,
++                                                    SkSurfaces::BackendSurfaceAccess access,
++                                                    const GrFlushInfo& info) {
+     if (!surface) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     auto sb = asSB(surface);
+     if (!sb->isGaneshBacked()) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     auto gs = static_cast<SkSurface_Ganesh*>(surface);
+@@ -500,15 +492,15 @@ GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
+     return this->priv().flushSurface(rtp, access, info, nullptr);
+ }
+ 
+-GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
+-                                             const GrFlushInfo& info,
+-                                             const skgpu::MutableTextureState* newState) {
++GrDirectContext::FlushResult GrDirectContext::flush(SkSurface* surface,
++                                                    const GrFlushInfo& info,
++                                                    const skgpu::MutableTextureState* newState) {
+     if (!surface) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     auto sb = asSB(surface);
+     if (!sb->isGaneshBacked()) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     auto gs = static_cast<SkSurface_Ganesh*>(surface);
+@@ -519,13 +511,12 @@ GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
+             rtp, SkSurfaces::BackendSurfaceAccess::kNoAccess, info, newState);
+ }
+ 
+-void GrDirectContext::flushAndSubmit(SkSurface* surface, GrSyncCpu sync) {
+-    this->flush(surface, SkSurfaces::BackendSurfaceAccess::kNoAccess, GrFlushInfo());
+-    this->submit(sync);
+-}
+-
+-void GrDirectContext::flush(SkSurface* surface) {
+-    this->flush(surface, GrFlushInfo(), nullptr);
++GrDirectContext::FlushResult GrDirectContext::flushAndSubmit(SkSurface* surface, GrSyncCpu sync) {
++    FlushResult result = this->flush(surface,
++                                     SkSurfaces::BackendSurfaceAccess::kNoAccess,
++                                     GrFlushInfo());
++    result.fSuccess &= this->submit(sync);
++    return result;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+@@ -724,9 +715,9 @@ static bool update_texture_with_pixmaps(GrDirectContext* context,
+ 
+     GrSurfaceProxy* p = surfaceContext.asSurfaceProxy();
+     GrFlushInfo info;
+-    context->priv().drawingManager()->flushSurfaces(
++    GrDirectContext::FlushResult result = context->priv().drawingManager()->flushSurfaces(
+             {&p, 1}, SkSurfaces::BackendSurfaceAccess::kNoAccess, info, nullptr);
+-    return true;
++    return result.fSuccess;
+ }
+ 
+ GrBackendTexture GrDirectContext::createBackendTexture(int width,
+diff --git a/src/gpu/ganesh/GrDirectContextPriv.cpp b/src/gpu/ganesh/GrDirectContextPriv.cpp
+index cea1237..b689859 100644
+--- a/src/gpu/ganesh/GrDirectContextPriv.cpp
++++ b/src/gpu/ganesh/GrDirectContextPriv.cpp
+@@ -64,7 +64,7 @@ using MaskFormat = skgpu::MaskFormat;
+     SkASSERT(!(P) || !((P)->peekTexture()) || (P)->peekTexture()->getContext() == this->context())
+ #define ASSERT_SINGLE_OWNER SKGPU_ASSERT_SINGLE_OWNER(this->context()->singleOwner())
+ 
+-GrSemaphoresSubmitted GrDirectContextPriv::flushSurfaces(
++GrDirectContext::FlushResult GrDirectContextPriv::flushSurfaces(
+         SkSpan<GrSurfaceProxy*> proxies,
+         SkSurfaces::BackendSurfaceAccess access,
+         const GrFlushInfo& info,
+@@ -79,7 +79,7 @@ GrSemaphoresSubmitted GrDirectContextPriv::flushSurfaces(
+         if (info.fFinishedProc) {
+             info.fFinishedProc(info.fFinishedContext);
+         }
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+ #ifdef SK_DEBUG
+diff --git a/src/gpu/ganesh/GrDirectContextPriv.h b/src/gpu/ganesh/GrDirectContextPriv.h
+index 1fb313a..fe50a43 100644
+--- a/src/gpu/ganesh/GrDirectContextPriv.h
++++ b/src/gpu/ganesh/GrDirectContextPriv.h
+@@ -90,14 +90,14 @@ public:
+      * GrContext will detect when it must perform a resolve before reading pixels back from the
+      * surface or using it as a texture.
+      */
+-    GrSemaphoresSubmitted flushSurfaces(
++    [[nodiscard]] GrDirectContext::FlushResult flushSurfaces(
+             SkSpan<GrSurfaceProxy*>,
+             SkSurfaces::BackendSurfaceAccess = SkSurfaces::BackendSurfaceAccess::kNoAccess,
+             const GrFlushInfo& = {},
+             const skgpu::MutableTextureState* newState = nullptr);
+ 
+     /** Version of above that flushes for a single proxy. Null is allowed. */
+-    GrSemaphoresSubmitted flushSurface(
++    [[nodiscard]] GrDirectContext::FlushResult flushSurface(
+             GrSurfaceProxy* proxy,
+             SkSurfaces::BackendSurfaceAccess access = SkSurfaces::BackendSurfaceAccess::kNoAccess,
+             const GrFlushInfo& info = {},
+diff --git a/src/gpu/ganesh/GrDrawingManager.cpp b/src/gpu/ganesh/GrDrawingManager.cpp
+index 4be0e63..1279739 100644
+--- a/src/gpu/ganesh/GrDrawingManager.cpp
++++ b/src/gpu/ganesh/GrDrawingManager.cpp
+@@ -95,10 +95,10 @@ void GrDrawingManager::freeGpuResources() {
+ }
+ 
+ // MDB TODO: make use of the 'proxies' parameter.
+-bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+-                             SkSurfaces::BackendSurfaceAccess access,
+-                             const GrFlushInfo& info,
+-                             const skgpu::MutableTextureState* newState) {
++GrDirectContext::FlushResult GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
++                                                     SkSurfaces::BackendSurfaceAccess access,
++                                                     const GrFlushInfo& info,
++                                                     const skgpu::MutableTextureState* newState) {
+     GR_CREATE_TRACE_MARKER_CONTEXT("GrDrawingManager", "flush", fContext);
+ 
+     if (fFlushing || this->wasAbandoned()) {
+@@ -108,7 +108,7 @@ bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+         if (info.fFinishedProc) {
+             info.fFinishedProc(info.fFinishedContext);
+         }
+-        return false;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     SkDEBUGCODE(this->validate());
+@@ -128,7 +128,7 @@ bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+             }
+             // Nothing to flush is a success (fSubmittedProc is already called with `true`
+             // above).
+-            return true;
++            return {true, GrSemaphoresSubmitted::kNo};
+         }
+     }
+ 
+@@ -176,8 +176,8 @@ bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+         preFlushSuccessful &= onFlushCBObject->preFlush(&onFlushProvider);
+     }
+ 
+-    bool cachePurgeNeeded = false;
+-    bool flushSuccessful = false;
++    GrRenderTask::ExecutionResult executionResult { /* fAnyTaskExecuted= */false,
++                                                    /* fAllTasksSuccessful= */false };
+ 
+     if (preFlushSuccessful) {
+         bool usingReorderedDAG = false;
+@@ -209,14 +209,16 @@ bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+         }
+ 
+         if (!resourceAllocator.failedInstantiation()) {
+-            cachePurgeNeeded = this->executeRenderTasks(&flushState);
+-            flushSuccessful = true;
++            executionResult = this->executeRenderTasks(&flushState);
+         }
+     }
+     this->removeRenderTasks();
+ 
+-    gpu->executeFlushInfo(proxies, access, info, std::move(timerQuery), newState);
++    GrDirectContext::FlushResult flushResult = gpu->executeFlushInfo(proxies, access, info,
++                                                                     std::move(timerQuery),
++                                                                     newState);
+ 
++    bool cachePurgeNeeded = executionResult.fAnyTaskExecuted;
+     // Give the cache a chance to purge resources that become purgeable due to flushing.
+     if (cachePurgeNeeded) {
+         resourceCache->purgeAsNeeded();
+@@ -230,8 +232,7 @@ bool GrDrawingManager::flush(SkSpan<GrSurfaceProxy*> proxies,
+         resourceCache->purgeAsNeeded();
+     }
+     fFlushing = false;
+-
+-    return flushSuccessful;
++    return {executionResult.fAllTasksSuccessful && flushResult.fSuccess, flushResult.fSubmitted};
+ }
+ 
+ bool GrDrawingManager::submitToGpu() {
+@@ -247,7 +248,7 @@ bool GrDrawingManager::submitToGpu() {
+     return gpu->submitToGpu();
+ }
+ 
+-bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+ #if GR_FLUSH_TIME_OP_SPEW
+     SkDebugf("Flushing %d opsTasks\n", fDAG.size());
+     for (int i = 0; i < fDAG.size(); ++i) {
+@@ -259,8 +260,6 @@ bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+     }
+ #endif
+ 
+-    bool anyRenderTasksExecuted = false;
+-
+     for (const auto& renderTask : fDAG) {
+         if (!renderTask || !renderTask->isInstantiated()) {
+              continue;
+@@ -272,7 +271,10 @@ bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+     }
+ 
+     // Upload all data to the GPU
+-    flushState->preExecuteDraws();
++    if (!flushState->preExecuteDraws()) {
++        flushState->reset();
++        return { /* fAnyTaskExecuted= */false, /* fAllTasksSuccessful= */false };
++    }
+ 
+     // For Vulkan, if we have too many oplists to be flushed we end up allocating a lot of resources
+     // for each command buffer associated with the oplists. If this gets too large we can cause the
+@@ -285,6 +287,7 @@ bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+     // Unlike kMaxRenderTasksBeforeFlush, this is a global limit.
+     static constexpr int kMaxRenderPassesBeforeFlush = 100;
+ 
++    GrRenderTask::ExecutionResult result;
+     // Execute the normal op lists.
+     for (const auto& renderTask : fDAG) {
+         SkASSERT(renderTask);
+@@ -292,12 +295,12 @@ bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+             continue;
+         }
+ 
+-        if (renderTask->execute(flushState)) {
+-            anyRenderTasksExecuted = true;
+-        }
++        result.accum(renderTask->execute(flushState));
++
+         if (++numRenderTasksExecuted >= kMaxRenderTasksBeforeFlush ||
+             flushState->gpu()->getCurrentSubmitRenderPassCount() >= kMaxRenderPassesBeforeFlush) {
+-            flushState->gpu()->submitToGpu();
++            bool success = flushState->gpu()->submitToGpu();
++            result.fAllTasksSuccessful &= success;
+             numRenderTasksExecuted = 0;
+         }
+     }
+@@ -310,7 +313,7 @@ bool GrDrawingManager::executeRenderTasks(GrOpFlushState* flushState) {
+     // resources are the last to be purged by the resource cache.
+     flushState->reset();
+ 
+-    return anyRenderTasksExecuted;
++    return result;
+ }
+ 
+ void GrDrawingManager::removeRenderTasks() {
+@@ -519,10 +522,11 @@ static void resolve_and_mipmap(GrGpu* gpu, GrSurfaceProxy* proxy) {
+     }
+ }
+ 
+-GrSemaphoresSubmitted GrDrawingManager::flushSurfaces(SkSpan<GrSurfaceProxy*> proxies,
+-                                                      SkSurfaces::BackendSurfaceAccess access,
+-                                                      const GrFlushInfo& info,
+-                                                      const skgpu::MutableTextureState* newState) {
++GrDirectContext::FlushResult GrDrawingManager::flushSurfaces(
++        SkSpan<GrSurfaceProxy*> proxies,
++        SkSurfaces::BackendSurfaceAccess access,
++        const GrFlushInfo& info,
++        const skgpu::MutableTextureState* newState) {
+     if (this->wasAbandoned()) {
+         if (info.fSubmittedProc) {
+             info.fSubmittedProc(info.fSubmittedContext, false);
+@@ -530,7 +534,7 @@ GrSemaphoresSubmitted GrDrawingManager::flushSurfaces(SkSpan<GrSurfaceProxy*> pr
+         if (info.fFinishedProc) {
+             info.fFinishedProc(info.fFinishedContext);
+         }
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     SkDEBUGCODE(this->validate());
+ 
+@@ -543,8 +547,8 @@ GrSemaphoresSubmitted GrDrawingManager::flushSurfaces(SkSpan<GrSurfaceProxy*> pr
+     // TODO: It is important to upgrade the drawingmanager to just flushing the
+     // portion of the DAG required by 'proxies' in order to restore some of the
+     // semantics of this method.
+-    bool didFlush = this->flush(proxies, access, info, newState);
+-    if (didFlush) {
++    GrDirectContext::FlushResult result = this->flush(proxies, access, info, newState);
++    if (result.fSuccess) {
+         // Only resolve/regen mips if the flush actually executed the render tasks.
+         for (GrSurfaceProxy* proxy : proxies) {
+             resolve_and_mipmap(gpu, proxy);
+@@ -553,10 +557,7 @@ GrSemaphoresSubmitted GrDrawingManager::flushSurfaces(SkSpan<GrSurfaceProxy*> pr
+ 
+     SkDEBUGCODE(this->validate());
+ 
+-    if (!didFlush || (!direct->priv().caps()->backendSemaphoreSupport() && info.fNumSemaphores)) {
+-        return GrSemaphoresSubmitted::kNo;
+-    }
+-    return GrSemaphoresSubmitted::kYes;
++    return result;
+ }
+ 
+ void GrDrawingManager::addOnFlushCallbackObject(GrOnFlushCallbackObject* onFlushCBObject) {
+diff --git a/src/gpu/ganesh/GrDrawingManager.h b/src/gpu/ganesh/GrDrawingManager.h
+index 6caf142..d34baca 100644
+--- a/src/gpu/ganesh/GrDrawingManager.h
++++ b/src/gpu/ganesh/GrDrawingManager.h
+@@ -10,6 +10,7 @@
+ 
+ #include "include/core/SkRefCnt.h"
+ #include "include/core/SkSpan.h"
++#include "include/gpu/ganesh/GrDirectContext.h"
+ #include "include/private/base/SkDebug.h"
+ #include "include/private/base/SkTArray.h"
+ #include "src/gpu/ganesh/GrAtlasTypes.h"
+@@ -178,10 +179,10 @@ public:
+ 
+     static bool ProgramUnitTest(GrDirectContext*, int maxStages, int maxLevels);
+ 
+-    GrSemaphoresSubmitted flushSurfaces(SkSpan<GrSurfaceProxy*>,
+-                                        SkSurfaces::BackendSurfaceAccess,
+-                                        const GrFlushInfo&,
+-                                        const skgpu::MutableTextureState* newState);
++    GrDirectContext::FlushResult flushSurfaces(SkSpan<GrSurfaceProxy*>,
++                                               SkSurfaces::BackendSurfaceAccess,
++                                               const GrFlushInfo&,
++                                               const skgpu::MutableTextureState* newState);
+ 
+     void addOnFlushCallbackObject(GrOnFlushCallbackObject*);
+ 
+@@ -202,10 +203,10 @@ public:
+ 
+     // This is public so it can be called by an SkImage factory (in SkImages namespace).
+     // It is not meant to be directly called in other situations.
+-    bool flush(SkSpan<GrSurfaceProxy*> proxies,
+-               SkSurfaces::BackendSurfaceAccess access,
+-               const GrFlushInfo&,
+-               const skgpu::MutableTextureState* newState);
++    GrDirectContext::FlushResult flush(SkSpan<GrSurfaceProxy*> proxies,
++                                       SkSurfaces::BackendSurfaceAccess access,
++                                       const GrFlushInfo&,
++                                       const skgpu::MutableTextureState* newState);
+ 
+ private:
+     GrDrawingManager(GrRecordingContext*,
+@@ -216,8 +217,7 @@ private:
+ 
+     void closeActiveOpsTask();
+ 
+-    // return true if any GrRenderTasks were actually executed; false otherwise
+-    bool executeRenderTasks(GrOpFlushState*);
++    GrRenderTask::ExecutionResult executeRenderTasks(GrOpFlushState*);
+ 
+     void removeRenderTasks();
+ 
+diff --git a/src/gpu/ganesh/GrGpu.cpp b/src/gpu/ganesh/GrGpu.cpp
+index c3c6287..7b7f572 100644
+--- a/src/gpu/ganesh/GrGpu.cpp
++++ b/src/gpu/ganesh/GrGpu.cpp
+@@ -680,13 +680,15 @@ void GrGpu::didWriteToSurface(GrSurface* surface, GrSurfaceOrigin origin, const
+     }
+ }
+ 
+-void GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
+-                             SkSurfaces::BackendSurfaceAccess access,
+-                             const GrFlushInfo& info,
+-                             std::optional<GrTimerQuery> timerQuery,
+-                             const skgpu::MutableTextureState* newState) {
++GrDirectContext::FlushResult GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
++                                                     SkSurfaces::BackendSurfaceAccess access,
++                                                     const GrFlushInfo& info,
++                                                     std::optional<GrTimerQuery> timerQuery,
++                                                     const skgpu::MutableTextureState* newState) {
+     TRACE_EVENT0("skia.gpu", TRACE_FUNC);
+ 
++    GrSemaphoresSubmitted submitted = GrSemaphoresSubmitted::kNo;
++
+     GrResourceProvider* resourceProvider = fContext->priv().resourceProvider();
+ 
+     std::unique_ptr<std::unique_ptr<GrSemaphore>[]> semaphores(
+@@ -711,6 +713,8 @@ void GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
+                 }
+             }
+         }
++
++        submitted = GrSemaphoresSubmitted::kYes;
+     }
+ 
+     if (timerQuery) {
+@@ -737,6 +741,10 @@ void GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
+     SkASSERT(!newState || proxies.size() == 1);
+     SkASSERT(!newState || access == SkSurfaces::BackendSurfaceAccess::kNoAccess);
+     this->prepareSurfacesForBackendAccessAndStateUpdates(proxies, access, newState);
++
++    // If there were semaphores to flush but no support for it, we have failed.
++    bool semaphoreFailure = !this->caps()->backendSemaphoreSupport() && info.fNumSemaphores;
++    return { !semaphoreFailure, submitted };
+ }
+ 
+ GrOpsRenderPass* GrGpu::getOpsRenderPass(
+diff --git a/src/gpu/ganesh/GrGpu.h b/src/gpu/ganesh/GrGpu.h
+index f7c5bb9..1a03499 100644
+--- a/src/gpu/ganesh/GrGpu.h
++++ b/src/gpu/ganesh/GrGpu.h
+@@ -15,6 +15,7 @@
+ #include "include/core/SkTypes.h"
+ #include "include/gpu/GpuTypes.h"
+ #include "include/gpu/ganesh/GrBackendSurface.h"
++#include "include/gpu/ganesh/GrDirectContext.h"
+ #include "include/gpu/ganesh/GrTypes.h"
+ #include "include/private/base/SkTArray.h"
+ #include "include/private/gpu/ganesh/GrTypesPriv.h"
+@@ -414,11 +415,11 @@ public:
+     // Provides a hook for post-flush actions (e.g. Vulkan command buffer submits). This will also
+     // insert any numSemaphore semaphores on the gpu and set the backendSemaphores to match the
+     // inserted semaphores.
+-    void executeFlushInfo(SkSpan<GrSurfaceProxy*>,
+-                          SkSurfaces::BackendSurfaceAccess access,
+-                          const GrFlushInfo&,
+-                          std::optional<GrTimerQuery> timerQuery,
+-                          const skgpu::MutableTextureState* newState);
++    GrDirectContext::FlushResult executeFlushInfo(SkSpan<GrSurfaceProxy*>,
++                                                  SkSurfaces::BackendSurfaceAccess access,
++                                                  const GrFlushInfo&,
++                                                  std::optional<GrTimerQuery> timerQuery,
++                                                  const skgpu::MutableTextureState* newState);
+ 
+     // Called before render tasks are executed during a flush.
+     virtual void willExecute() {}
+diff --git a/src/gpu/ganesh/GrGpuBuffer.h b/src/gpu/ganesh/GrGpuBuffer.h
+index 6d20670..976a331 100644
+--- a/src/gpu/ganesh/GrGpuBuffer.h
++++ b/src/gpu/ganesh/GrGpuBuffer.h
+@@ -94,7 +94,7 @@ public:
+      *
+      * @return returns true if the update succeeds, false otherwise.
+      */
+-    bool updateData(const void* src, size_t offset, size_t size, bool preserve);
++    [[nodiscard]] bool updateData(const void* src, size_t offset, size_t size, bool preserve);
+ 
+     GrGpuBufferType intendedType() const { return fIntendedType; }
+ 
+diff --git a/src/gpu/ganesh/GrOpFlushState.cpp b/src/gpu/ganesh/GrOpFlushState.cpp
+index 68cb7d5..c334cf9 100644
+--- a/src/gpu/ganesh/GrOpFlushState.cpp
++++ b/src/gpu/ganesh/GrOpFlushState.cpp
+@@ -93,10 +93,14 @@ void GrOpFlushState::executeDrawsAndUploadsForMeshDrawOp(
+     }
+ }
+ 
+-void GrOpFlushState::preExecuteDraws() {
+-    fVertexPool.unmap();
+-    fIndexPool.unmap();
+-    fDrawIndirectPool.unmap();
++bool GrOpFlushState::preExecuteDraws() {
++    if (!fVertexPool.unmap() ||
++        !fIndexPool.unmap() ||
++        !fDrawIndirectPool.unmap()) {
++        fCurrDraw = fDraws.end();
++        fCurrUpload = fInlineUploads.end();
++        return false;
++    }
+     for (auto& upload : fASAPUploads) {
+         this->doUpload(upload);
+     }
+@@ -104,6 +108,7 @@ void GrOpFlushState::preExecuteDraws() {
+     fCurrDraw = fDraws.begin();
+     fCurrUpload = fInlineUploads.begin();
+     fGpu->willExecute();
++    return true;
+ }
+ 
+ void GrOpFlushState::reset() {
+diff --git a/src/gpu/ganesh/GrOpFlushState.h b/src/gpu/ganesh/GrOpFlushState.h
+index a8e229c..8919ab1 100644
+--- a/src/gpu/ganesh/GrOpFlushState.h
++++ b/src/gpu/ganesh/GrOpFlushState.h
+@@ -67,7 +67,7 @@ public:
+ 
+     /** This is called after each op has a chance to prepare its draws and before the draws are
+         executed. */
+-    void preExecuteDraws();
++    [[nodiscard]] bool preExecuteDraws();
+ 
+     /** Called to upload data to a texture using the GrDeferredTextureUploadFn. If the uploaded
+         surface needs to be prepared for being sampled in a draw after the upload, the caller
+diff --git a/src/gpu/ganesh/GrRenderTask.h b/src/gpu/ganesh/GrRenderTask.h
+index 71f36e2..4268e00 100644
+--- a/src/gpu/ganesh/GrRenderTask.h
++++ b/src/gpu/ganesh/GrRenderTask.h
+@@ -50,7 +50,27 @@ public:
+ 
+     // These two methods are only invoked at flush time
+     void prepare(GrOpFlushState* flushState);
+-    bool execute(GrOpFlushState* flushState) { return this->onExecute(flushState); }
++
++    // ExecutionResult is used to return and aggregate the results of GrRenderTask
++    // execution. In general, if execution gets into a leaf onExecute call, 'fAnyTaskExecuted'
++    // will be true while 'fAllTasksSuccessful' will depend on the success of the call.
++    // The aggregating call sites (i.e., GrDDLTask::onExecute, GrDrawingManager::executeRenderTasks)
++    // will then combine the results with 'accum'.
++    struct ExecutionResult {
++        static ExecutionResult RanButFailed() { return { true, false }; }
++        static ExecutionResult RanAndSucceeded() { return { true, true }; }
++        static ExecutionResult Ran(bool success) { return { true, success }; }
++
++        bool fAnyTaskExecuted = false;
++        bool fAllTasksSuccessful = true;
++
++        void accum(ExecutionResult newResult) {
++            fAnyTaskExecuted |= newResult.fAnyTaskExecuted;
++            fAllTasksSuccessful &= newResult.fAllTasksSuccessful;
++        }
++    };
++
++    ExecutionResult execute(GrOpFlushState* flushState) { return this->onExecute(flushState); }
+ 
+     virtual bool requiresExplicitCleanup() const { return false; }
+ 
+@@ -278,7 +298,8 @@ private:
+     virtual void onMakeSkippable() {}
+     virtual void onPrePrepare(GrRecordingContext*) {} // Only OpsTask currently overrides this
+     virtual void onPrepare(GrOpFlushState*) {} // OpsTask and GrDDLTask override this
+-    virtual bool onExecute(GrOpFlushState* flushState) = 0;
++
++    virtual ExecutionResult onExecute(GrOpFlushState* flushState) = 0;
+ 
+     const uint32_t         fUniqueID;
+     uint32_t               fFlags;
+diff --git a/src/gpu/ganesh/GrResourceProvider.cpp b/src/gpu/ganesh/GrResourceProvider.cpp
+index b10b0a3..f57ce94 100644
+--- a/src/gpu/ganesh/GrResourceProvider.cpp
++++ b/src/gpu/ganesh/GrResourceProvider.cpp
+@@ -478,8 +478,6 @@ sk_sp<const GrGpuBuffer> GrResourceProvider::findOrMakeStaticBuffer(
+     SkASSERT(buffer->size() == size);
+     SkASSERT(!buffer->resourcePriv().getScratchKey().isValid());
+ 
+-    buffer->resourcePriv().setUniqueKey(uniqueKey);
+-
+     // Map the buffer. Use a staging buffer on the heap if mapping isn't supported.
+     skgpu::VertexWriter vertexWriter = {buffer->map(), size};
+     AutoTMalloc<char> stagingBuffer;
+@@ -493,9 +491,13 @@ sk_sp<const GrGpuBuffer> GrResourceProvider::findOrMakeStaticBuffer(
+     if (buffer->isMapped()) {
+         buffer->unmap();
+     } else {
+-        buffer->updateData(stagingBuffer, /*offset=*/0, size, /*preserve=*/false);
++        if (!buffer->updateData(stagingBuffer, /*offset=*/0, size, /*preserve=*/false)) {
++            return nullptr;
++        }
+     }
+ 
++    buffer->resourcePriv().setUniqueKey(uniqueKey);
++
+     return buffer;
+ }
+ 
+diff --git a/src/gpu/ganesh/GrTextureResolveRenderTask.cpp b/src/gpu/ganesh/GrTextureResolveRenderTask.cpp
+index d7fdfd6..9af5cda 100644
+--- a/src/gpu/ganesh/GrTextureResolveRenderTask.cpp
++++ b/src/gpu/ganesh/GrTextureResolveRenderTask.cpp
+@@ -90,7 +90,7 @@ void GrTextureResolveRenderTask::gatherProxyIntervals(GrResourceAllocator* alloc
+     alloc->incOps();
+ }
+ 
+-bool GrTextureResolveRenderTask::onExecute(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult GrTextureResolveRenderTask::onExecute(GrOpFlushState* flushState) {
+     // Resolve all msaa back-to-back, before regenerating mipmaps.
+     SkASSERT(fResolves.size() == this->numTargets());
+     for (int i = 0; i < fResolves.size(); ++i) {
+@@ -112,12 +112,14 @@ bool GrTextureResolveRenderTask::onExecute(GrOpFlushState* flushState) {
+             GrTexture* texture = this->target(i)->peekTexture();
+             if (texture && (!texture->mipmapsAreDirty() ||
+                             flushState->gpu()->regenerateMipMapLevels(texture))) {
++                // If mipmap regeneration fails we do not count it as an error but
++                // will downgrade the sampling later on.
+                 resolve.fFlags &= ~GrSurfaceProxy::ResolveFlags::kMipMaps;
+             }
+         }
+     }
+ 
+-    return true;
++    return ExecutionResult::RanAndSucceeded();
+ }
+ 
+ void GrTextureResolveRenderTask::endFlush(GrDrawingManager* drawingMgr) {
+diff --git a/src/gpu/ganesh/GrTextureResolveRenderTask.h b/src/gpu/ganesh/GrTextureResolveRenderTask.h
+index 7d56470..369e134 100644
+--- a/src/gpu/ganesh/GrTextureResolveRenderTask.h
++++ b/src/gpu/ganesh/GrTextureResolveRenderTask.h
+@@ -42,7 +42,7 @@ private:
+         return ExpectedOutcome::kTargetUnchanged;
+     }
+ 
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+     // addProxy() optimistically marks the proxy resolved/clean at recording time. If the flush
+     // is dropped before this task executes (or a per-target operation fails) we must restore the
+diff --git a/src/gpu/ganesh/GrTransferFromRenderTask.cpp b/src/gpu/ganesh/GrTransferFromRenderTask.cpp
+index e2eb76d..b1b8ee7 100644
+--- a/src/gpu/ganesh/GrTransferFromRenderTask.cpp
++++ b/src/gpu/ganesh/GrTransferFromRenderTask.cpp
+@@ -21,16 +21,18 @@ void GrTransferFromRenderTask::gatherProxyIntervals(GrResourceAllocator* alloc)
+     alloc->incOps();
+ }
+ 
+-bool GrTransferFromRenderTask::onExecute(GrOpFlushState* flushState) {
+-    SkASSERT(!fExecuted); // These are one-time tasks
++GrRenderTask::ExecutionResult GrTransferFromRenderTask::onExecute(GrOpFlushState* flushState) {
++    SkASSERT(!fWasExecuted); // These are one-time tasks
++    SkDEBUGCODE(fWasExecuted = true;)
++
+     if (!fSrcProxy->isInstantiated()) {
+-        return false;
++        return ExecutionResult::RanButFailed();
+     }
+-    fExecuted = flushState->gpu()->transferPixelsFrom(fSrcProxy->peekSurface(),
+-                                                      fSrcRect,
+-                                                      fSurfaceColorType,
+-                                                      fDstColorType,
+-                                                      fDstBuffer,
+-                                                      fDstOffset);
+-    return fExecuted;
++    fExecutionSuccess = flushState->gpu()->transferPixelsFrom(fSrcProxy->peekSurface(),
++                                                              fSrcRect,
++                                                              fSurfaceColorType,
++                                                              fDstColorType,
++                                                              fDstBuffer,
++                                                              fDstOffset);
++    return ExecutionResult::Ran(fExecutionSuccess);
+ }
+diff --git a/src/gpu/ganesh/GrTransferFromRenderTask.h b/src/gpu/ganesh/GrTransferFromRenderTask.h
+index 6b8079b..9039a2a 100644
+--- a/src/gpu/ganesh/GrTransferFromRenderTask.h
++++ b/src/gpu/ganesh/GrTransferFromRenderTask.h
+@@ -41,7 +41,7 @@ public:
+             , fDstBuffer(std::move(dstBuffer))
+             , fDstOffset(dstOffset) {}
+ 
+-    bool wasExecuted() const { return fExecuted; }
++    bool executionSuccessful() const { return fExecutionSuccess; }
+ 
+ private:
+     bool onIsUsed(GrSurfaceProxy* proxy) const override {
+@@ -54,7 +54,7 @@ private:
+         return ExpectedOutcome::kTargetUnchanged;
+     }
+ 
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "TransferFrom"; }
+@@ -72,7 +72,8 @@ private:
+     sk_sp<GrGpuBuffer> fDstBuffer;
+     size_t fDstOffset;
+ 
+-    bool fExecuted = false;
++    bool fExecutionSuccess = false;
++    SkDEBUGCODE(bool fWasExecuted = false;)
+ };
+ 
+ #endif
+diff --git a/src/gpu/ganesh/GrWaitRenderTask.cpp b/src/gpu/ganesh/GrWaitRenderTask.cpp
+index 79e6246..733558a 100644
+--- a/src/gpu/ganesh/GrWaitRenderTask.cpp
++++ b/src/gpu/ganesh/GrWaitRenderTask.cpp
+@@ -24,7 +24,7 @@ void GrWaitRenderTask::gatherProxyIntervals(GrResourceAllocator* alloc) const {
+     alloc->incOps();
+ }
+ 
+-bool GrWaitRenderTask::onExecute(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult GrWaitRenderTask::onExecute(GrOpFlushState* flushState) {
+     for (int i = 0; i < fNumSemaphores; ++i) {
+         // If we don't have a semaphore here it means we failed to wrap it. That happens if the
+         // client didn't give us a valid semaphore to begin with. Therefore, it is fine to not wait
+@@ -33,5 +33,5 @@ bool GrWaitRenderTask::onExecute(GrOpFlushState* flushState) {
+             flushState->gpu()->waitSemaphore(fSemaphores[i].get());
+         }
+     }
+-    return true;
++    return ExecutionResult::RanAndSucceeded();
+ }
+diff --git a/src/gpu/ganesh/GrWaitRenderTask.h b/src/gpu/ganesh/GrWaitRenderTask.h
+index 76eed73..4039f98 100644
+--- a/src/gpu/ganesh/GrWaitRenderTask.h
++++ b/src/gpu/ganesh/GrWaitRenderTask.h
+@@ -43,7 +43,7 @@ private:
+         return ExpectedOutcome::kTargetUnchanged;
+     }
+ 
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "Wait"; }
+diff --git a/src/gpu/ganesh/GrWritePixelsRenderTask.cpp b/src/gpu/ganesh/GrWritePixelsRenderTask.cpp
+index 0a4ee96..ed563f6 100644
+--- a/src/gpu/ganesh/GrWritePixelsRenderTask.cpp
++++ b/src/gpu/ganesh/GrWritePixelsRenderTask.cpp
+@@ -63,16 +63,17 @@ GrRenderTask::ExpectedOutcome GrWritePixelsTask::onMakeClosed(GrRecordingContext
+     return ExpectedOutcome::kTargetDirty;
+ }
+ 
+-bool GrWritePixelsTask::onExecute(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult GrWritePixelsTask::onExecute(GrOpFlushState* flushState) {
+     GrSurfaceProxy* dstProxy = this->target(0);
+     if (!dstProxy->isInstantiated()) {
+-        return false;
++        return ExecutionResult::RanButFailed();
+     }
+     GrSurface* dstSurface = dstProxy->peekSurface();
+-    return flushState->gpu()->writePixels(dstSurface,
+-                                          fRect,
+-                                          fDstColorType,
+-                                          fSrcColorType,
+-                                          fLevels.get(),
+-                                          fLevels.count());
++    bool success = flushState->gpu()->writePixels(dstSurface,
++                                                  fRect,
++                                                  fDstColorType,
++                                                  fSrcColorType,
++                                                  fLevels.get(),
++                                                  fLevels.count());
++    return ExecutionResult::Ran(success);
+ }
+diff --git a/src/gpu/ganesh/GrWritePixelsRenderTask.h b/src/gpu/ganesh/GrWritePixelsRenderTask.h
+index c08c2f1..e79d03c 100644
+--- a/src/gpu/ganesh/GrWritePixelsRenderTask.h
++++ b/src/gpu/ganesh/GrWritePixelsRenderTask.h
+@@ -43,7 +43,7 @@ private:
+     bool onIsUsed(GrSurfaceProxy* proxy) const override { return false; }
+     void gatherProxyIntervals(GrResourceAllocator*) const override;
+     ExpectedOutcome onMakeClosed(GrRecordingContext*, SkIRect* targetUpdateBounds) override;
+-    bool onExecute(GrOpFlushState*) override;
++    ExecutionResult onExecute(GrOpFlushState*) override;
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "WritePixels"; }
+diff --git a/src/gpu/ganesh/SurfaceContext.cpp b/src/gpu/ganesh/SurfaceContext.cpp
+index 83f0a2d..54e7705 100644
+--- a/src/gpu/ganesh/SurfaceContext.cpp
++++ b/src/gpu/ganesh/SurfaceContext.cpp
+@@ -292,10 +292,8 @@ bool SurfaceContext::readPixels(GrDirectContext* dContext, GrPixmap dst, SkIPoin
+         pt.fY = flip ? srcSurface->height() - pt.fY - dst.height() : pt.fY;
+     }
+ 
+-    bool hasPendingTasks =
+-            dContext->priv().drawingManager()->getLastRenderTask(srcProxy.get()) != nullptr;
+-    GrSemaphoresSubmitted flushResult = dContext->priv().flushSurface(srcProxy.get());
+-    if (flushResult == GrSemaphoresSubmitted::kNo && hasPendingTasks) {
++    GrDirectContext::FlushResult result = dContext->priv().flushSurface(srcProxy.get());
++    if (!result.fSuccess) {
+         return false;
+     }
+     dContext->submit();
+@@ -585,18 +583,15 @@ bool SurfaceContext::internalWritePixels(GrDirectContext* dContext,
+     }
+     pt.fY = flip ? dstSurface->height() - pt.fY - src[0].height() : pt.fY;
+ 
+-    auto flushSurfaceAndCheckSuccess = [dContext](GrSurfaceProxy* dstProxy, bool expectsTasks) {
+-        const bool hasPendingTasks =
+-                dContext->priv().drawingManager()->getLastRenderTask(dstProxy) != nullptr;
+-        SkASSERT(!expectsTasks || hasPendingTasks);
+-        GrSemaphoresSubmitted flushResult = dContext->priv().flushSurface(dstProxy);
+-        return flushResult == GrSemaphoresSubmitted::kYes || !hasPendingTasks;
++    auto flushSurfaceAndCheckSuccess = [dContext](GrSurfaceProxy* dstProxy) {
++        GrDirectContext::FlushResult result = dContext->priv().flushSurface(dstProxy);
++        return result.fSuccess;
+     };
+ 
+     // On platforms that prefer flushes over VRAM use (i.e., ANGLE) we're better off forcing a
+     // complete flush here.
+     if (!caps->preferVRAMUseOverFlushes()) {
+-        if (!flushSurfaceAndCheckSuccess(dstProxy, /*expectsTasks=*/false)) {
++        if (!flushSurfaceAndCheckSuccess(dstProxy)) {
+             return false;
+         }
+     }
+@@ -616,7 +611,7 @@ bool SurfaceContext::internalWritePixels(GrDirectContext* dContext,
+     if (!ownAllStorage) {
+         // If any pixmap doesn't own its pixels then we must flush so that the pixels are pushed to
+         // the GPU before we return.
+-        if (!flushSurfaceAndCheckSuccess(dstProxy, /*expectsTasks=*/true)) {
++        if (!flushSurfaceAndCheckSuccess(dstProxy)) {
+             return false;
+         }
+     }
+@@ -687,11 +682,11 @@ void SurfaceContext::asyncRescaleAndReadPixels(GrDirectContext* dContext,
+         x = y = 0;
+     }
+     auto srcCtx = tempFC ? tempFC.get() : this;
+-    return srcCtx->asyncReadPixels(dContext,
+-                                   SkIRect::MakePtSize({x, y}, info.dimensions()),
+-                                   info.colorType(),
+-                                   callback,
+-                                   callbackContext);
++    srcCtx->asyncReadPixels(dContext,
++                            SkIRect::MakePtSize({x, y}, info.dimensions()),
++                            info.colorType(),
++                            callback,
++                            callbackContext);
+ }
+ 
+ // Shared between RGBA and YUVA readbacks.
+@@ -752,7 +747,7 @@ struct SurfaceContext::AsyncReadPixelContext {
+                 if (!transfer->fTransferBuffer) {
+                     break; // Reached end of the planes being copied
+                 }
+-                if (!transfer->fTransferTask || !transfer->fTransferTask->wasExecuted()) {
++                if (!transfer->fTransferTask || !transfer->fTransferTask->executionSuccessful()) {
+                     success = false;
+                     break;
+                 }
+@@ -871,7 +866,9 @@ void SurfaceContext::asyncReadPixels(GrDirectContext* dContext,
+         reinterpret_cast<AsyncReadPixelContext*>(c)->setFinished();
+     };
+ 
+-    dContext->priv().flushSurface(
++    // Here we ignore flushSurface's return and count on the callbacks to inform the
++    // user re failures.
++    (void) dContext->priv().flushSurface(
+             this->asSurfaceProxy(), SkSurfaces::BackendSurfaceAccess::kNoAccess, flushInfo);
+ }
+ 
+@@ -1130,7 +1127,9 @@ void SurfaceContext::asyncRescaleAndReadPixelsYUV420(GrDirectContext* dContext,
+         reinterpret_cast<AsyncReadPixelContext*>(c)->setFinished();
+     };
+ 
+-    dContext->priv().flushSurface(
++    // Here we ignore flushSurface's return and count on the callbacks to inform the
++    // user re failures.
++    (void) dContext->priv().flushSurface(
+             this->asSurfaceProxy(), SkSurfaces::BackendSurfaceAccess::kNoAccess, flushInfo);
+ }
+ 
+diff --git a/src/gpu/ganesh/gl/GrGLGpu.cpp b/src/gpu/ganesh/gl/GrGLGpu.cpp
+index d9a731b..090b196 100644
+--- a/src/gpu/ganesh/gl/GrGLGpu.cpp
++++ b/src/gpu/ganesh/gl/GrGLGpu.cpp
+@@ -3322,14 +3322,13 @@ bool GrGLGpu::createCopyProgram(GrTexture* srcTex) {
+                                                    sizeof(vdata),
+                                                    GrGpuBufferType::kVertex,
+                                                    kStatic_GrAccessPattern);
+-        if (fCopyProgramArrayBuffer) {
+-            fCopyProgramArrayBuffer->updateData(
+-                    vdata, /*offset=*/0, sizeof(vdata), /*preserve=*/false);
++        if (!fCopyProgramArrayBuffer ||
++            !fCopyProgramArrayBuffer->updateData(
++                    vdata, /*offset=*/0, sizeof(vdata), /*preserve=*/false)) {
++            fCopyProgramArrayBuffer.reset();
++            return false;
+         }
+     }
+-    if (!fCopyProgramArrayBuffer) {
+-        return false;
+-    }
+ 
+     SkASSERT(!fCopyPrograms[progIdx].fProgram);
+     GL_CALL_RET(fCopyPrograms[progIdx].fProgram, CreateProgram());
+@@ -3821,13 +3820,12 @@ bool GrGLGpu::onRegenerateMipMapLevels(GrTexture* texture) {
+                                                      sizeof(vdata),
+                                                      GrGpuBufferType::kVertex,
+                                                      kStatic_GrAccessPattern);
+-        fMipmapProgramArrayBuffer->updateData(vdata, /*offset=*/0,
+-
+-                                              sizeof(vdata),
+-                                              /*preserve=*/false);
+-    }
+-    if (!fMipmapProgramArrayBuffer) {
+-        return false;
++        if (!fMipmapProgramArrayBuffer ||
++            !fMipmapProgramArrayBuffer->updateData(vdata, /*offset=*/0,sizeof(vdata),
++                                                   /*preserve=*/false)) {
++            fMipmapProgramArrayBuffer.reset();
++            return false;
++        }
+     }
+ 
+     fHWVertexArrayState.setVertexArrayID(this, 0);
+diff --git a/src/gpu/ganesh/image/SkImage_Ganesh.cpp b/src/gpu/ganesh/image/SkImage_Ganesh.cpp
+index e729013..f500a52 100644
+--- a/src/gpu/ganesh/image/SkImage_Ganesh.cpp
++++ b/src/gpu/ganesh/image/SkImage_Ganesh.cpp
+@@ -253,8 +253,8 @@ bool SkImage_Ganesh::onIsProtected() const {
+     return fChooser.isProtected() == skgpu::Protected::kYes;
+ }
+ 
+-GrSemaphoresSubmitted SkImage_Ganesh::flush(GrDirectContext* dContext,
+-                                            const GrFlushInfo& info) const {
++GrDirectContext::FlushResult SkImage_Ganesh::flush(GrDirectContext* dContext,
++                                                   const GrFlushInfo& info) const {
+     if (!fContext->priv().matches(dContext) || dContext->abandoned()) {
+         if (info.fSubmittedProc) {
+             info.fSubmittedProc(info.fSubmittedContext, false);
+@@ -262,7 +262,7 @@ GrSemaphoresSubmitted SkImage_Ganesh::flush(GrDirectContext* dContext,
+         if (info.fFinishedProc) {
+             info.fFinishedProc(info.fFinishedContext);
+         }
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     sk_sp<GrSurfaceProxy> proxy = fChooser.chooseProxy(dContext, nullptr);
+@@ -299,7 +299,10 @@ bool SkImage_Ganesh::getExistingBackendTexture(GrBackendTexture* outTexture,
+         return false;
+     }
+     if (flushPendingGrContextIO) {
+-        direct->priv().flushSurface(proxy.get());
++        GrDirectContext::FlushResult result = direct->priv().flushSurface(proxy.get());
++        if (!result.fSuccess) {
++            return false;
++        }
+     }
+     if (origin) {
+         *origin = fOrigin;
+diff --git a/src/gpu/ganesh/image/SkImage_Ganesh.h b/src/gpu/ganesh/image/SkImage_Ganesh.h
+index cde88a8..2259865 100644
+--- a/src/gpu/ganesh/image/SkImage_Ganesh.h
++++ b/src/gpu/ganesh/image/SkImage_Ganesh.h
+@@ -103,7 +103,7 @@ public:
+     void generatingSurfaceIsDeleted() override;
+ 
+     // From SkImage_GaneshBase.h
+-    GrSemaphoresSubmitted flush(GrDirectContext*, const GrFlushInfo&) const override;
++    GrDirectContext::FlushResult flush(GrDirectContext*, const GrFlushInfo&) const override;
+ 
+     std::tuple<GrSurfaceProxyView, GrColorType> asView(GrRecordingContext*,
+                                                        skgpu::Mipmapped,
+diff --git a/src/gpu/ganesh/image/SkImage_GaneshBase.h b/src/gpu/ganesh/image/SkImage_GaneshBase.h
+index cb299b4..f794459 100644
+--- a/src/gpu/ganesh/image/SkImage_GaneshBase.h
++++ b/src/gpu/ganesh/image/SkImage_GaneshBase.h
+@@ -10,6 +10,7 @@
+ 
+ #include "include/core/SkRefCnt.h"
+ #include "include/core/SkSamplingOptions.h"
++#include "include/gpu/ganesh/GrDirectContext.h"
+ #include "include/gpu/ganesh/GrRecordingContext.h"
+ #include "include/private/chromium/SkImageChromium.h"
+ #include "include/private/gpu/ganesh/GrImageContext.h"
+@@ -74,7 +75,7 @@ public:
+                       int srcY,
+                       CachingHint) const override;
+ 
+-    virtual GrSemaphoresSubmitted flush(GrDirectContext*, const GrFlushInfo&) const = 0;
++    virtual GrDirectContext::FlushResult flush(GrDirectContext*, const GrFlushInfo&) const = 0;
+ 
+     static bool ValidateBackendTexture(const GrCaps*,
+                                        const GrBackendTexture& tex,
+diff --git a/src/gpu/ganesh/image/SkImage_GaneshFactories.cpp b/src/gpu/ganesh/image/SkImage_GaneshFactories.cpp
+index e0eb32b..475f4de 100644
+--- a/src/gpu/ganesh/image/SkImage_GaneshFactories.cpp
++++ b/src/gpu/ganesh/image/SkImage_GaneshFactories.cpp
+@@ -86,7 +86,10 @@ bool MakeBackendTextureFromImage(GrDirectContext* direct,
+     }
+ 
+     // Flush any pending IO on the texture.
+-    direct->priv().flushSurface(view.proxy());
++    GrDirectContext::FlushResult result = direct->priv().flushSurface(view.proxy());
++    if (!result.fSuccess) {
++        return false;
++    }
+ 
+     GrTexture* texture = view.asTextureProxy()->peekTexture();
+     if (!texture) {
+@@ -422,7 +425,10 @@ sk_sp<SkImage> CrossContextTextureFromPixmap(GrDirectContext* dContext,
+     sk_sp<GrTexture> texture = sk_ref_sp(view.proxy()->peekTexture());
+ 
+     // Flush any writes or uploads
+-    dContext->priv().flushSurface(view.proxy());
++    GrDirectContext::FlushResult result = dContext->priv().flushSurface(view.proxy());
++    if (!result.fSuccess) {
++        return nullptr;
++    }
+     GrGpu* gpu = dContext->priv().getGpu();
+ 
+     std::unique_ptr<GrSemaphore> sema = gpu->prepareTextureForCrossContextUsage(texture.get());
+diff --git a/src/gpu/ganesh/image/SkImage_GaneshFactories_Android.cpp b/src/gpu/ganesh/image/SkImage_GaneshFactories_Android.cpp
+index 57d7173..32f95ef 100644
+--- a/src/gpu/ganesh/image/SkImage_GaneshFactories_Android.cpp
++++ b/src/gpu/ganesh/image/SkImage_GaneshFactories_Android.cpp
+@@ -166,7 +166,11 @@ sk_sp<SkImage> TextureFromAHardwareBufferWithData(GrDirectContext* dContext,
+     surfaceContext.writePixels(dContext, pixmap, {0, 0});
+ 
+     GrSurfaceProxy* p[1] = {surfaceContext.asSurfaceProxy()};
+-    drawingManager->flush(p, SkSurfaces::BackendSurfaceAccess::kNoAccess, {}, nullptr);
++    GrDirectContext::FlushResult result = drawingManager->flush(
++        p, SkSurfaces::BackendSurfaceAccess::kNoAccess, {}, nullptr);
++    if (!result.fSuccess) {
++        return nullptr;
++    }
+ 
+     return image;
+ }
+diff --git a/src/gpu/ganesh/image/SkImage_GaneshYUVA.cpp b/src/gpu/ganesh/image/SkImage_GaneshYUVA.cpp
+index e19e48e..775f7a2 100644
+--- a/src/gpu/ganesh/image/SkImage_GaneshYUVA.cpp
++++ b/src/gpu/ganesh/image/SkImage_GaneshYUVA.cpp
+@@ -114,8 +114,8 @@ bool SkImage_GaneshYUVA::setupMipmapsForPlanes(GrRecordingContext* context) cons
+ 
+ //////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+-GrSemaphoresSubmitted SkImage_GaneshYUVA::flush(GrDirectContext* dContext,
+-                                                const GrFlushInfo& info) const {
++GrDirectContext::FlushResult SkImage_GaneshYUVA::flush(GrDirectContext* dContext,
++                                                       const GrFlushInfo& info) const {
+     if (!fContext->priv().matches(dContext) || dContext->abandoned()) {
+         if (info.fSubmittedProc) {
+             info.fSubmittedProc(info.fSubmittedContext, false);
+@@ -123,7 +123,7 @@ GrSemaphoresSubmitted SkImage_GaneshYUVA::flush(GrDirectContext* dContext,
+         if (info.fFinishedProc) {
+             info.fFinishedProc(info.fFinishedContext);
+         }
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+ 
+     GrSurfaceProxy* proxies[SkYUVAInfo::kMaxPlanes] = {};
+diff --git a/src/gpu/ganesh/image/SkImage_GaneshYUVA.h b/src/gpu/ganesh/image/SkImage_GaneshYUVA.h
+index 989d3dd..34ad65e 100644
+--- a/src/gpu/ganesh/image/SkImage_GaneshYUVA.h
++++ b/src/gpu/ganesh/image/SkImage_GaneshYUVA.h
+@@ -70,7 +70,7 @@ public:
+     sk_sp<SkImage> onReinterpretColorSpace(sk_sp<SkColorSpace>) const final;
+ 
+     // From SkImage_GaneshBase.h
+-    GrSemaphoresSubmitted flush(GrDirectContext*, const GrFlushInfo&) const override;
++    GrDirectContext::FlushResult flush(GrDirectContext*, const GrFlushInfo&) const override;
+ 
+    std::tuple<GrSurfaceProxyView, GrColorType> asView(GrRecordingContext*,
+                                                       skgpu::Mipmapped,
+diff --git a/src/gpu/ganesh/mock/GrMockRenderTask.h b/src/gpu/ganesh/mock/GrMockRenderTask.h
+index ad0f295..325d20f 100644
+--- a/src/gpu/ganesh/mock/GrMockRenderTask.h
++++ b/src/gpu/ganesh/mock/GrMockRenderTask.h
+@@ -48,7 +48,9 @@ public:
+         }
+         return false;
+     }
+-    bool onExecute(GrOpFlushState*) override { return true; }
++    ExecutionResult onExecute(GrOpFlushState*) override {
++        return ExecutionResult::RanAndSucceeded();
++    }
+ 
+ #if defined(GPU_TEST_UTILS)
+     const char* name() const final { return "Mock"; }
+diff --git a/src/gpu/ganesh/ops/AtlasRenderTask.cpp b/src/gpu/ganesh/ops/AtlasRenderTask.cpp
+index 1a60d20..36f0f8b 100644
+--- a/src/gpu/ganesh/ops/AtlasRenderTask.cpp
++++ b/src/gpu/ganesh/ops/AtlasRenderTask.cpp
+@@ -204,9 +204,10 @@ void AtlasRenderTask::addAtlasDrawOp(GrOp::Owner op, const GrCaps& caps) {
+     this->recordOp(std::move(op), true/*usesMSAA*/, processorAnalysis, nullptr, nullptr, caps);
+ }
+ 
+-bool AtlasRenderTask::onExecute(GrOpFlushState* flushState) {
+-    if (!this->OpsTask::onExecute(flushState)) {
+-        return false;
++GrRenderTask::ExecutionResult AtlasRenderTask::onExecute(GrOpFlushState* flushState) {
++    ExecutionResult result = this->OpsTask::onExecute(flushState);
++    if (!result.fAllTasksSuccessful) {
++        return result;
+     }
+     if (this->target(0)->requiresManualMSAAResolve()) {
+         // Since atlases don't get closed until they are done being built, the drawingManager
+@@ -216,8 +217,9 @@ bool AtlasRenderTask::onExecute(GrOpFlushState* flushState) {
+                 this->target(0)->backingStoreDimensions().height(),
+                 SkIRect::MakeSize(fDynamicAtlas->drawBounds()));
+         flushState->gpu()->resolveRenderTarget(this->target(0)->peekRenderTarget(), nativeRect);
++        result.accum(ExecutionResult::RanAndSucceeded());
+     }
+-    return true;
++    return result;
+ }
+ 
+ }  // namespace skgpu::ganesh
+diff --git a/src/gpu/ganesh/ops/AtlasRenderTask.h b/src/gpu/ganesh/ops/AtlasRenderTask.h
+index 0e480a6..bf5e654 100644
+--- a/src/gpu/ganesh/ops/AtlasRenderTask.h
++++ b/src/gpu/ganesh/ops/AtlasRenderTask.h
+@@ -78,7 +78,7 @@ private:
+     void addAtlasDrawOp(GrOp::Owner, const GrCaps&);
+ 
+     // Executes the OpsTask and resolves msaa if needed.
+-    bool onExecute(GrOpFlushState* flushState) override;
++    ExecutionResult onExecute(GrOpFlushState* flushState) override;
+ 
+     const std::unique_ptr<GrDynamicAtlas> fDynamicAtlas;
+ 
+diff --git a/src/gpu/ganesh/ops/OpsTask.cpp b/src/gpu/ganesh/ops/OpsTask.cpp
+index 9f8984b..c587134 100644
+--- a/src/gpu/ganesh/ops/OpsTask.cpp
++++ b/src/gpu/ganesh/ops/OpsTask.cpp
+@@ -555,14 +555,14 @@ void OpsTask::onPrepare(GrOpFlushState* flushState) {
+ // TODO: this is where GrOp::renderTarget is used (which is fine since it
+ // is at flush time). However, we need to store the RenderTargetProxy in the
+ // Ops and instantiate them here.
+-bool OpsTask::onExecute(GrOpFlushState* flushState) {
++GrRenderTask::ExecutionResult OpsTask::onExecute(GrOpFlushState* flushState) {
+     SkASSERT(this->numTargets() == 1);
+     GrRenderTargetProxy* proxy = this->target(0)->asRenderTargetProxy();
+     SkASSERT(proxy);
+     SK_AT_SCOPE_EXIT(proxy->clearArenas());
+ 
+     if (this->isColorNoOp() || fClippedContentBounds.isEmpty()) {
+-        return false;
++        return ExecutionResult::RanAndSucceeded();
+     }
+     TRACE_EVENT0_ALWAYS("skia.gpu", TRACE_FUNC);
+ 
+@@ -580,7 +580,7 @@ bool OpsTask::onExecute(GrOpFlushState* flushState) {
+         if (!flushState->resourceProvider()->attachStencilAttachment(renderTarget,
+                                                                      fUsesMSAASurface)) {
+             SkDebugf("WARNING: failed to attach a stencil buffer. Rendering will be skipped.\n");
+-            return false;
++            return ExecutionResult::RanButFailed();
+         }
+         stencil = renderTarget->getStencilAttachment(fUsesMSAASurface);
+     }
+@@ -684,7 +684,7 @@ bool OpsTask::onExecute(GrOpFlushState* flushState) {
+                                                      fRenderPassXferBarriers);
+ 
+     if (!renderPass) {
+-        return false;
++        return ExecutionResult::RanButFailed();
+     }
+     if (updateClearedStencilArea) {
+         stencil->markAreaCleared(boundsRequiredByStencil);
+@@ -717,7 +717,7 @@ bool OpsTask::onExecute(GrOpFlushState* flushState) {
+     flushState->gpu()->submit(renderPass);
+     flushState->setOpsRenderPass(nullptr);
+ 
+-    return true;
++    return ExecutionResult::RanAndSucceeded();
+ }
+ 
+ void OpsTask::setColorLoadOp(GrLoadOp op, std::array<float, 4> color) {
+diff --git a/src/gpu/ganesh/ops/OpsTask.h b/src/gpu/ganesh/ops/OpsTask.h
+index 29a524c..a27b25b 100644
+--- a/src/gpu/ganesh/ops/OpsTask.h
++++ b/src/gpu/ganesh/ops/OpsTask.h
+@@ -65,11 +65,10 @@ public:
+ 
+     void onPrePrepare(GrRecordingContext*) override;
+     /**
+-     * Together these two functions flush all queued up draws to GrCommandBuffer. The return value
+-     * of onExecute() indicates whether any commands were actually issued to the GPU.
++     * Together these two functions flush all queued up draws to GrCommandBuffer.
+      */
+     void onPrepare(GrOpFlushState* flushState) override;
+-    bool onExecute(GrOpFlushState* flushState) override;
++    ExecutionResult onExecute(GrOpFlushState* flushState) override;
+ 
+     void addSampledTexture(GrSurfaceProxy* proxy) {
+         // This function takes a GrSurfaceProxy because all subsequent uses of the proxy do not
+diff --git a/src/gpu/ganesh/ops/TriangulatingPathRenderer.cpp b/src/gpu/ganesh/ops/TriangulatingPathRenderer.cpp
+index ce194c7..68f297b 100644
+--- a/src/gpu/ganesh/ops/TriangulatingPathRenderer.cpp
++++ b/src/gpu/ganesh/ops/TriangulatingPathRenderer.cpp
+@@ -177,11 +177,25 @@ public:
+         if (fCanMapVB) {
+             fVertexBuffer->unmap();
+         } else {
+-            fVertexBuffer->updateData(fVertices,
+-                                      /*offset=*/0,
+-                                      /*size=*/actualCount*fLockStride,
+-                                      /*preserve=*/false);
+-            sk_free(fVertices);
++            if (fVertexBuffer->updateData(fVertices,
++                                          /*offset=*/0,
++                                          /*size=*/actualCount*fLockStride,
++                                          /*preserve=*/false)) {
++                sk_free(fVertices);
++            } else {
++                // If we fail the upload, the most likely issue is GPU memory pressure. Instead of
++                // discarding the triangulation work, shrink the fVertices allocation and use it to
++                // create CPU-backed VertexData. This stores the CPU vertices in the thread-safe
++                // cache so that subsequent draws can attempt to instantiate the GPU buffer in
++                // createNonAAMesh().
++                fVertexBuffer.reset();
++                fVertices = sk_realloc_throw(fVertices, actualCount * fLockStride);
++                fVertexData =
++                        GrThreadSafeCache::MakeVertexData(fVertices, actualCount, fLockStride);
++                fVertices = nullptr;
++                fLockStride = 0;
++                return;
++            }
+         }
+ 
+         fVertexData = GrThreadSafeCache::MakeVertexData(std::move(fVertexBuffer),
+@@ -383,7 +397,10 @@ private:
+                 sk_make_sp<UniqueKeyInvalidator>(key, target->contextUniqueID()));
+         }
+ 
+-        fMesh = CreateMesh(target, fVertexData->refGpuBuffer(), 0, fVertexData->numVertices());
++        // If buffer upload failed in unlock(), fMesh remains null and the draw is skipped.
++        if (fVertexData->gpuBuffer()) {
++            fMesh = CreateMesh(target, fVertexData->refGpuBuffer(), 0, fVertexData->numVertices());
++        }
+     }
+ 
+     void createAAMesh(GrMeshDrawTarget* target) {
+diff --git a/src/gpu/ganesh/surface/SkSurface_Ganesh.cpp b/src/gpu/ganesh/surface/SkSurface_Ganesh.cpp
+index dba3564..b6eacea 100644
+--- a/src/gpu/ganesh/surface/SkSurface_Ganesh.cpp
++++ b/src/gpu/ganesh/surface/SkSurface_Ganesh.cpp
+@@ -97,7 +97,11 @@ static GrRenderTarget* prepare_rt_for_external_access(SkSurface_Ganesh* surface,
+             break;
+     }
+ 
+-    dContext->priv().flushSurface(surface->getDevice()->targetProxy());
++    GrDirectContext::FlushResult result = dContext->priv().flushSurface(
++            surface->getDevice()->targetProxy());
++    if (!result.fSuccess) {
++        return nullptr;
++    }
+ 
+     // Grab the render target *after* firing notifications, as it may get switched if CoW kicks in.
+     return surface->getDevice()->targetProxy()->peekRenderTarget();
+@@ -756,42 +760,31 @@ void ResolveMSAA(SkSurface* surface) {
+ }  // namespace SkSurfaces
+ 
+ namespace skgpu::ganesh {
+-GrSemaphoresSubmitted Flush(SkSurface* surface) {
++
++GrDirectContext::FlushResult Flush(SkSurface* surface) {
+     if (!surface) {
+-        return GrSemaphoresSubmitted::kNo;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     if (auto rContext = surface->recordingContext(); rContext != nullptr) {
+         return rContext->asDirectContext()->flush(surface, {});
+     }
+-    return GrSemaphoresSubmitted::kNo;
++    return {false, GrSemaphoresSubmitted::kNo};
+ }
+-
+-GrSemaphoresSubmitted Flush(sk_sp<SkSurface> surface) {
+-    if (!surface) {
+-        return GrSemaphoresSubmitted::kNo;
+-    }
+-    if (auto rContext = surface->recordingContext(); rContext != nullptr) {
+-        return rContext->asDirectContext()->flush(surface.get(), {});
+-    }
+-    return GrSemaphoresSubmitted::kNo;
++GrDirectContext::FlushResult Flush(sk_sp<SkSurface> surface) {
++    return Flush(surface.get());
+ }
+ 
+-void FlushAndSubmit(SkSurface* surface) {
++GrDirectContext::FlushResult FlushAndSubmit(SkSurface* surface) {
+     if (!surface) {
+-        return;
++        return {false, GrSemaphoresSubmitted::kNo};
+     }
+     if (auto rContext = surface->recordingContext(); rContext != nullptr) {
+-        rContext->asDirectContext()->flushAndSubmit(surface, GrSyncCpu::kNo);
++        return rContext->asDirectContext()->flushAndSubmit(surface, GrSyncCpu::kNo);
+     }
++    return {false, GrSemaphoresSubmitted::kNo};
+ }
+-
+-void FlushAndSubmit(sk_sp<SkSurface> surface) {
+-    if (!surface) {
+-        return;
+-    }
+-    if (auto rContext = surface->recordingContext(); rContext != nullptr) {
+-        rContext->asDirectContext()->flushAndSubmit(surface.get(), GrSyncCpu::kNo);
+-    }
++GrDirectContext::FlushResult FlushAndSubmit(sk_sp<SkSurface> surface) {
++    return FlushAndSubmit(surface.get());
+ }
+ 
+ }  // namespace skgpu::ganesh
+diff --git a/src/gpu/ganesh/text/GlyphData.cpp b/src/gpu/ganesh/text/GlyphData.cpp
+index 503ac35..e544e79 100644
+--- a/src/gpu/ganesh/text/GlyphData.cpp
++++ b/src/gpu/ganesh/text/GlyphData.cpp
+@@ -190,7 +190,14 @@ std::tuple<bool, int> GlyphData::regenerateAtlas(int begin,
+     if (fAtlasGeneration != currentAtlasGen) {
+         SkSpan<const Glyph> glyphSpan = glyphVector.accessBackendGlyphs<Glyph>();
+         // Calculate the texture coordinates for the vertexes during first use (fAtlasGeneration
+-        // is set to kInvalidAtlasGeneration) or the atlas has changed in subsequent calls.
++        // is set to kInvalidAtlasGeneration) or the atlas has changed in subsequent calls. Always
++        // reset the update, even when begin > 0. When begin > 0, this subrun was split across
++        // flushes and previously used glyphs in [0, begin) have an older token. If those glyphs are
++        // not used in [begin, end], they shouldn't be part of the next bulk update (and because
++        // we won't have updated the whole subrun in one go, we won't set `fAtlasGeneration` to take
++        // the fast path on reuse). If we do reuse the glyphs, we need the bulk update to have been
++        // reset so that the call to addGlyphToBulkAndSetUseToken() sees the first use with the new
++        // token and updates the atlas locator.
+         fBulkUseUpdater.reset();
+ 
+         SkBulkGlyphMetricsAndImages metricsAndImages{fTextStrike->strikeSpec()};
+@@ -219,8 +226,11 @@ std::tuple<bool, int> GlyphData::regenerateAtlas(int begin,
+             glyphsPlacedInAtlas++;
+         }
+ 
+-        // Update atlas generation if there are no more glyphs to put in the atlas.
+-        if (success && begin + glyphsPlacedInAtlas == glyphVector.glyphCount()) {
++        // Update atlas generation if there are no more glyphs to put in the atlas. We can only do
++        // this if we successfully checked/added the entire glyph vector in one pass. Otherwise, on
++        // a partial update, some of the previous glyphs of the subrun that were already drawn could
++        // have been evicted to make room for these remaining glyphs.
++        if (success && begin == 0 && glyphsPlacedInAtlas == glyphVector.glyphCount()) {
+             // Need to get the freshest value of the atlas' generation because
+             // updateTextureCoordinates may have changed it.
+             fAtlasGeneration = atlasManager->atlasGeneration(maskFormat);
+diff --git a/src/gpu/ganesh/vk/GrVkSecondaryCBDrawContext.cpp b/src/gpu/ganesh/vk/GrVkSecondaryCBDrawContext.cpp
+index d46e4af..d1015d5 100644
+--- a/src/gpu/ganesh/vk/GrVkSecondaryCBDrawContext.cpp
++++ b/src/gpu/ganesh/vk/GrVkSecondaryCBDrawContext.cpp
+@@ -106,13 +106,16 @@ SkCanvas* GrVkSecondaryCBDrawContext::getCanvas() {
+     return fCachedCanvas.get();
+ }
+ 
+-void GrVkSecondaryCBDrawContext::flush() {
++GrDirectContext::FlushResult GrVkSecondaryCBDrawContext::flush() {
+     auto dContext = GrAsDirectContext(fDevice->recordingContext());
+ 
+     if (dContext) {
+-        dContext->priv().flushSurface(fDevice->targetProxy());
+-        dContext->submit();
++        GrDirectContext::FlushResult result = dContext->priv().flushSurface(fDevice->targetProxy());
++        result.fSuccess &= dContext->submit();
++        return result;
+     }
++
++    return {/* fSuccess= */ false, GrSemaphoresSubmitted::kNo };
+ }
+ 
+ bool GrVkSecondaryCBDrawContext::wait(int numSemaphores,
+diff --git a/src/gpu/graphite/text/GlyphData.cpp b/src/gpu/graphite/text/GlyphData.cpp
+index b8f8fe6..8b72790 100644
+--- a/src/gpu/graphite/text/GlyphData.cpp
++++ b/src/gpu/graphite/text/GlyphData.cpp
+@@ -56,7 +56,14 @@ std::tuple<bool, int> GlyphData::regenerateAtlas(int begin,
+ 
+     if (fAtlasGeneration != currentAtlasGen) {
+         // Calculate the texture coordinates for the vertexes during first use (fAtlasGeneration
+-        // is set to kInvalidAtlasGeneration) or the atlas has changed in subsequent calls.
++        // is set to kInvalidAtlasGeneration) or the atlas has changed in subsequent calls. Always
++        // reset the update, even when begin > 0. When begin > 0, this subrun was split across
++        // flushes and previously used glyphs in [0, begin) have an older token. If those glyphs are
++        // not used in [begin, end], they shouldn't be part of the next bulk update (and because
++        // we won't have updated the whole subrun in one go, we won't set `fAtlasGeneration` to take
++        // the fast path on reuse). If we do reuse the glyphs, we need the bulk update to have been
++        // reset so that the call to addGlyphToBulkAndSetUseToken() sees the first use with the new
++        // token and updates the atlas locator.
+         fBulkUseUpdater.reset();
+ 
+         SkBulkGlyphMetricsAndImages metricsAndImages{fTextStrike->strikeSpec()};
+@@ -82,8 +89,11 @@ std::tuple<bool, int> GlyphData::regenerateAtlas(int begin,
+             glyphsPlacedInAtlas++;
+         }
+ 
+-        // Update atlas generation if there are no more glyphs to put in the atlas.
+-        if (success && begin + glyphsPlacedInAtlas == glyphVector.glyphCount()) {
++        // Update atlas generation if there are no more glyphs to put in the atlas. We can only do
++        // this if we successfully checked/added the entire glyph vector in one pass. Otherwise, on
++        // a partial update, some of the previous glyphs of the subrun that were already drawn could
++        // have been evicted to make room for these remaining glyphs.
++        if (success && begin == 0 && glyphsPlacedInAtlas == glyphVector.glyphCount()) {
+             // Need to get the freshest value of the atlas' generation because
+             // updateTextureCoordinates may have changed it.
+             fAtlasGeneration = atlasManager->atlasGeneration(maskFormat);
+diff --git a/tests/DefaultPathRendererTest.cpp b/tests/DefaultPathRendererTest.cpp
+index af60cfc..3a96c60 100644
+--- a/tests/DefaultPathRendererTest.cpp
++++ b/tests/DefaultPathRendererTest.cpp
+@@ -100,7 +100,8 @@ static void run_test(GrDirectContext* dContext, skiatest::Reporter* reporter) {
+ 
+         sdc->drawPath(nullptr, std::move(paint), GrAA::kNo, SkMatrix::I(), invPath, style);
+ 
+-        dContext->priv().flushSurface(sdc->asSurfaceProxy());
++        GrDirectContext::FlushResult result = dContext->priv().flushSurface(sdc->asSurfaceProxy());
++        REPORTER_ASSERT(reporter, result.fSuccess);
+     }
+ 
+     {
+diff --git a/tests/SurfaceSemaphoreTest.cpp b/tests/SurfaceSemaphoreTest.cpp
+index 0719f2f..81b4056 100644
+--- a/tests/SurfaceSemaphoreTest.cpp
++++ b/tests/SurfaceSemaphoreTest.cpp
+@@ -282,9 +282,9 @@ DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(EmptySurfaceSemaphoreTest,
+     GrFlushInfo flushInfo;
+     flushInfo.fNumSemaphores = 1;
+     flushInfo.fSignalSemaphores = &semaphore;
+-    GrSemaphoresSubmitted submitted =
++    GrDirectContext::FlushResult result =
+             ctx->flush(mainSurface.get(), SkSurfaces::BackendSurfaceAccess::kNoAccess, flushInfo);
+-    REPORTER_ASSERT(reporter, GrSemaphoresSubmitted::kYes == submitted);
++    REPORTER_ASSERT(reporter, GrSemaphoresSubmitted::kYes == result.fSubmitted);
+     ctx->submit();
+ 
+ #ifdef SK_VULKAN

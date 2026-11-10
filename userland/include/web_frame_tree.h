@@ -1,5 +1,5 @@
-#ifndef MODERNOS_WEB_FRAME_TREE_H
-#define MODERNOS_WEB_FRAME_TREE_H
+#ifndef COAST_WEB_FRAME_TREE_H
+#define COAST_WEB_FRAME_TREE_H
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>

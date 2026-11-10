@@ -20,7 +20,7 @@ class Browser:
         self.log = (self.work / 'engine.log').open('wb')
         env = os.environ | {'HOME': str(home), 'NETSURFRES': str(
             ROOT / 'userland/runtime/usr/share/netsurf')}
-        self.process = subprocess.Popen([ROOT / 'userland/bin/netsurf', *arguments, '-f', 'modernos',
+        self.process = subprocess.Popen([ROOT / 'userland/bin/netsurf', *arguments, '-f', 'coast',
                                          '-w', str(width), '-h', str(height), url],
                                         env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=self.log, bufsize=0)

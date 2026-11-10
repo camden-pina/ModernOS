@@ -1,5 +1,5 @@
-#ifndef MODERNOS_WEB_RESOURCE_PROTOCOL_H
-#define MODERNOS_WEB_RESOURCE_PROTOCOL_H
+#ifndef COAST_WEB_RESOURCE_PROTOCOL_H
+#define COAST_WEB_RESOURCE_PROTOCOL_H
 #include <stdint.h>
 
 /* Versioned broker resource messages on the origin-bound Unix channel.

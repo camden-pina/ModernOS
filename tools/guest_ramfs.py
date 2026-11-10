@@ -139,7 +139,7 @@ class GuestRamFS:
         file = self.find(path)
         if file['mode'] & 0o170000 != 0o100000:
             raise ValueError('Export supports regular RAMFS files only')
-        if file['size'] > 256 * 1024 * 1024:
+        if file['size'] > 8 * 1024 * 1024 * 1024:
             raise AssertionError('RAMFS file exceeds its real size limit')
 
         count = (file['size'] + 4095) // 4096

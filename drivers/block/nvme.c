@@ -38,7 +38,8 @@ struct controller {
     uint64_t dma_phys, prps_phys;
     void *dma;
     mutex_t lock;
-    bool failed;
+    bool failed, initialized;
+    volatile uint16_t *pci_command;
 };
 
 struct ns {
@@ -212,6 +213,7 @@ void nvme_probe(pci_device_header_t *h) {
     /* PCI Command is 16 bits, avoiding W1C writes to Status. */
     volatile uint16_t *command = (void *)((uintptr_t)h + 4);
     *command = (*command | 6 | 0x400);
+    c->pci_command = command;
     c->regs = vmem_map_mmio(bar, 4096);
     if (!c->regs)
         return;
@@ -271,6 +273,7 @@ void nvme_probe(pci_device_header_t *h) {
     if (identify(c, 0, 2))
         return;
     memcpy(active, c->dma, sizeof(active));
+    c->initialized = true;
     for (unsigned i = 0; i < 1024 && active[i] && namespace_count < ARRAY_SIZE(namespaces); i++) {
         unsigned id = active[i];
         if (identify(c, id, 0))
@@ -298,4 +301,37 @@ void nvme_probe(pci_device_header_t *h) {
             pr_info("%s: %llu MiB, %u byte sectors\n", d.name,
                     (unsigned long long)(size * d.sector_size >> 20), d.sector_size);
     }
+}
+
+bool nvme_power_ready(void) {
+    for (unsigned i = 0; i < controller_count; i++)
+        if (!controllers[i].initialized || controllers[i].failed)
+            return false;
+    return true;
+}
+
+int nvme_power_stop(void) {
+    for (unsigned i = 0; i < controller_count; i++) {
+        struct controller *c = &controllers[i];
+        mutex_lock(&c->lock);
+        /* Normal Shutdown Notification after every namespace was flushed.
+           SHST=Complete (2) is required before CC.EN clear and PCI DMA off. */
+        write32(c, 0x14, (reg32(c, 0x14) & ~(3u << 14)) | (1u << 14));
+        uint64_t start = tsc_uptime_us();
+        while (((reg32(c, 0x1c) >> 2) & 3) != 2) {
+            if ((reg32(c, 0x1c) & 2) || tsc_uptime_us() - start > 5000000) {
+                mutex_unlock(&c->lock);
+                return -E_TIMEDOUT;
+            }
+            sched_sleep(1000);
+        }
+        write32(c, 0x14, reg32(c, 0x14) & ~1u);
+        bool stopped = wait_ready(c, false, 5000000);
+        if (stopped)
+            *c->pci_command &= ~4u;
+        mutex_unlock(&c->lock);
+        if (!stopped)
+            return -E_TIMEDOUT;
+    }
+    return 0;
 }

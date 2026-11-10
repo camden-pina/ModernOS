@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Chromium Browser</title><link rel="stylesheet" href="browser.css"></head>
+<body><header>
+<div id="tabs" aria-label="Tabs"></div><button id="new" title="New tab (Ctrl+T)" aria-label="New tab">+</button>
+<nav><button id="back" title="Back (Alt+Left)" aria-label="Back">←</button><button id="forward" title="Forward (Alt+Right)" aria-label="Forward">→</button><button id="reload" title="Reload (Ctrl+R)" aria-label="Reload">↻</button><button id="home" title="Home" aria-label="Home">⌂</button><span id="security" title="Connection">○</span><form id="location"><input id="address" autocomplete="off" spellcheck="false" aria-label="Address or search" placeholder="Search or enter a web address"></form><button id="downloads" title="Downloads" aria-label="Downloads">↓</button></nav>
+<div id="status" role="status">Ready</div></header>
+<main id="error" hidden><h1>This page could not be opened.</h1><p id="error-url"></p><p id="error-detail"></p><button id="retry">Try again</button></main>
+<script src="browser.js"></script></body></html>

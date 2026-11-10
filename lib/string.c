@@ -1,6 +1,12 @@
 #include <panic.h>
 #include <string.h>
 
+char *strrchr(const char *s,int c) {
+    const char *last=NULL;
+    do {if(*s==(char)c)last=s;}while(*s++);
+    return (char *)last;
+}
+
 int memcmp(const void *str1, const void *str2, size_t count) {
     const unsigned char *s1 = str1;
     const unsigned char *s2 = str2;

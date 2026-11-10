@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build genuine upstream Git for ModernOS's static, single-threaded ABI.
+"""Build genuine upstream Git for Coast's static, single-threaded ABI.
 
 All inputs are pinned local archives. Optional network transports are added by
 the web dependency build; the local repository implementation is never mocked.
@@ -66,7 +66,7 @@ def build():
         run(zlib, 'zlib-install', 'make', 'install', env=env)
         git = BUILD / 'git-2.56.0'
         options = [
-            'prefix=/usr', 'uname_S=ModernOS', 'uname_M=x86_64',
+            'prefix=/usr', 'uname_S=Coast', 'uname_M=x86_64',
             'SHELL_PATH=/bin/sh', 'PERL_PATH=/usr/bin/perl', 'PYTHON_PATH=/usr/bin/python3',
             'CC=' + str(MUSL), 'CFLAGS=' + FLAGS, 'LDFLAGS=-static -no-pie',
             'ZLIB_PATH=' + str(PREFIX), 'NO_PTHREADS=YesPlease', 'NO_MMAP=YesPlease',

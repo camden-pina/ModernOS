@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile/link/run real C/C++ programs inside the booted ModernOS SDK."""
+"""Compile/link/run real C/C++ programs inside the booted Coast SDK."""
 import argparse
 import hashlib
 import re
@@ -33,7 +33,7 @@ def exercise(cpus, storage=False, iso=None):
         command('compiler-check', 'COMPILER ABI CHECK PASS')
         command('gcc --version', '14.2.0')
         command('g++ --version', '14.2.0')
-        shell('mkdir /tmp/sdk-test; cp -R /usr/src/modernos/examples/. /tmp/sdk-test/')
+        shell('mkdir /tmp/sdk-test; cp -R /usr/src/coast/examples/. /tmp/sdk-test/')
         shell('cd /tmp/sdk-test; make -j2 check', 'NATIVE_CPP_OK')
         shell('cd /tmp/sdk-test; make -q')
         write_source(shell, '/tmp/sdk-test/hello20.cpp', CPP20)
@@ -59,7 +59,7 @@ def exercise(cpus, storage=False, iso=None):
         shell('printf "int main( { broken; }\\n" > /tmp/sdk-test/bad.c')
         shell('gcc /tmp/sdk-test/bad.c -o /tmp/sdk-test/bad', 'error:', status=1)
         shell('test ! -e /tmp/sdk-test/bad')
-        command('gcc --invalid-modernos-option', 'unrecognized command-line option', status=1)
+        command('gcc --invalid-coast-option', 'unrecognized command-line option', status=1)
         print('PASS native binutils/static ELF and compiler errors without false success', flush=True)
 
         # Run a native compile through the desktop's actual PTY-backed shell.

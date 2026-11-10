@@ -1,0 +1,49 @@
+{
+  "result": "passed",
+  "files": [
+    {
+      "file": "coreutils-9.7.tar.xz",
+      "url": "https://ftp.gnu.org/gnu/coreutils/coreutils-9.7.tar.xz",
+      "bytes": 6158960,
+      "sha256": "e8bb26ad0293f9b5a1fc43fb42ba970e312c66ce92c1b0b16713d7500db251bf"
+    },
+    {
+      "file": "coreutils-9.7.tar.xz.sig",
+      "url": "https://ftp.gnu.org/gnu/coreutils/coreutils-9.7.tar.xz.sig",
+      "bytes": 833,
+      "sha256": "5070e9428bd372a7fa1f66b395b81092bb40c98f9f56a2e2bc55c47fd387e901"
+    },
+    {
+      "file": "tar-1.35.tar.xz",
+      "url": "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz",
+      "bytes": 2317208,
+      "sha256": "4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16"
+    },
+    {
+      "file": "tar-1.35.tar.xz.sig",
+      "url": "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz.sig",
+      "bytes": 95,
+      "sha256": "c4932271b3c79e303cc0fa92b8345c04e236f35499a45b1c4e6793713c497298"
+    },
+    {
+      "file": "gnu-keyring.gpg",
+      "url": "https://ftp.gnu.org/gnu/gnu-keyring.gpg",
+      "bytes": 3698125,
+      "sha256": "0fe55175b96a8ea1c4b670cc3fe11d56b341e4eff81b161ea49958ae550be6ca"
+    },
+    {
+      "file": "util-linux-2.41.1.tar.xz",
+      "url": "https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.1.tar.xz",
+      "bytes": 9606156,
+      "sha256": "be9ad9a276f4305ab7dd2f5225c8be1ff54352f565ff4dede9628c1aaa7dec57"
+    },
+    {
+      "file": "util-linux-sha256sums.asc",
+      "url": "https://www.kernel.org/pub/linux/utils/util-linux/v2.41/sha256sums.asc",
+      "bytes": 4167,
+      "sha256": "d489f9129dc75d06a6c541eb963d2a62fd9c661417bc31f4b148b166440efd3c"
+    }
+  ],
+  "gnu_detached_signatures": "gpgv against official GNU keyring",
+  "util_linux_sha256": "matched official kernel.org signed checksums fetched over HTTPS"
+}

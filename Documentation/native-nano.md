@@ -1,7 +1,7 @@
 # Native GNU nano and terminal runtime
 
 `nano` is the real upstream GNU nano 8.7 executable, compiled statically with
-unmodified musl 1.2.5 and ncurses 6.5 sources. It runs in ring 3 on ModernOS,
+unmodified musl 1.2.5 and ncurses 6.5 sources. It runs in ring 3 on Coast,
 uses the OS's VFS and terminal syscalls, and edits actual files. No host process,
 Linux VM inside the OS, fake editor screen or simulated save is involved.
 
@@ -23,7 +23,7 @@ underlying error. Nano's own save/backup behavior applies, separately from the
 native `edit` and GUI Text Editor save implementations.
 
 On the desktop, open Terminal from the taskbar or launcher and enter the same
-command. Terminal starts the real `/bin/modernos-sh --terminal` over a master/slave PTY.
+command. Terminal starts the real `/bin/coast-sh --terminal` over a master/slave PTY.
 When nano disables canonical input, the window displays its actual VT output
 and forwards ordinary text, Ctrl/Alt keys, arrows and function keys. Window
 resizing changes the slave's real rows/columns and delivers SIGWINCH. A close
@@ -121,7 +121,7 @@ MAP_FIXED replacement and real clear-TID storage are supported while retaining
 W^X and process isolation. Signals restore kernel-owned register/FPU contexts;
 they do not trust modified user signal frames.
 
-ModernOS-specific `spawnve` (405) supplies an environment, and `pty` (406)
+Coast-specific `spawnve` (405) supplies an environment, and `pty` (406)
 returns a master/slave descriptor pair. PTYs have 16-KiB input/output buffers,
 canonical/raw input, echo, interrupt keys, nonblocking operation, poll readiness,
 EOF/HUP, input/output flushing and actual window sizing. Overlong canonical
@@ -144,7 +144,7 @@ Hardware random devices and IPv4 sockets are now implemented; see
 [browser-network.md](browser-network.md). For nano's external commands use
 `env SHELL=/bin/ash nano FILE`, selecting the real POSIX shell.
 Avoid its suspension command: the upstream prompt
-mentions `fg`, but ModernOS cannot suspend/resume jobs and provides no `fg`.
+mentions `fg`, but Coast cannot suspend/resume jobs and provides no `fg`.
 The kernel rejects these operations. PTY/VT rendering is bounded to 240 columns × 100
 rows. GUI glyphs cover Latin-1 with fallback for other characters; UTF-8 file
 bytes remain intact. Keyboard input follows the existing US ASCII mapping.
@@ -154,7 +154,7 @@ bytes remain intact. Keyboard input follows the existing US ASCII mapping.
 ```sh
 make test-native
 python3 tools/test_nano.py --cpus 4 --storage
-posix-check # at the ModernOS shell
+posix-check # at the Coast shell
 ```
 
 These boot the real ISO under QEMU/OVMF. Nano tests type, save, exit and verify

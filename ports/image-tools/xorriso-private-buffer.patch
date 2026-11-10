@@ -1,0 +1,11 @@
+--- a/libburn/sg-linux.c
++++ b/libburn/sg-linux.c
+@@ -2630,7 +2630,7 @@
+ 		LIBDAX_MSGS_SEV_DEBUG, LIBDAX_MSGS_PRIO_HIGH,
+ 		"Allocating buffer via mmap()" , 0, 0);
+ 	buf = mmap(NULL, amount, PROT_READ | PROT_WRITE,
+-			 	MAP_SHARED | MAP_ANONYMOUS, -1, (off_t) 0);
++			 	MAP_PRIVATE | MAP_ANONYMOUS, -1, (off_t) 0);
+ 	if (buf == MAP_FAILED)
+ 		buf = NULL;
+ 	else

@@ -23,7 +23,7 @@ def exercise(cpus):
         vm.command('compiler-check', 'COMPILER ABI CHECK PASS', timeout=120)
         vm.command('git --version', 'git version 2.56.0')
         shell('git init -b main /tmp/git-test', 'Initialized empty Git repository')
-        shell('cd /tmp/git-test; git config user.name "ModernOS Test"; '
+        shell('cd /tmp/git-test; git config user.name "Coast Test"; '
               'git config user.email test@example.invalid; '
               'git config commit.gpgsign false; git config core.pager cat')
         shell('cd /tmp/git-test; printf "first revision\\n" > document.txt; '

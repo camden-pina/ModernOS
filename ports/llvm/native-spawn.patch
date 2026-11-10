@@ -1,0 +1,30 @@
+--- a/llvm/lib/Support/Unix/Program.inc
++++ b/llvm/lib/Support/Unix/Program.inc
+@@ -232,7 +232,13 @@
+       Envp = const_cast<const char **>(*_NSGetEnviron());
+ #endif
+ 
++#ifdef COAST_NATIVE
++    // Coast may need a peer thread to leave a kernel critical section before
++    // freezing the shared address space for a temporary vfork child.
++    constexpr int maxRetries = 3000;
++#else
+     constexpr int maxRetries = 8;
++#endif
+     int retries = 0;
+     pid_t PID;
+     int Err;
+@@ -241,7 +247,13 @@
+       Err = posix_spawn(&PID, Program.str().c_str(), FileActions,
+                         /*attrp*/ nullptr, const_cast<char **>(Argv),
+                         const_cast<char **>(Envp));
++#ifdef COAST_NATIVE
++      if (Err == EAGAIN)
++        usleep(10000);
++    } while ((Err == EINTR || Err == EAGAIN) && ++retries < maxRetries);
++#else
+     } while (Err == EINTR && ++retries < maxRetries);
++#endif
+ 
+     if (FileActions)
+       posix_spawn_file_actions_destroy(FileActions);

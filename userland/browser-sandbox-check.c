@@ -63,7 +63,7 @@ static int child(int local) {
     int ca = open("/etc/ssl/cert.pem", O_RDONLY, 0);
     CHECK(ca>=0);
     CHECK(!close(ca));
-    int asset = open("/usr/share/netsurf/modernos.html", O_RDONLY, 0);
+    int asset = open("/usr/share/netsurf/coast.html", O_RDONLY, 0);
     CHECK(asset>=0);
     CHECK(!close(asset));
     CHECK(!directory("/home/user/.config/netsurf"));

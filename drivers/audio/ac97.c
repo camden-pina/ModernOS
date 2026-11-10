@@ -20,6 +20,7 @@ struct audio_descriptor {
     uint16_t samples, control;
 } __attribute__((packed));
 static uint16_t mixer, busmaster;
+static volatile uint16_t *power_pci_command;
 static uint64_t table_phys, buffers_phys;
 static volatile struct audio_descriptor *table;
 static unsigned head, tail, count, owner;
@@ -50,9 +51,10 @@ bool ac97_probe(void *pci_header) {
         return false;
     if (!(pci->bar[0] & 1) || !(pci->bar[1] & 1) || pci->bar[0] > 0xffff || pci->bar[1] > 0xffff)
         return false;
+    power_pci_command = (void *)((uintptr_t)pci + 4);
     mixer = pci->bar[0] & ~3U;
     busmaster = pci->bar[1] & ~3U;
-    *(volatile uint16_t *)&pci->command |= 5U | (1U << 10); /* I/O + bus master; polling only */
+    *(volatile uint16_t *)(void *)((uintptr_t)pci + 4) |= 5U | (1U << 10); /* I/O + bus master; polling only */
     outdw(busmaster + 0x2c, indw(busmaster + 0x2c) | 2U);
     uint64_t deadline = tsc_uptime_us() + 100000;
     while (!(indw(busmaster + 0x30) & (1U << 8)) && tsc_uptime_us() < deadline)
@@ -165,4 +167,18 @@ long ac97_call(struct task *task, unsigned operation, uint64_t pointer, uint64_t
     if (operation == OS_AUDIO_INFO && !user_copy_out(&task->space, pointer, &info, sizeof(info)))
         return -E_FAULT;
     return result;
+}
+
+int ac97_power_stop(void) {
+    if (!busmaster)
+        return 0;
+    outb(busmaster + 0x1b, 0);
+    uint64_t deadline = tsc_uptime_us() + 100000;
+    while (!(inw(busmaster + 0x16) & 1)) {
+        if (tsc_uptime_us() >= deadline)
+            return -E_TIMEDOUT;
+        __asm__ volatile("pause" ::: "memory");
+    }
+    *power_pci_command &= ~4u;
+    return (*power_pci_command & 4) ? -E_IO : 0;
 }

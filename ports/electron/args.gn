@@ -1,0 +1,23 @@
+import("//electron/build/args/release.gn")
+target_os = "linux"
+target_cpu = "x64"
+use_siso = false
+use_remoteexec = false
+use_reclient = false
+override_electron_version = "43.7.3"
+electron_generate_js2c_code_cache = false
+use_v8_context_snapshot = false
+node_use_node_snapshot = false
+# The standalone companion owns its V8 platform. Electron opts out of Node's
+# platform initialization and continues to use Chromium's platform.
+node_use_v8_platform = true
+
+v8_enable_drumbrake = true
+v8_enable_webassembly = true
+v8_enable_sandbox = true
+v8_enable_lite_mode = true
+v8_enable_turbofan = false
+v8_enable_sparkplug = false
+v8_enable_maglev = false
+
+v8_drumbrake_bounds_checks = true

@@ -1,0 +1,3 @@
+#!/bin/sh
+# The shared POSIX C++ profile is separate from the ordinary static SDK.
+exec /usr/bin/g++ -specs=/usr/lib/coast-cpp.specs -fPIE -pthread -B/usr/lib/coast/c++/ -L/usr/lib -nostdinc++ -isystem /usr/include/c++-dynamic/14.2.0 -isystem /usr/include/c++-dynamic/14.2.0/x86_64-linux-musl "$@" -Wl,-z,max-page-size=4096,-z,relro,-z,now,-z,noexecstack

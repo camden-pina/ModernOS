@@ -75,7 +75,7 @@ class EISPointer:
             raise RuntimeError('Cannot create the libei sender context')
 
         try:
-            self.lib.ei_configure_name(self.context, b'ModernOS mouse test')
+            self.lib.ei_configure_name(self.context, b'Coast mouse test')
             self.fd_owned = True
             result = self.lib.ei_setup_backend_fd(self.context, fd)
             if result:
@@ -208,7 +208,7 @@ class PointerSession:
 
     def _request(self, method, *arguments, options=None):
         dbus, GLib = self.dbus, self.GLib
-        token = 'modernos_mouse_' + uuid.uuid4().hex
+        token = 'coast_mouse_' + uuid.uuid4().hex
         sender = self.bus.get_unique_name()[1:].replace('.', '_')
         expected = f'{self.portal_path}/request/{sender}/{token}'
         options = dbus.Dictionary(options or {}, signature='sv')
@@ -258,7 +258,7 @@ class PointerSession:
     def authorize(self, parent_window=''):
         dbus = self.dbus
         results = self._request('CreateSession', options={
-            'session_handle_token': dbus.String('modernos_mouse_' + uuid.uuid4().hex)})
+            'session_handle_token': dbus.String('coast_mouse_' + uuid.uuid4().hex)})
         self.session = dbus.ObjectPath(results['session_handle'])
 
         # Request pointer control only. No keyboard, clipboard, screen capture,

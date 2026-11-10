@@ -1,9 +1,10 @@
-# ModernOS desktop
+# Coast desktop
 
 Build with `make iso`, boot with `make run SMP=4`, and enter `gui` at the
-ModernOS shell. The boot console remains available. `Ctrl+Alt+Escape`, or
+Coast shell. The boot console remains available. `Ctrl+Alt+Escape`, or
 **Return to console** in the launcher, exits the desktop and restores console
-input. Unsaved documents require an explicit save or discard before exit.
+input. With a Doom window focused, Ctrl+Alt+Escape closes that game first; repeat
+the shortcut to leave the desktop. Unsaved documents require an explicit save or discard before exit.
 Cancelling exit leaves the other windows and their processes running. Closing
 a dialog's owner dismisses that dialog before its window state can be reused.
 An unsaved document is brought forward from a different workspace or a
@@ -13,42 +14,115 @@ minimized window before its close/exit confirmation is shown.
 drag timings and cached surface updates on exit. `--trace` enables
 serial action logs used by the integration tests.
 
+The screen-wide menu bar follows the focused native application, with shortcut hints in a
+separate column. File, Edit, View and Go expose the corresponding real operations;
+Window manages geometry/workspaces and Help lists the supported keys. **Ctrl+Alt+M**
+opens the focused application's menus; Left/Right switches between open menus.
+Alt+F/E/V/G/W/H also selects supported menus in ordinary desktop applications.
+Terminal and Doom retain their Alt-letter and function keys; use Ctrl+Alt+M for
+their menu bars. **Alt+Space** opens window actions.
+
+The initial Files window is bounded to 1140 by 760 logical pixels on large
+displays. Active windows have bright close/minimize/maximize controls on the left and clear chrome contrast. Scaling retains actual
+window/restore bounds inside the available work area, including on small
+screens. All four scale choices remain available. Menus and the launcher scroll
+when needed; modal messages support the wheel and Page Up/Down, while their
+buttons and input field stay visible.
+
 This is the OS's native userspace desktop. Files reads the existing VFS through
 `getdents64` and `stat`, and all mutations use real filesystem syscalls. There
 are no production demo entries, fabricated storage numbers, or host GUI libraries.
 
 ## Desktop and applications
 
-The preferred Limine framebuffer is 1440×900. At 100% scale the initial Files
-window is approximately `(158,72,1123,709)`, with a shared 40-pixel toolbar,
-185-pixel sidebar, compact folder cards and file rows. The procedural mineral
-wallpaper is cached; the 42-pixel taskbar stays attached to the bottom. Smaller
-windows use a narrower sidebar, one folder column, and fewer metadata columns.
-Settings also supports 125%, 150%, and 200% scaling when the screen can fit
-usable windows. The system uses embedded antialiased DejaVu Sans/Mono glyphs
-and a consistent, locally drawn outline icon set.
+The display resolution comes from `arch/x86/boot/boot.conf`. The Coast theme
+uses original procedural coastal contours, a neutral light palette with blue
+selection, nine-logical-pixel window corners and the existing cached shadows.
+A 22-logical-pixel global menu bar and 54-logical-pixel bottom reserve keep
+normal/maximized/restored windows clear of the adaptive floating Dock. Shared
+scale choices remain 100%, 125%, 150% and 200%; saved dark mode remains available.
+The menu bar, Dock and launcher use cached blur of their actual backdrop. The
+bar and launcher have a lighter translucent tint, with the same software filter
+and no GPU dependency. Maximize/restore and popup opening/closing use an optional 120/180 ms
+presentation crossfade; application text and pixels never scale during these
+transitions. The retained scene remains exact beneath the transient fade. The cached software compositor,
+opaque-coverage clipping, damage tracking, fonts and native app callbacks remain.
+The artwork, icon paths and implementation are local originals; no Apple assets
+or branding are used.
+
+Disks is a native read-only inventory application in the launcher, Dock and
+system menu. Its title-bar Refresh button and F5 obtain the real INFO_LSBLK
+snapshot. The sidebar lists devices/partitions; arrows select rows and wheel or
+Page Up/Down/Home/End scroll details. Capacity is exact device/partition bytes,
+with sector size, kernel-reported access, filesystem, mount and parent when
+reported. Used/free space, partition-map/UUID and erase/format/resize/repair/
+mount operations are explicitly unavailable. No disk mutation API is called.
+Snapshot truncation/malformed rows are reported as incomplete, never fabricated.
 
 | Component | Implemented behavior |
 | --- | --- |
-| Windows | Focus, stacking, dragging, 6-pixel resize zones, minimize/restore, maximize/restore with saved geometry, snapping, close, clipping and common decorations |
+| Windows | Focus, stacking, dragging beyond either side edge with a reachable title strip, reserved menu/Dock areas, 28-pixel title bars, directional resize cursors, minimize/restore, maximize/restore with saved geometry, snapping, close and clipping |
 | Workspaces | Three initially; independent visible windows and focus; geometry survives switches; windows move between workspaces without closing |
-| Taskbar | Fixed Files/Terminal/Browser/Settings positions; focused, running and other-workspace indicators; click to focus/restore; right-click window chooser and New window; Text Editor appears while running |
-| Launcher | Compact anchored application search; native application registration; keyboard navigation; Return to console |
+| Dock / menu bar | Adaptive Files/Browser/Terminal/Disks/Settings/Editor pins with running dots, launcher and all-window chooser; right-click app chooser; active app menus and system/workspace menu above |
+| Disks | Real read-only device/partition inventory, exact capacity and mount details, refresh, keyboard selection and scrollable details; unsupported operations labeled |
+| Launcher | Compact Spotlight-style search with blurred material; results appear while typing or after the disclosure button/Down key; all registered applications and Return to console; wheel, arrows, Home/End and Page Up/Down; bounded to the screen at every scale |
+| System & Power | View menu for real power/battery, CPU, storage, process, network, audio and full diagnostics, with wrapping and scrolling; readiness-gated shutdown/restart, staged application consent, reversible-phase cancel, visible errors and fixed-button confirmation; see [System & Power](system-power.md) |
 | Files | Real Home/Downloads/Projects/Pictures/System, Recent, and Trash; breadcrumbs; 32-entry back/forward history; editable path; refresh; hidden-file toggle; name/modified/size sorting; hybrid and detail views |
 | File operations | Selection, Ctrl/Shift multi-selection, select all, open, rename, new folder/file, copy/cut/paste, recursive directory copy, drag selected items into child folders, Trash, restore, and file information |
 | Text Editor | Real documents, cursor/selection, copy/cut/paste, tabs, line numbers, vertical/horizontal scrolling, Save/Save As, external-change detection, read-only handling and unsaved-close confirmation |
-| Terminal | A persistent native `/bin/modernos-sh --terminal` process over a real PTY; command history/scrollback, VT screen rendering, Ctrl/Alt/navigation/function keys, resize notifications and confirmation before closing a running program |
+| Terminal | A persistent native `/bin/coast-sh --terminal` process over a real PTY; command history/scrollback, VT screen rendering, Ctrl/Alt/navigation/function keys, resize notifications and confirmation before closing a running program |
 | Browser | Genuine NetSurf in a separate process; native editable URL field, back/forward/reload/stop, actual HTML/CSS/JS/images/forms, HTTP/HTTPS and safe downloads |
 | Settings | Accent, wallpaper previews and custom images, Fill/Fit/Stretch/Center and background colors, scaling, workspaces, shared light/dark appearance, immediate application and saved preferences |
 | Clock | Actual Limine firmware boot time plus the OS monotonic timer, displayed in UTC; unavailable state if the time source is absent |
 
 Home is the real writable RAM directory `/home/user`. Initialization creates
-its ordinary Projects, Downloads, Pictures, Pictures/Wallpapers, `.Trash`, and `.config` directories;
+its ordinary Projects, Downloads, Documents, Desktop, Pictures, Pictures/Wallpapers, `.Trash`, and `.config` directories;
 it does not populate example documents. Files initially opens Projects when
 available, otherwise Home. Documents in RAM disappear on reboot. Use a writable
 disk mount, such as `/mnt/nvme1n1p1`, for persistent documents.
 
-Search is a case-insensitive filename filter in the current folder. Its scope
+Files and the desktop watch their real directories for creations, writes,
+renames and deletions from Terminal, Code OSS and other applications. Bursts
+coalesce before a background directory read; the previous complete view,
+selection, filename filter and scroll position remain available during that
+read. One shared nonblocking notification queue serves every view. Empty
+queues use the kernel's lock-free readiness check before attempting a read.
+
+Files on `/home/user/Desktop` appear as desktop icons. Double-click opens them;
+right-click offers file and folder actions, and Ctrl+C/X/V copies, cuts and
+pastes when the desktop has focus. Its background menu creates real files or
+folders and opens a terminal in Desktop. The Files sidebar also exposes Desktop
+and Documents. These folders retain the existing RAM-filesystem lifetime.
+
+The Files context menu includes **Open terminal here**, core editing actions,
+properties and inline color dots. The Sort toolbar menu includes name, type,
+modified-time and size sorting, ascending/descending order, icon/details views,
+select all, invert selection and hidden-file visibility. Folder terminals receive the directory
+through the spawn working-directory field, so spaces and punctuation in names
+do not become shell commands.
+
+The Files command strip exposes Copy, Paste, Sort, Terminal and More, alongside
+New and the view toggle. File/Edit/View/Go menus hold the extended actions. The
+shorter context menu keeps terminal access, core file actions and direct color,
+tag and favorite controls. Color selection appears immediately as colored dots at the top of the context
+menu, with a selected check and focus ring. Left/Right and Enter also work; Up
+from the first menu action moves into the palette. **More** adds
+seven color labels, searchable text tags,
+saved favorites, copy/move to a destination folder, copy name/parent path,
+Desktop shortcuts, hide/unhide, read-only and executable permissions, explicit
+Text Editor/Browser choices, and text/Markdown/shell-script templates. Duplicate
+keeps a file's extension. View/selection menus also select files, folders or a
+matching extension, deselect everything, filter a color or tagged items, and
+clear filters. Menus scroll and support Home/End and Page Up/Down.
+
+Annotations are saved in `<active desktop profile>.files`, using bounded,
+delimiter-safe records. They apply to files and folders, appear on desktop
+icons, and follow renames and moves performed in Files, including descendants
+of a moved folder. Favorites are available in Go. Metadata follows the profile's storage lifetime: a profile on the boot
+RAM filesystem disappears on reboot; a profile stored on a writable disk
+persists. External renames do not migrate path-based annotations.
+
+Search is a case-insensitive name/tag filter in the current folder. Its scope
 is stated in the Files status area. Recent tracks actual opened files for the
 current desktop session, up to 48 paths. Neither view pretends to implement
 recursive indexing or persistent access history.
@@ -64,16 +138,28 @@ Supported executable programs can run through Terminal.
 | Keys or interaction | Action |
 | --- | --- |
 | Super / Super+Space | Toggle launcher |
+| Super+E / Super+T / Super+B | Open Files / Terminal / Browser |
+| Super+W | List all live windows across workspaces, including minimized System/Doom windows; tile two front windows, cascade, minimize or restore the current workspace |
+| Ctrl+Alt+M / Alt+Space | Application menus / window actions |
+| F1 in ordinary desktop apps | Keyboard reference; Terminal and Doom receive their own function keys |
 | Super+1/2/3 | Switch workspace |
 | Super+Shift+1/2/3 | Move focused window to a workspace |
-| Super+Left/Right | Snap focused window |
+| Super+Left/Right | Snap focused window to either half |
+| Super+Z or hover the maximize control | Open six snap layouts; choose a region with the pointer, or arrows/Tab and Enter; Escape dismisses |
+| Drag to a side edge or corner | Preview a half or quarter; release to snap |
+| Drag near the top center | Open the six-layout snap bar; drag over a cell and release to place the first window, highlight the next free cell and choose another window from previews; the final candidate fills the final cell automatically |
+| Drag to the top edge outside the snap bar | Preview and maximize on release |
 | Super+Up/Down | Maximize; restore or minimize |
 | Alt+Tab / Alt+Shift+Tab | Cycle windows on the active workspace, including minimized windows |
 | Alt+F4 | Close focused window; Text Editor confirms unsaved edits |
 | Double-click title bar | Maximize/restore |
 | Right-click title bar | Window actions, including workspace moves |
 | Right-click taskbar application | Choose a real existing window or open another |
-| Ctrl+L / Ctrl+F in Files | Edit path / search filenames in this folder |
+| Ctrl+L / Ctrl+F in Files | Edit path / search names and tags in this folder |
+| Shift+F10 in Files | Open the selected item's context menu |
+| Ctrl+D / Ctrl+T in Files | Duplicate selection / open terminal in the current folder |
+| Ctrl+Shift+A / Ctrl+Shift+C in Files | Deselect all / copy paths |
+| Alt+Enter in Files | Selection properties |
 | Ctrl+L in Browser | Focus and select the real address field |
 | Alt+Left/Right, F5/Ctrl+R in Browser | History back/forward, reload |
 | Escape while Browser loads, toolbar stop | Cancel the current real page load |
@@ -91,7 +177,14 @@ Supported executable programs can run through Terminal.
 | Tab / Shift+Tab | Navigate Files controls, menus, dialogs and Settings |
 | Escape | Dismiss menu/dialog, clear Files search, or cancel an active copy |
 | Ctrl+C in Terminal | Interrupt child commands in the shell view; full-screen applications receive the actual control byte |
-| Ctrl+Alt+Escape | Leave the desktop safely |
+| Ctrl+Alt+Escape | Leave the desktop safely; a focused Doom window closes first |
+
+The Dock's window button lists actual window titles and workspace numbers.
+Selecting a minimized or remote-workspace window restores and focuses it. Tiling
+requires enough width for two native windows; existing snap shortcuts remain
+available. The system button opens real diagnostics or preferences and provides
+workspace switching on compact layouts. No Wi-Fi
+or master-volume control is implied by the diagnostic snapshots.
 
 Global shortcuts are routed by the desktop before application keys. Window
 controls, title-bar drag regions and Files navigation share one toolbar and
@@ -122,8 +215,8 @@ path. Permanent deletion supports regular files and empty directories;
 nonempty directories must be emptied first. Read-only mounts and protected or
 busy entries report the underlying filesystem error.
 
-Text Editor saves to a new sibling `.modernos-save-PID-WINDOW` file, flushes it,
-moves an existing original to `.modernos-save-PID-WINDOW.bak`, then renames the
+Text Editor saves to a new sibling `.coast-save-PID-WINDOW` file, flushes it,
+moves an existing original to `.coast-save-PID-WINDOW.bak`, then renames the
 staged file into place. It attempts rollback if replacement fails and reports
 backup cleanup/recovery failures. Existing staging files are preserved rather
 than overwritten. The original document is hashed before replacement so a
@@ -137,13 +230,13 @@ files. Recovery files remain ordinary inspectable filesystem entries.
 
 Preferences are saved only when **Save preferences** or Ctrl+S is used in
 Settings. The configuration path is shown there. The desktop selects
-`/.modernos/desktop.ini` below the first writable FAT32 mount when present;
+`/.coast/desktop.ini` below the first writable FAT32 mount when present;
 otherwise it uses `/home/user/.config/desktop.ini` in RAM. Disk values load on
 the next launch and after reboot. RAM values load on another launch in the
 same boot. Settings explicitly identifies which storage is in use. Selecting
 a configuration path does not write anything until Save is invoked.
 
-**Wallpaper** in Settings includes previews of the existing Mineral, Dusk and
+**Wallpaper** in Settings includes previews of the Coast (formerly Mineral), Dusk and
 Moss backgrounds, plus **Alpine Lake** and **Desert Sunset**. Both sample PNGs
 are shipped in the ISO's initramfs at `/usr/share/wallpapers`. The **Built-in
 wallpapers** button opens that directory in Files; **My wallpapers** opens
@@ -167,7 +260,7 @@ runs as a short-lived static process and returns bounded ARGB pixels; the
 desktop caches the decoded selection, thumbnails and composed wallpaper.
 Changing accents or appearance does not decode the image again. A failed
 selection keeps the current wallpaper. A missing or invalid saved image falls
-back to Mineral and displays a notice in Settings.
+back to Coast and displays a notice in Settings.
 
 Optional `wallpaper_mode`, `wallpaper_background` and `wallpaper_path` fields
 extend `desktop.ini`; existing numeric wallpaper IDs 0–2 retain their meanings.
@@ -196,7 +289,8 @@ on short windows; keyboard focus scrolls the selected preference into view.
 | `userland/desktop/pixel_blend.c`, `pixel_blend.h` | Exact scalar/SSE2 XRGB blending and measured CPU/emulator selection |
 | `userland/desktop/icons.c` | Reusable outline icons and cached antialiased masks |
 | `userland/desktop/window_manager.c` | Shared decorations, geometry, stacking, window actions and workspace ownership/focus |
-| `userland/desktop/taskbar.c` | Taskbar, real window chooser, launcher, workspace controls and tray notices |
+| `userland/desktop/taskbar.c` | Global menu/status surface, floating Dock, real window chooser and launcher |
+| `userland/desktop/disks.c`, `disk_inventory.h` | Read-only disk app and bounded kernel-snapshot parser |
 | `userland/desktop/widgets.c` | Shared menus, scrolling menus, input dialogs, errors and confirmations |
 | `userland/desktop/file_manager.c` | VFS adapter, browsing, sorting, selection, history, clipboard, cooperative copy and Trash |
 | `userland/desktop/editor.c` | Document model, text interaction and staged saves |
@@ -206,7 +300,7 @@ on short windows; keyboard focus scrolls the selected preference into view.
 | `userland/browser/`, `tools/build_browser.py` | Genuine NetSurf surface/navigation/download adapters, packaged resources/fonts and pinned upstream build |
 | `userland/desktop/settings.c` | Supported preferences, scaling, workspace count, configuration persistence and real home initialization |
 | `userland/desktop/font_data.[ch]` | Embedded glyph atlas; generated offline by `tools/build_gui_fonts.py` |
-| `userland/desktop/assets/FONT-LICENSE.txt`, `tools/mkinitramfs.py` | DejaVu notices, included in the boot image at `/usr/share/licenses/modernos-desktop/FONT-LICENSE.txt` |
+| `userland/desktop/assets/FONT-LICENSE.txt`, `tools/mkinitramfs.py` | DejaVu notices, included in the boot image at `/usr/share/licenses/coast-desktop/FONT-LICENSE.txt` |
 | `userland/Makefile`, `arch/x86/boot/boot.conf` | Desktop objects, linking and preferred display resolution |
 
 The window manager, decorations, launcher, taskbar and workspace state are
@@ -249,11 +343,13 @@ stamps the cursor into the canvas only for synchronous presentation, then
 restores the small covered area. Cursor movement damages old/new pointer bounds;
 control changes damage their exact regions. Moving windows retain their cached
 decorated surfaces. Content, focus, size and theme changes invalidate those
-surfaces. Shadows cache geometry, opacity and foreground products, and blend
+surfaces. The Code OSS body draws directly from its retained native pixels;
+only its header needs a separate decorated surface. Kernel native frame buffers
+reuse bounded capacity through resizing. Shadows cache geometry, opacity and foreground products, and blend
 only exposed strips with packed two-pixel arithmetic.
 
-Front-to-back opaque coverage skips wallpaper and lower windows hidden behind
-upper surfaces. Dirty regions retain clipping and correct stacking; the taskbar
+Opaque native coverage skips wallpaper and lower windows hidden behind its
+interior, preserving rounded edges and every pending glass sample. Dirty regions retain clipping and correct stacking; the taskbar
 and popups remain above normal windows. Input is processed immediately, with a
 120 Hz composition target and a 1 ms scheduler/input wakeup. Damage stays pending
 until the next frame deadline. Idle desktops do not continuously repaint.
@@ -397,8 +493,8 @@ screen or filesystem outcome is simulated.
   mounts work; mount paths containing spaces need a typed mount-list interface
   before reliable automatic configuration/aggregate Trash discovery.
 * Scrolling is functional through the wheel and keyboard. Scroll indicators
-  do not yet support dragging the thumb. Window resizing uses the ordinary
-  pointer; specialized resize cursors are not yet implemented.
+  do not yet support dragging the thumb. Native cursors distinguish text,
+  controls, movable title bars, dragging, loading and all resize directions.
 
 ## Validation
 
@@ -487,7 +583,7 @@ The desktop runner boots the real ISO under QEMU/OVMF with a USB keyboard and
 mouse. It creates actual guest filesystem fixtures, checks screenshot colors
 and geometry, then exercises dragging/resizing, maximize/restore,
 minimize/restore, navigation, rename/new/copy/collision/Trash, recursive copying,
-editor saves, unsaved-close/exit cancellation and dialog-owner cleanup,
+editor saves, unsaved-close/exit cancellation, modal shortcut isolation and cancel-before-close,
 workspaces, snapping, workspace moves, the taskbar window chooser, a native shell and child
 program, and Settings. It verifies the resulting files through the native
 shell. Scaling, workspace configuration and dark appearance are tested with keyboard input.
@@ -543,3 +639,73 @@ when Pillow is available. Examples include `desktop-4cpu.png`,
 `desktop-reboot-preferences-4cpu.png`. Logs are in the same directory.
 Validation establishes behavior in QEMU; physical hardware and abrupt
 power-loss recovery require separate testing.
+
+
+## Shared clipboard and pointer preferences
+
+See [foreground input and text clipboard](input-and-clipboard.md) for the
+64 KiB plain UTF-8 service, Editor and field shortcuts, Terminal rendered-text
+selection and reviewed multiline paste. File-manager file copying is a
+separate existing operation.
+
+Settings provides mouse speed (50/100/150/200 percent), optional precision
+acceleration, primary button, wheel steps and direction. Default 100 percent
+with acceleration off maps each relative count directly to one pixel.
+Fractional counts accumulate at reduced speed, including movement inward from
+a screen edge. Precision uses an original bounded time-adaptive gain/filter;
+it does not claim an exact Windows curve or automatic DPI calibration.
+Primary-button changes wait for release. Save persists values through the
+existing atomic desktop preferences file; Reset restores defaults. Invalid
+stored values are ignored in favor of defaults.
+
+USB relative TouchPad profiles expose separate speed/direction only when an
+actual supported Digitizers/TouchPad interface is present. Inventory and input
+v2 retain source identity and timestamps; legacy application events preserve
+their 32-byte ABI. Absolute/multitouch devices, I2C/PS2 touchpads, tapping and
+gestures are unsupported and are reported honestly. QEMU's relative USB mouse
+does not constitute a touchpad test. The host desktop's input settings are not
+changed by these controls.
+
+## Coast desktop verification (2026-10-24)
+
+Build the native desktop with `make -C userland -j1 bin/gui`. Use a separately
+packaged ISO to preserve existing images; `make run-image ISO_IMAGE=/path/to/IMAGE.iso`
+boots selected bytes. The dated Coast handoff records the tested local image.
+
+The new host parser check is `python3 -B tools/test_disk_inventory_host.py`.
+For a prepared image, run `python3 -B tools/test_coast_desktop.py --iso IMAGE
+--label UNIQUE`, and `python3 -B tools/test_coast_desktop_modes.py --iso IMAGE
+--label UNIQUE-DARK`. For a 640x480 config-only derivative, add `--compact` to
+the mode test. `--output-root PATH` selects a fresh artifact root. Tests reject
+existing label directories. The disk test creates its own disposable FAT/GPT
+file, attaches it read-only and verifies its hash unchanged afterward. The mode
+test writes only guest RAM. Test output includes actual screenshots, serial
+logs and JSON reports. Earlier coordinate-dependent taskbar/64px-header tests
+are historical; do not report them as passing the Coast layout.
+
+The interaction references are [Windows Snap Assist](https://support.microsoft.com/en-us/windows/experience/snap-your-windows),
+[Dolphin file management](https://apps.kde.org/dolphin/) and
+[Spotlight search](https://support.apple.com/en-qa/guide/mac-help/mchlp1008/mac).
+The implementation and artwork are local originals. The launcher searches the
+installed applications; it does not imply Spotlight's full system indexing.
+
+## Personalization controls
+
+Settings opens to Profiles and groups its sidebar into Account, Personalize
+and System. Profiles includes passwords, administrator access, sudo timeout,
+private homes and per-profile shell choices; see [Accounts](accounts.md).
+Appearance has light/dark mode, eight accent colors, Clear /
+Balanced / Frosted / Solid material, Off / Quick / Gentle window transitions,
+and workspace count. Desktop controls file-icon visibility, 32/40/48 px icons
+and a maximum of 5/7/9 Spotlight results. Windows controls Snap Assist, maximize
+hover layouts and the drag snap bar independently. Files controls the initial
+icon/detail view and hidden-file visibility for new windows. Wallpaper, Dock,
+display, mouse, touchpad and profile controls remain available. Keyboard
+navigation follows the visible sidebar order; Ctrl+1…9 and Ctrl+0 select pages.
+New personalization choices apply immediately and are saved to the active
+profile. The storage lifetime follows that profile's existing RAM/disk location.
+
+Spotlight initially contains only its search field and a small disclosure
+chevron. Typing reveals filtered results and sizes the list to its contents;
+the chevron or Down key reveals the application list without a query. Enter
+on the empty collapsed field does not launch an application.

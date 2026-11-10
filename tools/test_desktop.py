@@ -20,6 +20,21 @@ class DesktopTest:
         self.x = self.y = 0
         self.width = self.height = 0
 
+    def geometry(self, window):
+        pattern = (r"DESKTOP GEOMETRY window=" + str(window) +
+                   r" workspace=\d+ x=(-?\d+) y=(-?\d+) width=(\d+) height=(\d+) body=(\d+) scale=(\d+)\n")
+        deadline=time.monotonic()+20
+        while True:
+            self.vm.log.flush()
+            found=re.findall(pattern,Path(self.vm.log.name).read_text(errors="replace"))
+            if found:
+                return dict(zip(("x","y","width","height","body","scale"),map(int,found[-1])))
+            remaining=deadline-time.monotonic()
+            assert remaining>0,"Missing actual window geometry"
+            # A preceding OPEN wait may consume the first byte of the next
+            # record. Drain through a newline, then match the complete log.
+            self.vm.until(rb"\n",remaining)
+
     def key(self, name, *modifiers):
         def event(key, down):
             return {"type": "key", "data": {"down": down, "key": {"type": "qcode", "data": key}}}
@@ -28,6 +43,13 @@ class DesktopTest:
         self.vm.qmp("input-send-event", {"events": [event(k, False)
                     for k in (name, *reversed(modifiers))]})
         time.sleep(0.07)
+
+    def timed_key(self, name, *modifiers):
+        # Schedule release in QEMU and leave time for the frontend to process
+        # its input changes before sending the next text character.
+        self.vm.qmp('send-key', {'keys': [{'type': 'qcode', 'data': key}
+                    for key in (*modifiers, name)], 'hold-time': 40})
+        time.sleep(0.2)
 
     def move(self, x, y, delay=0.08):
         self.vm.qmp("input-send-event", {"events": [
@@ -101,7 +123,7 @@ def fixtures(vm):
         vm.command("mkdir -p /home/user/Projects/" + folder)
     for name, text in (("journal.txt", "A real document"), ("build.c", "int entry(void) { return 0; }"),
                        ("events.h", "void on_event(void);"), ("settings.json", '{"accent":"jade"}'),
-                       ("notes.md", "ModernOS workspace"), ("tasks.txt", "Write and test")):
+                       ("notes.md", "Coast workspace"), ("tasks.txt", "Write and test")):
         vm.command(f"write /home/user/Projects/{name} '{text}'")
 
     vm.command("mkdir -p /home/user/Projects/Source/Nested")
@@ -162,7 +184,7 @@ def disk_operations(d, left, top, cpus):
     d.expect("TRASH")
     d.path("@Trash")
     d.find("saved-copy.txt")
-    d.click(left + 300, top + 217, "right")
+    d.click(left + 300, top + 177 + d.header, "right")
     for _ in range(4):
         d.key("down")
     d.key("ret")
@@ -187,7 +209,8 @@ def disk_operations(d, left, top, cpus):
 
 
 SETTINGS_CONTROLS = [0, 1, 2, 4, 5, 6, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-                     8, 9, 10, 11, 12, 13, 14, 16, 17, 20, 33]
+                     8, 9, 10, 11, 12, 13, 14, 16, 17,
+                     100,101,102,103,104,105,108,109,112,113,114,116,117,20,33,128]
 
 
 def settings_focus(d, focus, target, image=False):
@@ -233,17 +256,19 @@ def functional(cpus, storage, iso=None, accel='tcg'):
         if storage:
             vm.command("chmod 444 /home/user/Projects/events.h")
         vm.send("gui --trace --stats\n")
-        vm.until(rb"GUI_READY: ModernOS desktop", 40)
+        vm.until(rb"GUI_READY: Coast desktop", 40)
         d = DesktopTest(vm)
         first = d.screenshot(f"desktop-{cpus}cpu")
         width, height = d.width, d.height
-        left, top, ww, wh = (width - width * 78 // 100) // 2, height * 8 // 100, width * 78 // 100, height * 788 // 1000
+        g=d.geometry(1)
+        left,top,ww,wh,header=(g[k] for k in ('x','y','width','height','body'))
+        d.header=header
 
         def pixel(image, x, y):
             return tuple(image[(y * width + x) * 3:(y * width + x) * 3 + 3])
 
-        assert pixel(first, left + 210, top + 120) == (255, 255, 255)
-        assert pixel(first, left + 80, top + 55) == (245, 247, 246)
+        assert pixel(first, left + 210, top + header + 80) == (255, 255, 255)
+        assert pixel(first, left + 80, top + header + 15) == (245, 247, 246)
         assert pixel(first, width // 2, 20) != (255, 255, 255), "Unexpected top system bar"
 
         # Hover damage covers whole compact controls and clears after departure.
@@ -348,11 +373,17 @@ def functional(cpus, storage, iso=None, accel='tcg'):
         d.key("f4", "alt")
         d.expect("CLOSE")
 
-        # Closing a dialog owner must dismiss its callbacks before its state
-        # is freed or the window slot is reused by another application.
+        # A modal owns close/workspace shortcuts (also required by the power
+        # review). Alt+F4 must leave the live dialog/owner usable; cancel a new
+        # dialog before closing its owner and reusing another window.
         assert d.launch("Files") > 1
         d.path("/home/user/Projects")
         d.key("n", "ctrl")
+        d.key("f4", "alt")
+        vm.send("modal-shortcut-preserved.txt\n")
+        d.expect("CREATE_FILE", "modal-shortcut-preserved.txt")
+        d.key("n", "ctrl")
+        d.key("esc")
         d.key("f4", "alt")
         d.expect("CLOSE")
         d.path("/home/user/Projects")
@@ -394,11 +425,10 @@ def functional(cpus, storage, iso=None, accel='tcg'):
         settings_open = d.expect("OPEN", "Settings")
         settings_id = int(re.findall(r"DESKTOP OPEN window=(\d+)", settings_open)[-1])
 
-        # Settings window starts centered, 680x550, inside the work area.
-        offset = (settings_id - 1) % 5 * 16
-        sx = min(width - 680, (width - 680) // 2 + offset)
-        sy = min(height - 42 - 550, (height - 42 - 550) // 2 + offset)
-        d.click(sx + 26 + 148 + 9 + 55, sy + 40 + 108)
+        # Hit the real scaled Settings bounds and its unchanged accent control.
+        sg=d.geometry(settings_id)
+        sx,sy,sh=sg['x'],sg['y'],sg['body']
+        d.click(sx + 26 + 148 + 9 + 55, sy + sh + 108)
         d.expect("ACCENT")
         d.key("s", "ctrl")
         d.expect("CONFIG_SAVED")
@@ -450,8 +480,11 @@ def disk_persistence(cpus, source_hash, iso=None, accel='tcg'):
         ("/Source/Nested/proof.txt", b"RECURSIVE_COPY_OK\n"),
         ("/tasks.txt", b"Write and test\n"),
         ("/long-line.txt", LONG_DOCUMENT + b"-EDIT"),
-        ("/.modernos/desktop.ini", b"accent=1\nwallpaper=1\nscale=0\nworkspaces=3\ndark=1\n"
-         b"wallpaper_mode=0\nwallpaper_background=0\nwallpaper_path=\n")):
+        ("/.coast/desktop.ini", b"accent=1\nwallpaper=1\nscale=0\nworkspaces=3\ndark=1\n"
+         b"wallpaper_mode=0\nwallpaper_background=0\n"
+         b"pointer_speed=100\ntouchpad_speed=100\nwheel_steps=1\n"
+         b"pointer_acceleration=0\nprimary_right=0\nnatural_scroll=0\n"
+         b"touchpad_natural=0\nwallpaper_path=\n")):
         exported = WORK / "gui-export.bin"
         run("mcopy", "-D", "o", "-i", image, "::" + source, exported)
         assert exported.read_bytes() == expected, source
@@ -467,14 +500,15 @@ def disk_persistence(cpus, source_hash, iso=None, accel='tcg'):
     try:
         vm.command("cat /mnt/nvme1n1p1/saved-copy.txt", "GUI_DISK_DOCUMENT_OK")
         vm.send("gui --trace\n")
-        vm.until(rb"GUI_READY: ModernOS desktop", 40)
+        vm.until(rb"GUI_READY: Coast desktop", 40)
         d = DesktopTest(vm)
         image = d.screenshot(f"desktop-reboot-preferences-{cpus}cpu")
-        left = (d.width - d.width * 78 // 100) // 2
-        y = d.height * 8 // 100 + 40 + 42 + 3 * 30 + 10
+        g=d.geometry(1)
+        left=g['x'];top=g['y'];header=g['body']
+        y = top + header + 42 + 3 * 30 + 10
         at = (y * d.width + left + 12) * 3
         assert tuple(image[at:at + 3]) == (37, 63, 84), "Saved dark accent was not loaded"
-        at = ((d.height * 8 // 100 + 120) * d.width + left + 210) * 3
+        at = ((top + header + 80) * d.width + left + 210) * 3
         assert tuple(image[at:at + 3]) == (25, 37, 45), "Saved dark appearance was not loaded"
         d.exit()
     finally:
@@ -487,7 +521,7 @@ def performance(cpus, iso=None, accel='tcg'):
     vm = VM(cpus, storage=False, label='desktop-' + accel, iso=iso, accel=accel)
     try:
         vm.send("gui --stats\n")
-        vm.until(rb"GUI_READY: ModernOS desktop", 40)
+        vm.until(rb"GUI_READY: Coast desktop", 40)
         d = DesktopTest(vm)
         d.screenshot(f"desktop-performance-{cpus}cpu")
         d.move(d.width - 45, d.height - 80)

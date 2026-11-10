@@ -1,5 +1,5 @@
-#ifndef MODERNOS_LIBC_H
-#define MODERNOS_LIBC_H
+#ifndef COAST_LIBC_H
+#define COAST_LIBC_H
 #include <stddef.h>
 
 extern char **environ;
@@ -17,7 +17,7 @@ long syscall6(long n, long a, long b, long c, long d, long e, long f);
 
 static inline long rename_noreplace(const char *oldpath, const char *newpath) {
     long e = syscall6(SYS_renameat2, AT_FDCWD, (long)oldpath, AT_FDCWD, (long)newpath, 1, 0);
-    /* Older ModernOS kernels already refuse replacement in SYS_rename. */
+    /* Older Coast kernels already refuse replacement in SYS_rename. */
     return e == -E_NOSYS ? call2(SYS_rename, oldpath, newpath) : e;
 }
 

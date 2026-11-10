@@ -1,0 +1,22 @@
+{
+  "release": "1.140.06880",
+  "published_at": "2026-10-13T17:03:30Z",
+  "asset": "VSCodium-linux-x64-1.140.06880.tar.gz",
+  "url": "https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-linux-x64-1.140.06880.tar.gz",
+  "sha256": "61223b74f9e40834117311ec4177cb386d09b84c1aae4f9e674c96580569cef3",
+  "matched_official_github_asset_digest": true,
+  "host_installation": false,
+  "signature_claim": false,
+  "source_release": "https://github.com/VSCodium/vscodium/releases/tag/1.140.06880",
+  "upstream_vscode_version_from_release_notes": "1.140.0",
+  "upstream_source_build_reference": {
+    "node": "24.18.0",
+    "electron": "43.7.3",
+    "urls": [
+      "https://raw.githubusercontent.com/microsoft/vscode/1.140.0/.nvmrc",
+      "https://raw.githubusercontent.com/microsoft/vscode/1.140.0/.npmrc"
+    ]
+  },
+  "note": "This records the original release import. The upstream source revisions and derived product commit are now recorded in SOURCES.json. Current Coast guest qualification is documented in Documentation/source-builds.md; a complete application source rebuild remains pending.",
+  "resolved_source_manifest": "ports/codeoss-app/SOURCES.json"
+}

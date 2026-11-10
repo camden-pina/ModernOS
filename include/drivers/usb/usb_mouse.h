@@ -16,6 +16,7 @@ bool usb_mouse_bind(usb_device_t *device, const usb_hid_interface_t *interface);
 void usb_mouse_disconnect(usb_device_t *device);
 uint32_t usb_mouse_count(void);
 uint64_t usb_mouse_invalid_reports(void);
+void usb_pointer_info(struct os_pointer_inventory *);
 
 /* Maps slot 1..USB_MAX_DEVICES and endpoint IN 1..15 to a unique input source.
  * Zero indicates invalid arguments. No bootloader or framebuffer dependency.

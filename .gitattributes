@@ -1,0 +1,23 @@
+* text=auto eol=lf
+# Retain vendored upstream bytes, including its CRLF/platform formatting.
+lib/acpica/source/** -text whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+ports/codeoss/LICENSE.txt -text -whitespace
+ports/codeoss-app/LICENSE.txt -text -whitespace
+ports/codeoss-app/ThirdPartyNotices.txt -text -whitespace
+# Patches are checksum-pinned source inputs; preserve their original bytes.
+*.patch -text -whitespace
+ports/linux-uapi/** -whitespace
+ports/chromium/licenses/** -whitespace
+ports/codeoss-app/runtime/** -whitespace
+userland/vendor/licenses/** -whitespace
+userland/vendor/linux-ports/bash53-* -text -whitespace
+userland/desktop/assets/FONT-LICENSE.txt -whitespace
+# GCC specs and generated reference data retain their required separators.
+userland/dynamic*/coast*.specs whitespace=-blank-at-eof
+tools/wallpaper_r3_reference.h whitespace=-blank-at-eof
+userland/desktop/assets/wallpapers/README.md whitespace=-blank-at-eof
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ttf binary
+*.otf binary

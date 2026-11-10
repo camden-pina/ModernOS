@@ -1,6 +1,9 @@
+> Historical record: the NetSurf/WebCore browser described here is retired.
+> Use [Chromium](chromium-browser.md) and the [current rebuild guide](source-builds.md).
+
 # Native browser, Git and networking
 
-ModernOS runs genuine WebCore/JavaScriptCore 2.54.0 and Git 2.56.0 as static
+Coast runs genuine WebCore/JavaScriptCore 2.54.0 and Git 2.56.0 as static
 musl programs. Launch Browser from the taskbar/launcher to browse HTTP/HTTPS
 or search from its address field. Local HTML/HTM, SVG, PNG, JPEG, GIF and BMP
 file associations retain NetSurf 3.11 and work offline.
@@ -179,7 +182,13 @@ mutex across network waits. DHCP writes actual resolver addresses to
 Linux-numbered socket/connect/bind/listen/accept/accept4, send/receive,
 sendmsg/recvmsg, socket options, names and shutdown use this real stack.
 Descriptors support nonblocking mode, close-on-exec, poll/select, read/write,
-dup and fork lifetime. TCP receive storage is bounded to 64 KiB per socket;
+dup and fork lifetime. TCP receive storage is bounded to 1 MiB per socket,
+with negotiated window scaling and at most 128 receive buffers globally
+(128 MiB of payload storage, including failed connections awaiting close).
+UDP receive storage remains 64 KiB. Reads return all receive credit through
+lwIP's 16-bit credit API, including reads above 65,535 bytes. The e1000 rings
+contain 1,024 descriptors and the polled worker drains at most 256 packets
+per iteration. The separate global packet pool contains 1,024 buffers.
 UDP and accept queues hold 32 and 16 items respectively. Vector transfers
 accept up to 16 entries and a 16-MiB aggregate. AF_UNIX socketpairs now implement bounded SCM_RIGHTS and stream/datagram/seqpacket
 IPC independently of the NIC; coherent memfd and epoll facilities support the new
@@ -261,7 +270,7 @@ static x86-64 binaries. No Linux desktop service or web framework is required.
 | userland/desktop/browser.c, desktop.[ch], window_manager.c | Registered native Browser, shared toolbar dispatch, engine lifetime and client rendering |
 | userland/include/browser_protocol.h | Bounded private packet declarations |
 | userland/browser/surface.c, actions.inc, downloads.inc, path.inc, box_order.inc, stacking.inc, hit_test.inc, fetch_policy.inc, performance.inc | NetSurf offscreen/input, navigation, downloads, rendering/hit testing, local-fetch policy and basic document clocks |
-| userland/browser/Choices, modernos.html, fonts/ | Default options, local start page and licensed fonts |
+| userland/browser/Choices, coast.html, fonts/ | Default options, local start page and licensed fonts |
 | tools/build_browser.py, build_web_deps.py, build_git.py | Verified offline engine, libraries, SDK and Git builds |
 | net/network.c, include/net/, drivers/net/e1000.c | Existing-kernel IPv4 stack, sockets, deadlines, DHCP/DNS and supported NIC |
 | drivers/char/random.c, fs/eventfd.c, kernel/sched/syscall.c, kernel/sched/sched.c | Entropy, event descriptors and sampled CPU accounting |

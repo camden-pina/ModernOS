@@ -1,0 +1,29 @@
+{
+  "runtime": "Existing Coast Electron 43.7.3 / Chromium 150.0.7871.250 port",
+  "additional_runtime_dependencies": [
+    {
+      "package": "libsqlite3-0",
+      "version": "3.40.1-2+deb12u2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/sqlite3/libsqlite3-0_3.40.1-2+deb12u2_amd64.deb",
+      "sha256": "a8d78b40e9b4e422224aeebfe0e4dfc243f6acf3532490b0c05480d4283d41e2",
+      "index_sha256": "9e0b5aabb2465b3d2e7a7fe27f9913846277833f7a2826e7767acccff5b588c5",
+      "index": "Existing pinned Debian bookworm amd64 main-Packages.xz in codeoss-app-a3/vendor",
+      "reason": "NSS softoken loads SQLite dynamically when initializing certificate verification",
+      "license": "usr/share/doc/libsqlite3-0/copyright from the verified package"
+    }
+  ],
+  "bundled_assets": [
+    {
+      "name": "en-US-10-1.bdic",
+      "url": "https://redirector.gvt1.com/edgedl/chrome/dict/en-us-10-1.bdic",
+      "sha256": "a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100",
+      "bytes": 451968,
+      "reason": "Chromium default English spelling dictionary, bundled to avoid fetching it on every RAM-only boot",
+      "licenses": [
+        "ports/chromium/licenses/README_en_US.txt",
+        "ports/chromium/licenses/LICENSE"
+      ]
+    }
+  ]
+}

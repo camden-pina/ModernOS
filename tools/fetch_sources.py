@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
@@ -88,6 +89,15 @@ def fetch(entry, destination=VENDOR, check_only=False, mirror_bases=None):
     archive = destination / entry['archive']
     if archive.exists():
         verify(archive, entry['sha256'])
+        return
+
+    # Native source packages provide this shared offline distfile directory.
+    # Verify again before copying into the user's writable source checkout.
+    installed = Path(os.environ.get('COAST_DISTFILES_DIR', '/usr/src/coast/distfiles')) / entry['archive']
+    if installed.is_file() and not check_only:
+        verify(installed, entry['sha256'])
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(installed, archive)
         return
 
     if check_only:

@@ -7,6 +7,8 @@
 
 #define WATCH_LIMIT 128
 #define EPOLL_ONESHOT (1u << 30)
+#define NEST_LIMIT 4
+#define GRAPH_VISIT_LIMIT 128
 
 struct poll_event {
     uint32_t events;
@@ -61,12 +63,44 @@ void epoll_release(struct event_poll *p) {
     kfree(p);
 }
 
-static unsigned readiness(struct watch *w) {
+/* VFS lock held throughout topology changes and readiness walks. Limit both
+   depth and repeated DAG visits, so duplicate paths cannot amplify a poll
+   into an unbounded traversal. Check every root when adding an epoll edge:
+   adding below an existing parent must obey the same limits. */
+static bool graph_valid(struct event_poll *p, struct event_poll **path,
+                        unsigned depth, unsigned *visits) {
+    if(depth>NEST_LIMIT || ++*visits>GRAPH_VISIT_LIMIT)return false;
+    for(unsigned i=0;i<depth;i++)if(path[i]==p)return false;
+    path[depth]=p;
+    for(unsigned i=0;i<WATCH_LIMIT;i++) {
+        struct file *f=p->watches[i].file;
+        if(f && f->epoll && !graph_valid(f->epoll,path,depth+1,visits))return false;
+    }
+    return true;
+}
+
+static bool topology_valid(void) {
+    struct event_poll *path[NEST_LIMIT+1];
+    for(struct event_poll *p=polls;p;p=p->next) {
+        unsigned visits=0;
+        if(!graph_valid(p,path,0,&visits))return false;
+    }
+    return true;
+}
+
+static unsigned readiness(struct watch *w, unsigned depth) {
     if (!w->file || w->disabled)
         return 0;
     unsigned events = w->event.events & 0x201f;
-    unsigned ready =
-        w->file->unix_socket ? unix_poll_locked(w->file, events) : vfs_poll(w->file, events);
+    unsigned ready=0;
+    if(w->file->epoll) {
+        if(depth<NEST_LIMIT)
+            for(unsigned i=0;i<WATCH_LIMIT;i++)
+                if(readiness(&w->file->epoll->watches[i],depth+1)) {
+                    ready=events&POLLIN;break;
+                }
+    } else
+        ready=w->file->unix_socket?unix_poll_locked(w->file,events):vfs_poll(w->file,events);
     return ready & (events | POLLERR | POLLHUP);
 }
 
@@ -74,7 +108,7 @@ unsigned epoll_poll(struct file *f, unsigned events) {
     mutex_lock(&vfs_mutex);
     unsigned ready = 0;
     for (unsigned i = 0; i < WATCH_LIMIT; i++)
-        if (readiness(&f->epoll->watches[i])) {
+        if (readiness(&f->epoll->watches[i],0)) {
             ready = events & POLLIN;
             break;
         }
@@ -92,11 +126,11 @@ long epoll_control(struct task *t, void *registers) {
     if (r->rdx >= OS_FD_MAX || !t->fds[r->rdx])
         return -E_BADF;
     struct file *f = t->fds[r->rdx];
-    if (ep == f || f->epoll)
-        return -E_INVAL; /* Nested epoll not supported. */
+    if (ep == f)
+        return -E_INVAL;
     if (r->rsi < 1 || r->rsi > 3)
         return -E_INVAL;
-    if (!f->socket && !f->unix_socket && !f->event && !f->pipe && !f->pty && !f->tty)
+    if (!f->socket && !f->unix_socket && !f->event && !f->pipe && !f->pty && !f->tty && !f->epoll && !f->inotify)
         return -E_PERM;
 
     struct poll_event event = {0};
@@ -126,8 +160,12 @@ long epoll_control(struct task *t, void *registers) {
             error = -E_NOSPC;
         else {
             *empty = (struct watch){.file = f, .fd = r->rdx, .event = event};
-            f->references++;
-            f->watcher_references++;
+            if(f->epoll && !topology_valid()) {
+                *empty=(struct watch){0};error=-E_LOOP;
+            } else {
+                f->references++;
+                f->watcher_references++;
+            }
         }
     } else if (!found)
         error = -E_NOENT;
@@ -146,9 +184,13 @@ long epoll_control(struct task *t, void *registers) {
 
 long epoll_wait_call(struct task *t, void *registers) {
     register_t *r = registers;
-    if (!r->rdx || r->rdx > WATCH_LIMIT || (int)r->r10 < -1)
+    /* maxevents is the caller's output capacity, not our watch capacity.
+       Accept Linux-sized buffers without growing the bounded watch table or
+       kernel stack. At most WATCH_LIMIT records can be produced in one call. */
+    if (!r->rdx || r->rdx > 0x7fffffffULL / sizeof(struct poll_event) || (int)r->r10 < -1)
         return -E_INVAL;
-    if (!user_access(&t->space, r->rsi, r->rdx * sizeof(struct poll_event), true))
+    uint64_t capacity = min(r->rdx, (uint64_t)WATCH_LIMIT);
+    if (!user_access(&t->space, r->rsi, capacity * sizeof(struct poll_event), true))
         return -E_FAULT;
     struct file *f = task_file_pin(t, r->rdi);
     if (!f)
@@ -162,10 +204,10 @@ long epoll_wait_call(struct task *t, void *registers) {
         mutex_lock(&vfs_mutex);
         struct event_poll *p = f->epoll;
         unsigned first = p->cursor;
-        for (unsigned i = 0; i < WATCH_LIMIT && count < r->rdx; i++) {
+        for (unsigned i = 0; i < WATCH_LIMIT && count < capacity; i++) {
             unsigned index = (first + i) % WATCH_LIMIT;
             struct watch *w = &p->watches[index];
-            unsigned ready = readiness(w);
+            unsigned ready = readiness(w,0);
             if (!ready)
                 continue;
             events[count++] = (struct poll_event){ready, w->event.data};

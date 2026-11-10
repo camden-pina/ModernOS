@@ -1,4 +1,5 @@
 #include <usb_input.h>
+#include <drivers/usb/xhci.h>
 #include <drivers/usb/usb.h>
 #include <drivers/usb/usb_keyboard.h>
 #include <drivers/usb/usb_platform.h>
@@ -103,6 +104,10 @@ void kernel_usb_input_poll(void) {
         }
     }
 
+    struct os_keyboard_snapshot snapshot;
+    usb_keyboard_snapshot(&snapshot);
+    display_keyboard_sync(&snapshot);
+
     uint32_t dropped = usb_keyboard_dropped_events();
     if (dropped != last_dropped_events) {
         pr_warn("USB: keyboard queue overflow, total dropped events %u\n", dropped);
@@ -113,3 +118,6 @@ void kernel_usb_input_poll(void) {
         pr_warn("USB: controller stopped after an error\n");
     }
 }
+
+bool kernel_usb_power_ready(void) { return xhci_power_ready(); }
+int kernel_usb_power_stop(void) { return xhci_power_stop(); }
