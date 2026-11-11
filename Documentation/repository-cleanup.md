@@ -28,7 +28,7 @@ Recovery has different granularity for different work:
 | --- | --- |
 | Pinned archive downloads | Retain partial bytes, request an HTTP range on retry, and publish only after checksum verification. Servers without range support restart that archive. |
 | Electron sources | Resume fetch, patches, hooks and overlays from `electron/SYNC.json`. Completed repositories remain cached. An interrupted individual Git pack may need downloading again. Managed checkouts are disposable; keep source edits in the repository's port patches. |
-| Archive extraction | Extract into a temporary tree, then publish complete source directories. A retry removes abandoned extraction scratch directories. |
+| Archive extraction | Extract into a temporary tree, then publish complete source directories. A retry removes abandoned extraction scratch directories. Electron's pinned npm `.tgz` archives use gzip streaming; their completed module marker moves with the package. |
 | Make/Ninja and compiler stages | Reuse their object trees when recorded inputs match. A failed command reruns; individual install/configure steps may repeat. |
 | GUI source packages | Verify container ownership/mounts and reuse completed package receipts. The interrupted package resumes or rebuilds using its own build tools. |
 | SDK/module staging and ISO assembly | Restart the affected staging operation from verified component inputs. Downloaded archives are moved to a checksum-addressed cache before a component reset. |
@@ -40,6 +40,10 @@ process, retain every interrupted network transfer, or resume a VM mid-test.
 A source change during an unfinished component can restart that component.
 A force-killed process cannot finish its checkpoint. Recovery rechecks outputs
 and retries the affected operation instead of trusting a partial receipt.
+If a source change leaves key- or config-named files that cleanup cannot prove
+disposable, use a fresh `ISO_BUILD` or inspect those files before removing the
+old component directory. Guest qualification removes its own disposable signing
+and TLS keys after use, so its phases can be retried safely.
 
 ## Cleanup commands
 

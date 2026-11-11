@@ -59,7 +59,7 @@ OPTIONS = (
     Option('QUALIFY', 'Run guest qualification after building', 'desktop', False,
            'Enable diagnostics and the guest suites applicable to the selected apps. Requires KVM, OVMF, passt, GnuPG, Pillow and Tesseract.', 'bool'),
     Option('WITH_MICROSOFT_AUTH', 'Microsoft sign-in helpers', 'desktop', False,
-           'Include upstream proprietary Microsoft authentication binaries. Their provenance is recorded.', 'bool'),
+           'The proprietary native broker needs WebKitGTK and other libraries not yet built for Coast. Leave disabled; the extension keeps its non-broker path.', 'bool'),
     Option('ELECTRON_CHECKOUT', 'Verified Electron checkout', 'sources', None,
            'Optional existing, verified Electron source checkout, reused read-only. Empty means fetch pinned sources.'),
     Option('RUNTIME_BUILD', 'Verified Electron/Node receipt', 'sources', None,

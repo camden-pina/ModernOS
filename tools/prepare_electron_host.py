@@ -143,11 +143,17 @@ def prepare(output):
             raise ValueError('NPM lock integrity differs: ' + record['name'])
         destination = modules / record['name']
         stamp = destination / '.coast-source'
+        unpacked = output / ('unpack-' + record['archive'])
+        # An interrupted extraction can leave this owned scratch directory.
+        # Recreate it from the checksum-verified archive on retry.
+        if unpacked.is_symlink():
+            raise ValueError('Host-module scratch directory cannot be a symlink')
+        if unpacked.exists():
+            shutil.rmtree(unpacked)
         if stamp.is_file() and stamp.read_text() == record['sha256']:
             continue
         if destination.exists():
             raise ValueError('Unrecognized host module; select a fresh output directory')
-        unpacked = output / ('unpack-' + record['archive'])
         unpacked.mkdir()
         unpack(archive, unpacked, filter='data')
         package = unpacked / 'package'
@@ -155,7 +161,9 @@ def prepare(output):
         if metadata['name'] != record['name'] or metadata['version'] != record['version']:
             raise ValueError('Unexpected NPM host module identity')
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(package, destination)
+        # The completed marker moves with the package, so a process killed
+        # immediately after publication still leaves a reusable module.
+        atomic_write(package / '.coast-source', record['sha256'])
+        package.replace(destination)
         shutil.rmtree(unpacked)
-        stamp.write_text(record['sha256'])
     return modules

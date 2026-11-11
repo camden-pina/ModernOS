@@ -40,6 +40,8 @@ back to slower software emulation.
 tools, Chromium, Code OSS, GCC/G++, Python, Brine/makepkg, Qt Widgets,
 QEMU and the Chromium VM viewer. The wizard can omit optional apps and explains
 their dependencies. `make run` boots that ISO without rebuilding.
+The proprietary Microsoft sign-in broker is unavailable until its GTK/WebKit
+libraries are built for Coast; leave `WITH_MICROSOFT_AUTH=0` (the default).
 
 For example, omit Chromium and add it later:
 
@@ -100,14 +102,13 @@ make test-build-lifecycle test-optional-apps
 python3 -B tools/test_package_configuration.py
 ```
 
-An integrated desktop source build has passed all 11 guest qualification phases, including real
-package transactions, Qt input/clipboard and nested QEMU through Chromium/noVNC.
-Source-export component builds pass UEFI/BIOS boot checks. Qualification reuses
-verified source-built Electron/Node components; an empty full Electron graph
-build is not yet verified end to end. [Source builds](Documentation/source-builds.md)
-records the precise coverage and remaining prebuilt inputs. Recovery, cleanup and
-app selection have host/fixture coverage; this change has not had a fresh full
-Electron build or guest qualification run.
+An integrated `make iso JOBS=16` run with qualification enabled passed all 26
+stages and 11 guest qualification phases, including signed package transactions, Brine, Qt
+input/clipboard and nested QEMU through Chromium/noVNC. Source-export
+component builds pass UEFI/BIOS boot checks. This build reused verified
+source-built Electron/Node components; a build of their full graph from an
+empty checkout remains unverified. [Source builds](Documentation/source-builds.md)
+records the precise coverage and remaining prebuilt inputs.
 
 See [the build guide](Documentation/build-system.md), [desktop](Documentation/desktop.md),
 [browser](Documentation/chromium-browser.md), [accounts](Documentation/accounts.md),

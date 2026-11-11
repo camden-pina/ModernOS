@@ -98,9 +98,11 @@ tools, Bash/Readline, Wayland bridge and pinned font/dictionary assets.
 The GIO trash helper uses the matching application SDK, so it does not require
 an old QEMU SDK. Assembly checks the exact Electron/Node kernel admission and
 component hashes. It also checks every payload ELF's architecture, libraries
-and GNU ABI requirements against the actual image. Microsoft sign-in is optional. To include its upstream proprietary brokers,
-select `WITH_MICROSOFT_AUTH=1`. The default
-source image omits these binaries; the receipt records the choice and the
+and GNU ABI requirements against the actual image. The Microsoft authentication
+extension retains its non-broker path, but Coast omits its proprietary native
+broker binaries. `WITH_MICROSOFT_AUTH=1` with Code OSS selected fails before building because
+the broker needs WebKitGTK, libsoup, libsecret, libcurl and libuuid, which Coast
+does not yet build. The image receipt records the omitted binaries and the
 remaining prebuilt application helpers.
 
 `make iso` produces `build/coast/image/Coast.iso`. Explicit component

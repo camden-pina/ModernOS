@@ -1,8 +1,7 @@
 # Coast OS development handoff
 
 Repository: https://github.com/camden-pina/ModernOS.git. Work on `main`, tracking
-`origin/main`. The committed baseline for the pending source-verification and
-Brine rename changes is `69e2aa8`.
+`origin/main`. These pending ISO and recovery changes build on `4bcc314`.
 
 ## Build and run
 
@@ -46,6 +45,13 @@ check. Verification runs after policy installation before publishing SOURCE.json
 Completed and interrupted overlay phases reuse downloads and completed hooks,
 including a completed sync whose source receipt was invalidated by a builder
 change. Do not clean the source checkout to recover from a verifier-only fix.
+The first Electron build attempt exposed an npm host archive named `.tgz` that
+the unpacker treated as an uncompressed tar. The extractor now streams `.tgz`
+through gzip, and the host-tool preparation removes abandoned scratch trees
+before retrying. It stamps the package before atomic publication so an
+interruption immediately afterward leaves a reusable module. The pinned
+Rollup archive was verified and extracted locally without changing the source
+checkout. Rerun `make iso`; no source cleanup is needed.
 
 `make iso` shows stage progress, elapsed time, tool counters, recent log output
 and source Git bytes/rates. Unknown totals use an activity bar. Complete component
@@ -80,8 +86,8 @@ Do not install host packages as part of agent verification.
 
 ## Validation evidence
 
-The focused recovery/app-selection suite passes 102 host/fixture checks, including
-39 lifecycle cases. Coverage includes dependency
+The focused recovery/app-selection suite passes host/fixture checks, including
+42 lifecycle cases. Coverage includes dependency
 closures, selected ISO payloads, package dependency records, static/dynamic ELF
 checks, configuration/Make arguments, interrupted download/sync/hooks, archive
 extraction, component retries, atomic receipts and selective/full cleanup.
@@ -89,7 +95,6 @@ Desktop launcher availability has a production C test; the desktop compiles.
 Source-fetch tests retain checksum/TLS behavior. Existing sanitizer-based snap,
 damage and transition checks pass. Exact command results and cleanup records
 are kept under `build/maintenance-checks/` and indexed by `READINESS.json`.
-No full Electron rebuild or new guest qualification is claimed for this change.
 Electron sync now has 13 local-Git regression cases covering policy/patch
 overlap, interrupted policy copies, changed files and invalidated receipts.
 The completed 170-repository checkout passes both managed and read-only source
@@ -97,25 +102,31 @@ verification; sync reuse took about half a second without changing its files.
 The Brine rename passes 87 focused host checks plus 29 repository-server,
 27 repository-network and 11 search checks against a disposable publication
 fixture. The launcher's C source compiles with warnings treated as errors, and
-the default `make iso ISO_ARGS=--plan` selects Brine. These checks do not claim
-a fresh desktop ISO or community-container qualification.
+the default `make iso ISO_ARGS=--plan` selects Brine. Public community-container
+qualification remains separate.
+Two host-archive regression cases now cover `.tgz` extraction, abandoned
+scratch recovery and interruption after package publication. The actual
+checksum-pinned Rollup download also passed preparation. The archive reader
+now drains compressed streams before closing them; the pinned libksba archive
+and a broken-pipe regression test pass.
 
-The integrated desktop passed all 11 guest qualification phases, including
+`make iso JOBS=16` with saved qualification enabled passed all 26 stages. The
+integrated desktop passed all 11 guest qualification phases, including
 signed package operations, makepkg, Qt USB/clipboard and nested QEMU through
-Chromium. The reports bind their results to exact artifact hashes and record
+Chromium. The resulting ISO is `build/coast/image/Coast.iso`; its manifest hash
+matches the image. The reports bind results to exact artifact hashes and record
 owned-VM shutdown. The desktop screenshot in `images/desktop.png` is an actual
 capture of Coast's Files application.
 
 Qualification reuses verified source-built Electron/Node and GNU ABI receipts.
 An empty full Electron graph build is not yet verified end to end. Component
 reuse must not be described as an independent clean build of that graph.
-Existing receipts describe their own source snapshot; editing current tools
-and documentation does not change historical qualification results.
+The optional omit/add app selections have host coverage but were not separately
+guest-qualified in this run.
 
 Local evidence and exact artifact paths are in `build/maintenance-checks/`.
 `READINESS.json` indexes source/host checks, HTTP/TLS/Git guest checks, desktop
 launch checks, boot-component checks and command-plan verification. Do not launch a full Electron compile just to check orchestration or naming.
-The new app-selection path has not been guest-qualified in this turn.
 Kernel/userland regression checks manage their own internal fixtures.
 
 ## Preserve local state

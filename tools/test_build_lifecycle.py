@@ -7,6 +7,7 @@ import itertools
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -574,6 +575,23 @@ if not phase.exists():
         (destination / 'source/retained.c').write_text('keep')
         unpack(archive, destination)
         self.assertEqual((destination / 'source/retained.c').read_text(), 'keep')
+
+    def test_compressed_archive_drain_does_not_signal_broken_pipe(self):
+        if not shutil.which('bzip2'):
+            self.skipTest('bzip2 is not installed')
+        plain = self.root / 'source.tar'
+        with tarfile.open(plain, 'w') as tar:
+            member = tarfile.TarInfo('source/example.c')
+            member.size = 3
+            tar.addfile(member, io.BytesIO(b'abc'))
+        with plain.open('ab') as tail:
+            tail.write(os.urandom(1024 * 1024))
+        compressed = self.root / 'source.tar.bz2'
+        with compressed.open('wb') as target:
+            subprocess.run(['bzip2', '-c', str(plain)], stdout=target, check=True)
+        destination = self.root / 'unpacked'
+        unpack(compressed, destination)
+        self.assertEqual((destination / 'source/example.c').read_bytes(), b'abc')
 
 
 if __name__ == '__main__':

@@ -64,6 +64,7 @@ def main():
     config = runtime / 'etc/brine/config.json'
     config.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(config, json.dumps(dict(version=1, url=None, signing_fingerprint=None, community_url=None), indent=2) + '\n')
+    config.chmod(0o644)  # Repository URL and public fingerprint must be readable by desktop users.
     keyring = runtime / 'etc/pacman.d/gnupg'
     keyring.mkdir(parents=True)
     configured = None

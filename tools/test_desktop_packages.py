@@ -5,6 +5,7 @@ import base64
 import io
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import traceback
@@ -116,6 +117,7 @@ def main():
             vm.close()
         subprocess.run(['gpgconf', '--homedir', str(keyring), '--kill', 'gpg-agent'],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        shutil.rmtree(keyring)
         report['owned_vm_stopped'] = bool(vm and vm.process.poll() is not None)
         (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 

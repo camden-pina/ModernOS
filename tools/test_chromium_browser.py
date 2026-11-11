@@ -55,13 +55,17 @@ fetch('/data').then(r=>r.text()).then(text=>{document.getElementById('proof').te
 
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
-                    '-keyout', str(out / 'untrusted.key'), '-out', str(out / 'untrusted.pem'),
-                    '-subj', '/CN=Untrusted Coast fixture', '-addext', 'subjectAltName=IP:10.0.2.2'],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    tls = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(out / 'untrusted.pem', out / 'untrusted.key')
+    key = out / 'untrusted.key'
+    try:
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
+                        '-keyout', str(key), '-out', str(out / 'untrusted.pem'),
+                        '-subj', '/CN=Untrusted Coast fixture', '-addext', 'subjectAltName=IP:10.0.2.2'],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tls = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(out / 'untrusted.pem', key)
+    finally:
+        key.unlink(missing_ok=True)
     tls.socket = context.wrap_socket(tls.socket, server_side=True)
     threading.Thread(target=tls.serve_forever, daemon=True).start()
     origin = 'http://10.0.2.2:' + str(server.server_port)

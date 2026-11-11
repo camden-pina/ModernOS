@@ -32,7 +32,10 @@ class RepositoryFixture:
         return result.stdout
 
     def close(self):
-        subprocess.run(['gpgconf', '--homedir', str(self.keys), '--kill', 'gpg-agent'], check=True, capture_output=True)
+        try:
+            subprocess.run(['gpgconf', '--homedir', str(self.keys), '--kill', 'gpg-agent'], check=True, capture_output=True)
+        finally:
+            shutil.rmtree(self.keys)
 
     def publish(self, path, route):
         path = Path(path).resolve(strict=True)

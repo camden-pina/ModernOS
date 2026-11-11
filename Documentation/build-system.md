@@ -97,7 +97,7 @@ make iso JOBS=2
 | `ISO_ARGS` | Empty | Additional builder arguments, listed below. |
 | `DIAGNOSTICS` | `0` | Set to `1` to include Code OSS diagnostics. |
 | `QUALIFY` | `0` | Set to `1` to enable diagnostics and applicable guest qualification suites after building. |
-| `WITH_MICROSOFT_AUTH` | `0` | Set to `1` to include upstream proprietary Microsoft sign-in helpers. |
+| `WITH_MICROSOFT_AUTH` | `0` | Keep at `0`. The proprietary native broker requires WebKitGTK, libsoup, libsecret, libcurl and libuuid, which Coast does not yet build; `1` with Code OSS selected fails before the build. The extension's non-broker path remains packaged. |
 | `ELECTRON_CHECKOUT` | Automatic | Verified source checkout to reuse read-only. |
 | `RUNTIME_BUILD` | Automatic | Matching verified Electron/Node receipt; requires `ELECTRON_CHECKOUT`. |
 | `COMPONENTS` | Empty | JSON map of verified component receipts. |
@@ -118,12 +118,12 @@ Keep the same `ISO_BUILD` and `O` values for `make iso` and `make run`.
 | `--runtime-build PATH` | Reuse a verified, matching Electron/Node receipt; also requires `--electron-checkout`. |
 | `--components PATH` | JSON map of component names to verified source-build receipts; see [source builds](source-builds.md). |
 | `--repository-config PATH` | Embed an explicit public package repository trust configuration. |
-| `--with-microsoft-auth` | Include upstream proprietary Microsoft sign-in helpers. |
+| `--with-microsoft-auth` | Reserved for the proprietary native broker; currently fails early because its runtime libraries are unavailable. |
 | `--help` | Show the builder's complete option help without building. |
 
 For example, `make iso ISO_ARGS=--plan` prints the plan, and
 `make iso ISO_BUILD=build/qa ISO_ARGS=--qualify` builds Coast with qualification.
-Quote multiple arguments as `ISO_ARGS='--diagnostics --with-microsoft-auth'`.
+Quote multiple arguments as `ISO_ARGS='--diagnostics --without qemu-viewer'`.
 
 ## Optional applications
 

@@ -149,7 +149,8 @@ static void focus_top(void) {
 }
 
 Window *wm_open(App app, const char *path) {
-  if (app < 0 || app >= APP_COUNT || !apps[app].name || !app_available(app))
+  if (app < 0 || app >= APP_COUNT || !apps[app].name ||
+      (!app_available(app) && !(path && native_window_app(app))))
     return NULL;
   /* The current Wayland adapter supports one workbench. Reopening its desktop
      entry also restores a minimized or still-starting window. */

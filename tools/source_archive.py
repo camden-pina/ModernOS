@@ -62,7 +62,7 @@ def unpack(archive, destination, filter='data'):
 def _unpack(archive, destination, filter='data'):
     archive, destination = Path(archive).resolve(), Path(destination).resolve()
     destination.mkdir(parents=True, exist_ok=True)
-    suffixes = {'.gz': 'gzip', '.bz2': 'bzip2', '.xz': 'xz'}
+    suffixes = {'.gz': 'gzip', '.tgz': 'gzip', '.bz2': 'bzip2', '.xz': 'xz'}
     tool = suffixes.get(archive.suffix)
     # Publish complete source directories, never a half-extracted tree that
     # an exists() check would mistake for a usable checkout after interruption.
@@ -76,6 +76,11 @@ def _unpack(archive, destination, filter='data'):
                 try:
                     with tarfile.open(fileobj=process.stdout, mode='r|') as source:
                         source.extractall(staging, filter=filter)
+                    # Tar stops at its end marker, which may precede the end
+                    # of the compressed stream. Drain it before closing the
+                    # pipe so the decompressor can exit without SIGPIPE.
+                    while process.stdout.read(1024 * 1024):
+                        pass
                 except BaseException:
                     process.terminate()
                     raise

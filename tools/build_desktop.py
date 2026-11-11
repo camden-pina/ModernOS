@@ -100,6 +100,10 @@ def main():
     last_selection = read_json(out / 'image/MANIFEST.json') or read_json(out / 'SELECTION.json', {})
     previous_apps = last_selection.get('apps') if args.add else None
     apps, omitted = app_selection(args.apps, args.without, args.add, previous_apps)
+    if args.with_microsoft_auth and 'codeoss' in apps:
+        parser.error('WITH_MICROSOFT_AUTH=1 needs WebKitGTK, libsoup, libsecret, libcurl and libuuid '
+                     'in the Coast runtime; these dependencies are not built yet. '
+                     'Use WITH_MICROSOFT_AUTH=0 for the non-broker sign-in path.')
     needed = components_for(apps, args.target if args.build_only else None)
     if args.build_only and not args.target:
         needed.discard('image')

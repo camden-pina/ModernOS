@@ -71,7 +71,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_make_loads_build_settings_and_all_integrations(self):
         values = config.defaults()
         values.update(JOBS=2, ISO_BUILD=str(self.directory / 'coast'),
-                      QUALIFY=True, WITH_MICROSOFT_AUTH=True,
+                      QUALIFY=True,
                       ELECTRON_CHECKOUT=str(self.directory / 'checkout'),
                       RUNTIME_BUILD=str(self.directory / 'runtime.json'),
                       PACKAGE_CONFIG=str(self.directory / 'trust.json'))
@@ -79,7 +79,7 @@ class ConfigurationTests(unittest.TestCase):
         plan = json.loads(self.make('-s', 'iso', 'ISO_ARGS=--plan').stdout)
         stages = {stage['name']: stage for stage in plan['stages']}
         self.assertEqual(len(stages), 22)
-        self.assertIn('--with-microsoft-auth', plan['assembly'])
+        self.assertNotIn('--with-microsoft-auth', plan['assembly'])
         self.assertIn('--diagnostics', plan['assembly'])
         self.assertEqual(plan['qualification'][plan['qualification'].index('--iso') + 1],
                          str(self.directory / 'coast/image/Coast.iso'))
@@ -88,6 +88,15 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(plan['runtime_receipt'], str(self.directory / 'runtime.json'))
         argv = stages['qt']['argv']
         self.assertEqual(argv[argv.index('--jobs') + 1], '2')
+        self.assertFalse((self.directory / 'coast').exists())
+
+    def test_unsupported_microsoft_broker_fails_before_building(self):
+        config.save(self.path, {**config.defaults(), 'WITH_MICROSOFT_AUTH': True})
+        result = subprocess.run(['make', '--no-print-directory', 'CONFIG=' + str(self.path),
+                                 '-s', 'iso', 'ISO_ARGS=--plan'], cwd=ROOT,
+                                text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('WITH_MICROSOFT_AUTH=1 needs WebKitGTK', result.stderr)
         self.assertFalse((self.directory / 'coast').exists())
 
     def test_command_line_overrides_saved_build_and_vm_values(self):
