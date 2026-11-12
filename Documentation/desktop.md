@@ -21,10 +21,10 @@ from a configured signed package repository.
 | Super+T | Open Terminal |
 | Alt+Space | Open window actions |
 | Ctrl+Alt+M | Open the focused native application's menu bar |
-| Ctrl+Alt+G | Switch between the desktop and physical console |
+| Ctrl+Alt+Enter | Switch between the desktop and physical console |
 | Ctrl+Alt+Escape | Return to the console after resolving unsaved documents |
 
-Ctrl+Alt+G at the physical console prompt starts the desktop again. Leaving the
+Ctrl+Alt+Enter at the physical console prompt starts the desktop again. Leaving the
 desktop closes its open windows; save work before switching. Unsaved native
 documents prompt for a decision.
 
@@ -89,7 +89,7 @@ brokers/backends. See [input and clipboard](input-and-clipboard.md).
 records application/window actions for guest tests. The desktop, Qt, browser,
 editor and nested VM suites operate actual guest windows with USB input.
 
-The default boot mode is 1920×1080; the boot configuration can select another
+The default boot mode is 1920×1200; the boot configuration can select another
 firmware-supported 32-bit mode. Coast runs as a RAM-backed live system. Persist files on a supported writable
 mount before shutdown. Hardware, filesystem, application and website support
 is bounded by the implemented kernel interfaces and the tested ports. The

@@ -312,8 +312,8 @@ class VM:
                 # to the physical console before exercising shell commands.
                 def key_event(key, down):
                     return {'type':'key','data':{'down':down,'key':{'type':'qcode','data':key}}}
-                self.qmp('input-send-event',{'events':[key_event(k,True) for k in ('ctrl','alt','g')]})
-                self.qmp('input-send-event',{'events':[key_event(k,False) for k in ('g','alt','ctrl')]})
+                self.qmp('input-send-event',{'events':[key_event(k,True) for k in ('ctrl','alt','ret')]})
+                self.qmp('input-send-event',{'events':[key_event(k,False) for k in ('ret','alt','ctrl')]})
                 self.until_prompt(boot_timeout)
             self.boot_elapsed_seconds = time.monotonic() - boot_started
             if root_commands:

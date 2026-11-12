@@ -946,7 +946,7 @@ int main(int argc, char **argv) {
     call1(SYS_chdir,"/home/user");
     puts("Console uses the owner account (UID 1000), with administrator access through sudo.");
     char *gui_args[] = {"gui", NULL};
-    puts("Starting the Coast desktop. Ctrl+Alt+G switches to the console.");
+    puts("Starting the Coast desktop. Ctrl+Alt+Enter switches to the console.");
     command(1, gui_args);
   }
   int terminal = argc == 2 && !strcmp(argv[1], "--terminal");

@@ -90,7 +90,7 @@ OPTIONS = (
     Option('QEMU_SDL_DRIVER', 'SDL video driver', 'display', None,
            'Automatic inherits SDL_VIDEODRIVER or selects Wayland when available. Examples: wayland, x11.'),
     Option('QEMU_GTK_BACKEND', 'GTK display backend', 'display', None,
-           'Automatic inherits GDK_BACKEND. Examples: wayland, x11.'),
+           'Automatic inherits GDK_BACKEND or selects x11 on a Wayland host with XWayland for reliable relative mouse input. Examples: wayland, x11.'),
     Option('QEMU_NETWORK', 'Network device arguments', 'devices',
            '-nic user,model=e1000e',
            'Full QEMU network arguments. Use -nic none to disable networking, or configure a supported passt backend.', 'args'),

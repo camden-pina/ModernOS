@@ -19,9 +19,9 @@ assembly and optional qualification. `APPS` and `WITHOUT` select optional apps;
 build requirements and installed-app requirements are separate. Keep one public
 `make iso`/`make run` interface without named image editions.
 `make run` boots `build/coast/image/Coast.iso` without rebuilding it.
-It defaults to UEFI, KVM when available, GTK/OpenGL and 1920×1080. The guest
+It defaults to UEFI, KVM when available, GTK/OpenGL and 1920×1200. The guest
 starts the desktop automatically as owner UID 1000; its initial sudo password
-is `root`. Ctrl+Alt+G exits to the physical console and, at its shell prompt,
+is `root`. Ctrl+Alt+Enter exits to the physical console and, at its shell prompt,
 starts a new desktop session. Leaving the GUI closes windows after unsaved-work
 prompts. The root account remains locked until explicitly configured.
 
@@ -115,11 +115,11 @@ checksum-pinned Rollup download also passed preparation. The archive reader
 now drains compressed streams before closing them; the pinned libksba archive
 and a broken-pipe regression test pass.
 
-`make iso JOBS=16` with saved qualification enabled passed all 26 stages. The
-integrated desktop passed all 11 guest qualification phases, including
+The previous `make iso JOBS=16` run with saved qualification enabled passed all
+26 stages. That integrated desktop passed all 11 guest qualification phases, including
 signed package operations, makepkg, Qt USB/clipboard and nested QEMU through
-Chromium. The resulting ISO is `build/coast/image/Coast.iso`; its manifest hash
-matches the image. The reports bind results to exact artifact hashes and record
+Chromium. Its manifest hash matched that image. The reports bind results to
+that build's exact artifact hashes and record
 owned-VM shutdown. The desktop screenshot in `images/desktop.png` is an actual
 capture of Coast's Files application.
 
@@ -131,11 +131,23 @@ averaged 5.25 ms with GTK/OpenGL; its display trace reported about 102 updates/s
 versus about 19 surface publications/s with SDL/OpenGL. Coast still renders in
 software inside emulated VGA; the host OpenGL backend only displays those pixels.
 
+The current 1920×1200 image was rebuilt with `make iso JOBS=16 QUALIFY=0` and
+passed all 25 selected stages. Its exact SHA-256 is
+`3bdeebce8e06010f2e194ce26728b7877823c651adc99f24d7d98262cd90c8d5`.
+UEFI and BIOS boots with four CPUs passed automatic desktop startup,
+Ctrl+Alt+Enter console switching, native health and USB input. The host
+GTK/XWayland mouse test passed motion, clicks, dragging and pixel restoration;
+the 120-frame GTK drag check reported about 102 host display updates/s. The
+Qt Widgets guest check passed launch, input, resize, save and clean exit.
+Reports are under `build/desktop-boot-1610-20261112-r1/` and
+`build/qt6-1610-20261112-r1/`. The full 11-phase qualification was not rerun
+for this image hash.
+
 A source kit was transferred into a disposable Coast VM. Coast GCC compiled the
 desktop kernel and native userland; pinned NASM, xorriso and mtools were also
 compiled there. `tools/build_native_iso.py` built BusyBox and Limine and assembled
 a native ISO inside Coast. The exported image passed UEFI and BIOS boots with
-one and four CPUs, including health, GUI USB and Ctrl+Alt+G checks. Evidence is
+one and four CPUs, including health and GUI USB checks. Evidence is
 under ignored `build/guest-self-build-20261111/`. The complete Electron graph
 was not rebuilt inside Coast.
 

@@ -111,7 +111,7 @@ def iso_template(path):
 
 def boot_config(text, mode):
     """Edit only the first native boot stanza; preserve other cmdline tokens."""
-    text = text.replace('1920x1080x32', '1024x768x32')
+    text = text.replace('1920x1200x32', '1024x768x32')
     protocol = re.search(r'^([ \t]+)protocol:[ \t]*limine[ \t]*$', text, re.M)
     if not protocol:
         raise ValueError('ISO template has no native Limine boot stanza')

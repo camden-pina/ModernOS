@@ -23,10 +23,10 @@ class BootConfigTests(unittest.TestCase):
         self.assertEqual(config.kernel, "/boot/kernel.elf")
         self.assertEqual([(m.path, m.string) for m in config.modules],
                          [("/boot/initramfs.tar", "initramfs")])
-        self.assertEqual(config.resolution, "1920x1080x32")
+        self.assertEqual(config.resolution, "1920x1200x32")
         self.assertIn("set timeout=0\n", grub_config(config))
         self.assertIn("timeout -1\n", refind_config(config))
-        self.assertIn("resolution 1920 1080\n", refind_config(config))
+        self.assertIn("resolution 1920 1200\n", refind_config(config))
         self.assertIn("module=/boot/initramfs.tar\nmodule_string=initramfs\n", efi_config(config))
         self.assertIn("chainloader /EFI/Coast/coast.efi", grub_config(config))
         self.assertIn("loader /EFI/Coast/coast.efi", refind_config(config))

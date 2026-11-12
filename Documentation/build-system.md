@@ -15,7 +15,7 @@ viewer by default. Optional apps and their dependencies can be selected below. T
 `build/coast/image/Coast.iso`.
 
 The build verifies completed components and resumes interrupted stages. `make run` boots the existing ISO
-in QEMU. The guest starts its desktop automatically; Ctrl+Alt+G switches to
+in QEMU. The guest starts its desktop automatically; Ctrl+Alt+Enter switches to
 the physical console and back.
 
 ## Build progress and interruption
@@ -176,9 +176,12 @@ requiring omitted apps as skipped, rather than claiming they passed.
 ## Run arguments
 
 The VM uses UEFI, GTK with host OpenGL, USB keyboard/mouse, e1000e user networking,
-four CPUs and 16 GiB RAM. GTK uses the host session's display backend.
+four CPUs and 16 GiB RAM. On Wayland hosts with XWayland, GTK uses X11 for
+reliable relative mouse capture; otherwise it uses the host display backend.
 KVM is selected when `/dev/kvm` is accessible; otherwise QEMU uses software CPU
 emulation. Coast's desktop still renders in software through emulated VGA.
+Use Ctrl+Alt+Enter to switch between Coast's desktop and physical console.
+Ctrl+Alt+G is QEMU's own mouse-capture shortcut.
 
 ```sh
 make run MEMORY=24G SMP=4
@@ -199,7 +202,7 @@ make -n run
 | `QEMU_CPU` | `host` with KVM, otherwise `max` | QEMU CPU model. |
 | `QEMU_DISPLAY` | `gtk,gl=on` | Display backend; use `gtk,gl=off` if host OpenGL is unavailable or `sdl,gl=on` to select SDL. This does not add guest GPU acceleration. |
 | `QEMU_SDL_DRIVER` | Inherited `SDL_VIDEODRIVER`, otherwise `wayland` when available | SDL video backend. |
-| `QEMU_GTK_BACKEND` | Inherited `GDK_BACKEND` | GTK display backend. |
+| `QEMU_GTK_BACKEND` | Inherited `GDK_BACKEND`, otherwise `x11` on Wayland when XWayland is available | GTK display backend. Set `wayland` to override the automatic choice. |
 | `FIRMWARE` | `uefi` | `uefi` uses OVMF; `bios` uses QEMU's built-in BIOS. |
 | `OVMF` | Discovered host firmware | UEFI firmware file used with `FIRMWARE=uefi`. |
 | `QEMU_VIDEO` | VGA with 32 MiB video memory, 60 Hz EDID metadata | Full video device arguments. QEMU expresses the EDID refresh rate in millihertz; this is not its frontend frame timer. |

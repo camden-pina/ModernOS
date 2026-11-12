@@ -22,6 +22,8 @@ override QEMU_ACCEL := $(shell test -r /dev/kvm && test -w /dev/kvm && echo kvm 
 endif
 QEMU_CPU ?= $(if $(filter kvm,$(QEMU_ACCEL)),host,max)
 # GTK's refresh path keeps up with Coast's drag cadence on the tested host.
+# On a Wayland session, use XWayland when available: its relative mouse grab
+# works with Coast's USB mouse without depending on GTK's Wayland grab path.
 # VGA refresh_rate is guest-visible EDID metadata in millihertz.
 QEMU_DISPLAY ?= gtk,gl=on
 FIRMWARE ?= uefi
@@ -33,7 +35,7 @@ $(error FIRMWARE must select exactly one of bios or uefi)
 endif
 QEMU_FIRMWARE = $(if $(filter uefi,$(FIRMWARE)),-bios $(call coast_quote,$(OVMF)))
 QEMU_SDL_DRIVER ?= $(if $(strip $(SDL_VIDEODRIVER)),$(SDL_VIDEODRIVER),$(if $(strip $(WAYLAND_DISPLAY)),wayland,))
-QEMU_GTK_BACKEND ?= $(GDK_BACKEND)
+QEMU_GTK_BACKEND ?= $(if $(strip $(GDK_BACKEND)),$(GDK_BACKEND),$(if $(and $(strip $(WAYLAND_DISPLAY)),$(strip $(DISPLAY))),x11,))
 QEMU_DISPLAY_ENV :=
 ifneq ($(filter sdl%,$(QEMU_DISPLAY)),)
 QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(call coast_quote,$(QEMU_SDL_DRIVER)),)

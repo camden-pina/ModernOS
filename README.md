@@ -34,8 +34,9 @@ verified components and continue interrupted source preparation. Pinned sources 
 upstream history. Electron/Chromium is still a large
 source build: reserve more than 100 GB for it plus space for the other build
 trees. The desktop VM uses 16 GiB RAM. `make run` uses KVM when available and
-GTK with host OpenGL; Coast's desktop still renders
-in software through emulated VGA at a 1920×1080 default boot resolution. [Run options](Documentation/build-system.md#run-arguments)
+GTK with host OpenGL; on Wayland hosts with XWayland, it selects GTK's X11
+backend for reliable relative mouse input. Coast's desktop still renders
+in software through emulated VGA at a 1920×1200 default boot resolution. [Run options](Documentation/build-system.md#run-arguments)
 cover alternate host display backends.
 
 `make iso` defaults to the complete desktop: the kernel, native desktop and account
@@ -65,7 +66,7 @@ The terminal wizard saves build and VM choices in `.config`. Reopen it with
 `make menuconfig`; later Make commands load the saved settings automatically.
 `make iso` also works with defaults before a configuration is saved.
 
-Coast boots directly to the desktop. Press **Ctrl+Alt+G** to use the physical
+Coast boots directly to the desktop. Press **Ctrl+Alt+Enter** to use the physical
 console and press it again to return to the desktop. The owner account is
 UID 1000 with sudo access; its initial password is `root`. Change it with
 `passwd` after boot if you want a different password for that session. Switching
@@ -118,6 +119,9 @@ UEFI/BIOS boot checks at one and four CPUs. This build reused verified
 source-built Electron/Node components; a build of their full graph from an
 empty checkout remains unverified. [Source builds](Documentation/source-builds.md)
 records the precise coverage and remaining prebuilt inputs.
+The current 1920×1200 revision also passed UEFI/BIOS desktop boots,
+GTK/XWayland host mouse dragging and a Qt Widgets guest check; the full
+11-phase qualification has not been rerun for this image hash.
 
 See [the build guide](Documentation/build-system.md), [desktop](Documentation/desktop.md),
 [browser](Documentation/chromium-browser.md), [accounts](Documentation/accounts.md),

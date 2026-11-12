@@ -263,7 +263,10 @@ def test(cpus, input_backend='xtest'):
         host.button(False)
         scale = width / d.width
         scale_x, scale_y = scale / host.gain[0], scale / host.gain[1]
-        left, top = (d.width - d.width * 78 // 100) // 2, d.height * 8 // 100
+        # Use the actual window position; boot resolution and desktop layout
+        # can change independently of this host input check.
+        files = d.geometry(1)
+        left, top = files['x'], files['y']
 
         # Use empty title-bar space, clear of the Files breadcrumb controls.
         host.relative(round((left + 550 - d.width // 2) * scale_x),

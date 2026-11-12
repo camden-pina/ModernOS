@@ -116,10 +116,12 @@ class ConfigurationTests(unittest.TestCase):
         firmware = self.directory / 'OVMF.fd'
         firmware.write_bytes(b'fixture')
         config.save(self.path, {**config.defaults(), 'OVMF': str(firmware)})
-        environment = {**os.environ, 'WAYLAND_DISPLAY': 'wayland-test', 'SDL_VIDEODRIVER': ''}
+        environment = {**os.environ, 'WAYLAND_DISPLAY': 'wayland-test',
+                       'DISPLAY': ':99', 'SDL_VIDEODRIVER': ''}
+        environment.pop('GDK_BACKEND', None)
         launch = self.make('-n', 'run', environment=environment).stdout.replace('\\\n', ' ')
         argv = shlex.split(next(line for line in launch.splitlines() if line.startswith('env ')))
-        self.assertEqual(argv[:2], ['env', 'qemu-system-x86_64'])
+        self.assertEqual(argv[:3], ['env', 'GDK_BACKEND=x11', 'qemu-system-x86_64'])
         self.assertEqual(argv[argv.index('-display') + 1], 'gtk,gl=on')
         self.assertEqual(argv[argv.index('-bios') + 1], str(firmware))
         self.assertEqual(argv[argv.index('-m') + 1], '16G')

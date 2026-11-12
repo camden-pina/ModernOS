@@ -268,7 +268,7 @@ static efi_status parse_configuration(char *buffer, struct configuration *cfg) {
     cfg->kernel = "/boot/kernel.elf";
     cfg->cmdline = "";
     cfg->width = 1920;
-    cfg->height = 1080;
+    cfg->height = 1200;
     cfg->bpp = 32;
     for (char *line = buffer; *line;) {
         char *next = line;

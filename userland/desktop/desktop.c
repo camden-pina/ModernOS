@@ -199,7 +199,7 @@ static void dispatch_key(Key k) {
     dialog_key(k);
     return;
   }
-  if (k.down && (k.mods & MOD_CTRL) && (k.mods & MOD_ALT) && k.code == 0x0a) {
+  if (k.down && (k.mods & MOD_CTRL) && (k.mods & MOD_ALT) && k.code == KEY_ENTER) {
     desktop_quit();
     return;
   }
