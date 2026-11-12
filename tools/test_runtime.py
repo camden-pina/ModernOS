@@ -218,7 +218,8 @@ class VM:
                "-display", display, "-monitor", "none", "-serial", "stdio", "-no-reboot",
                "-qmp", f"pipe:{self.qmp_path}"]
         cmd += ["-vga", "none", "-device",
-                "VGA,vgamem_mb=32,refresh_rate=60000" + ("" if buffered else ",mmio=off")]
+                "VGA,vgamem_mb=32,edid=on,xres=2560,yres=1600,refresh_rate=60000" +
+                ("" if buffered else ",mmio=off")]
 
         assert network_model in ('e1000e', 'e1000', 'igb'), network_model
         backend = PASST_OPTIONS if network_backend == 'passt' else 'user'

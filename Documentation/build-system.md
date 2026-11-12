@@ -175,8 +175,9 @@ requiring omitted apps as skipped, rather than claiming they passed.
 
 ## Run arguments
 
-The VM uses UEFI, GTK with host OpenGL, USB keyboard/mouse, e1000e user networking,
-four CPUs and 16 GiB RAM. On Wayland hosts with XWayland, GTK uses X11 for
+The VM uses UEFI, fullscreen GTK with host OpenGL, USB keyboard/mouse, e1000e networking,
+four CPUs and 16 GiB RAM. QEMU passt is selected when available; otherwise
+QEMU user networking is used. On Wayland hosts with XWayland, GTK uses X11 for
 reliable relative mouse capture; otherwise it uses the host display backend.
 KVM is selected when `/dev/kvm` is accessible; otherwise QEMU uses software CPU
 emulation. Coast's desktop still renders in software through emulated VGA.
@@ -187,6 +188,7 @@ Ctrl+Alt+G is QEMU's own mouse-capture shortcut.
 make run MEMORY=24G SMP=4
 make run QEMU_ACCEL=kvm
 make run FIRMWARE=bios
+make run QEMU_FULLSCREEN=0
 make -n run
 ```
 
@@ -201,12 +203,13 @@ make -n run
 | `QEMU_ACCEL` | `kvm` when accessible, otherwise `tcg` | Accelerator; explicit KVM fails if unavailable. |
 | `QEMU_CPU` | `host` with KVM, otherwise `max` | QEMU CPU model. |
 | `QEMU_DISPLAY` | `gtk,gl=on` | Display backend; use `gtk,gl=off` if host OpenGL is unavailable or `sdl,gl=on` to select SDL. This does not add guest GPU acceleration. |
+| `QEMU_FULLSCREEN` | `1` | Start QEMU fullscreen so the 2560×1600 guest fits a same-size host display. Set `0` for a window; select a smaller guest mode in Coast Settings if needed. |
 | `QEMU_SDL_DRIVER` | Inherited `SDL_VIDEODRIVER`, otherwise `wayland` when available | SDL video backend. |
 | `QEMU_GTK_BACKEND` | Inherited `GDK_BACKEND`, otherwise `x11` on Wayland when XWayland is available | GTK display backend. Set `wayland` to override the automatic choice. |
 | `FIRMWARE` | `uefi` | `uefi` uses OVMF; `bios` uses QEMU's built-in BIOS. |
 | `OVMF` | Discovered host firmware | UEFI firmware file used with `FIRMWARE=uefi`. |
-| `QEMU_VIDEO` | VGA with 32 MiB video memory, 60 Hz EDID metadata | Full video device arguments. QEMU expresses the EDID refresh rate in millihertz; this is not its frontend frame timer. |
-| `QEMU_NETWORK` | `-nic user,model=e1000e` | Full network arguments; use `'-nic none'` to disable networking. |
+| `QEMU_VIDEO` | VGA with 32 MiB video memory, 2560×1600 EDID and 60 Hz metadata | Full video device arguments. QEMU expresses EDID refresh rate in millihertz; this is not its frontend frame timer. |
+| `QEMU_NETWORK` | `auto` | Uses QEMU passt when installed and supported, otherwise user networking. Pass full QEMU arguments to override, or `'-nic none'` to disable networking. |
 | `QEMU_AUDIO` | SDL audio and AC97 | Full audio arguments; set `QEMU_AUDIO=` to disable the sound device. |
 | `LINUX_DISK`, `FAT_DISK` | Empty | Paths to raw disk images attached as NVMe devices. |
 | `SATA_DISK` | Empty | Raw disk image attached as SATA. |

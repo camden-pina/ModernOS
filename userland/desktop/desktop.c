@@ -2,6 +2,42 @@
 #include "pixel_blend.h"
 
 Desktop desk;
+
+int desktop_set_resolution(unsigned width, unsigned height) {
+  if (!desk.display_modeset || width < 640 || height < 480 ||
+      width > (unsigned)desk.display_max_width ||
+      height > (unsigned)desk.display_max_height)
+    return -E_NOTSUP;
+  if (width == (unsigned)desk.width && height == (unsigned)desk.height)
+    return 0;
+  struct os_display_mode mode = {width, height};
+  int error = call3(SYS_display, DISPLAY_SET_MODE, &mode, sizeof(mode));
+  if (error)
+    return error;
+  transition_cleanup();
+  desk.width = width;
+  desk.height = height;
+  desk.mouse_x = clampi(desk.mouse_x, 0, desk.width - 1);
+  desk.mouse_y = clampi(desk.mouse_y, 0, desk.height - 1);
+  desk.old_mouse_x = desk.mouse_x;
+  desk.old_mouse_y = desk.mouse_y;
+  desk.cursor_rect = (Rect){0};
+  desk.cursor_dirty = true;
+  desk.dirty_count = 0;
+  clip_set((Rect){0, 0, desk.width, desk.height});
+  snap_cancel();
+  menu_close();
+  desk.launcher = false;
+  desk.drag = NULL;
+  glass_reset();
+  wm_workarea_changed();
+  wallpaper_display_changed();
+  taskbar_preferences_changed();
+  invalidate_all();
+  if (desk.trace)
+    printf("DESKTOP DISPLAY_MODE width=%u height=%u\n", width, height);
+  return 0;
+}
 const AppOps apps[APP_COUNT] = {
     [APP_DISKS] = {"Disks", I_DRIVE, disks_open, disks_draw, disks_mouse,
                    disks_key, NULL, disks_close, NULL, disks_toolbar,
@@ -407,6 +443,14 @@ int desktop_main(int argc, char **argv) {
     call3(SYS_display, DISPLAY_CAPS, &caps, sizeof(caps));
   }
   desk.buffered_display = (caps.flags & DISPLAY_CAP_PAGE_FLIP) != 0;
+  desk.display_modeset = (caps.flags & DISPLAY_CAP_MODESET) != 0;
+  struct os_display_mode limits = {info.width, info.height};
+  if (desk.display_modeset)
+    call3(SYS_display, DISPLAY_MODE_LIMITS, &limits, sizeof(limits));
+  if (limits.width < info.width || limits.height < info.height ||
+      limits.width > 8192 || limits.height > 8192 ||
+      (uint64_t)limits.width * limits.height * 4 > 64 * 1024 * 1024)
+    limits = (struct os_display_mode){info.width, info.height};
   if (info_only) {
     printf(
         "display ABI=%u %ux%u XRGB8888 max_rectangle_pixels=%u\nBatched damage "
@@ -418,6 +462,8 @@ int desktop_main(int argc, char **argv) {
            caps.backend, caps.buffers, desk.buffered_display,
            !!(caps.flags & DISPLAY_CAP_WRITE_COMBINING),
            !!(caps.flags & DISPLAY_CAP_LARGE_PAGES));
+    printf("Resolution switching=%u maximum=%ux%u.\n", desk.display_modeset,
+           limits.width, limits.height);
     printf("Shadow blending=%s; hardware refresh synchronization requires a "
            "supporting display "
            "driver.\n",
@@ -436,7 +482,11 @@ int desktop_main(int argc, char **argv) {
 
   desk.width = info.width;
   desk.height = info.height;
-  size_t bytes = (size_t)desk.width * desk.height * 4;
+  desk.display_max_width = limits.width;
+  desk.display_max_height = limits.height;
+  desk.preferred_width = info.width;
+  desk.preferred_height = info.height;
+  size_t bytes = (size_t)desk.display_max_width * desk.display_max_height * 4;
   desk.scene = allocate(bytes);
   desk.canvas_present = info.version >= 3;
   /* Presentation is synchronous. Temporarily stamp and restore the cursor
@@ -477,6 +527,10 @@ int desktop_main(int argc, char **argv) {
     ioctl(0, TCSETSF, &saved);
     goto cleanup_memory;
   }
+
+  if (desk.display_modeset &&
+      (desk.preferred_width != desk.width || desk.preferred_height != desk.height))
+    desktop_set_resolution(desk.preferred_width, desk.preferred_height);
 
   desk.running = true;
   taskbar_preferences_changed();

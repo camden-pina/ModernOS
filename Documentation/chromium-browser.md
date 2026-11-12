@@ -9,7 +9,8 @@ Coast uses Electron 43.7.3 / Chromium 150.0.7871.250 with the project's
 Linux-compatible ABI profile, native display bridge, networking and renderer
 sandbox. Page rendering and JavaScript run inside Coast. The browser uses
 software rendering and the port's jitless execution policy.
-`make run` uses host OpenGL for QEMU's GTK window; Chromium and the Coast
+`make run` uses fullscreen GTK with host OpenGL at 2560×1600; set
+`QEMU_FULLSCREEN=0` for a window. Chromium and the Coast
 desktop still render their pixels in software inside the guest. Complex or
 animated sites are therefore more demanding than simple pages.
 
@@ -41,14 +42,14 @@ is RAM-backed, so copy files to a supported writable mount before shutdown.
 
 ## Network and clipboard
 
-`make run` uses QEMU user networking with an e1000e device and needs
-no network helper. The guest obtains DHCP/DNS configuration. TCP receive
+`make run` uses QEMU passt with an e1000e device when the host supports it,
+otherwise QEMU user networking. The guest obtains DHCP/DNS configuration. TCP receive
 accounting supports a 1 MiB window with a finite buffer pool; the network
 suite checks exact HTTP/chunked/redirect bodies, TLS rejection and Git
 transports.
 
-For a host with QEMU's native passt backend, select that network explicitly.
-This example also selects UEFI, which needs suitable host OVMF:
+To choose QEMU passt explicitly, pass the full network arguments. This example
+also selects UEFI, which needs suitable host OVMF:
 
 ```sh
 make run FIRMWARE=uefi QEMU_NETWORK='-nic passt,model=e1000e,ipv4=on,ipv6=off,mtu=1500,address=10.0.2.15/24,gateway=10.0.2.2,map-host-loopback=10.0.2.2,tcp-ports=none,udp-ports=none'
@@ -61,6 +62,17 @@ and the [passt manual](https://passt.top/builds/latest/web/passt.1.html).
 Network throughput and website resource/verification behavior vary by server
 and host configuration; controlled fixture measurements do not establish a
 universal public-site speedup.
+
+On the current 2560×1600 ISO, a controlled local page with an 8 MiB stylesheet
+loaded in 0.44 s with passt and 0.46 s with QEMU user networking. The native
+window's 120-frame drag averaged about 9 ms per frame. This single backend
+comparison is too close to claim a general network advantage; software
+rendering and cold Electron startup remain the larger costs. To reproduce the
+local network and drag measurement, run:
+
+```sh
+python3 -B tools/benchmark_chromium.py --iso build/coast/image/Coast.iso --output-root build/chromium-benchmark --cpus 4 --transfer-only --drag --network-backend passt
+```
 
 The image includes pinned fonts and an English spelling dictionary. Ordinary
 web resources use Chromium's network stack; frame navigation and file URL

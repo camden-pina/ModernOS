@@ -24,6 +24,7 @@
 #include <cerrno>
 #include <cstring>
 #include <uapi/window.h>
+#include <uapi/screen.h>
 #include <uapi/clipboard.h>
 #include <memory>
 
@@ -141,7 +142,12 @@ public:
 class ModernScreen:public QPlatformScreen {
  mutable ModernCursor pointer;
 public:
- QRect geometry() const override {return QRect(0,0,1920,1200);}
+ QRect geometry() const override {
+  coast_screen_info info={};
+  if(::syscall(COAST_SCREEN_SYSCALL,COAST_SCREEN_INFO,&info,sizeof(info))>=0 && info.width && info.height)
+   return QRect(0,0,int(info.width),int(info.height));
+  return QRect(0,0,2560,1600);
+ }
  int depth() const override {return 32;}
  QImage::Format format() const override {return QImage::Format_ARGB32_Premultiplied;}
  QDpi logicalDpi() const override {return QDpi(96,96);}

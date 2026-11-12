@@ -26,6 +26,11 @@ QEMU_CPU ?= $(if $(filter kvm,$(QEMU_ACCEL)),host,max)
 # works with Coast's USB mouse without depending on GTK's Wayland grab path.
 # VGA refresh_rate is guest-visible EDID metadata in millihertz.
 QEMU_DISPLAY ?= gtk,gl=on
+QEMU_FULLSCREEN ?= 1
+ifeq ($(filter 0 1,$(QEMU_FULLSCREEN)),)
+$(error QEMU_FULLSCREEN must be 0 or 1)
+endif
+QEMU_FULLSCREEN_ARG := $(if $(filter 1,$(QEMU_FULLSCREEN)),-full-screen,)
 FIRMWARE ?= uefi
 ifeq ($(filter bios uefi,$(FIRMWARE)),)
 $(error Unsupported FIRMWARE=$(FIRMWARE); choose bios or uefi)
@@ -42,8 +47,15 @@ QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(call coas
 else ifneq ($(filter gtk%,$(QEMU_DISPLAY)),)
 QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_GTK_BACKEND)),GDK_BACKEND=$(call coast_quote,$(QEMU_GTK_BACKEND)),)
 endif
-QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,refresh_rate=60000
-QEMU_NETWORK ?= -nic user,model=e1000e
+QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,edid=on,xres=2560,yres=1600,refresh_rate=60000
+QEMU_NETWORK ?= auto
+ifeq ($(QEMU_NETWORK),auto)
+ifneq ($(shell command -v passt >/dev/null 2>&1 && qemu-system-x86_64 -netdev help 2>/dev/null | grep -qx passt && echo yes),)
+override QEMU_NETWORK := -nic passt,model=e1000e,ipv4=on,ipv6=off,mtu=1500,address=10.0.2.15/24,gateway=10.0.2.2,map-host-loopback=10.0.2.2,tcp-ports=none,udp-ports=none
+else
+override QEMU_NETWORK := -nic user,model=e1000e
+endif
+endif
 QEMU_AUDIO ?= -audiodev sdl,id=audio0 -device AC97,audiodev=audio0
 LINUX_DISK ?=
 FAT_DISK ?=
@@ -85,7 +97,7 @@ run:
 	@if [ "$(QEMU_ACCEL)" = tcg ]; then echo "QEMU: software CPU emulation; QEMU_ACCEL=kvm enables hardware virtualization on an accessible KVM host."; fi
 	env $(QEMU_DISPLAY_ENV) qemu-system-x86_64 -accel $(call coast_quote,$(QEMU_ACCEL)) -cpu $(call coast_quote,$(QEMU_CPU)) -M q35 -smp $(SMP) -m $(MEMORY) $(QEMU_FIRMWARE) -cdrom $(call coast_quote,$(ISO_IMAGE)) \
 		-chardev $(call coast_quote,$(QEMU_CONSOLE)) -serial chardev:console \
-		-no-reboot -display $(call coast_quote,$(QEMU_DISPLAY)) $(QEMU_VIDEO) $(QEMU_NETWORK) $(QEMU_AUDIO) -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 $(QEMU_STORAGE) $(QEMU_EXTRA_ARGS)
+		-no-reboot -display $(call coast_quote,$(QEMU_DISPLAY)) $(QEMU_FULLSCREEN_ARG) $(QEMU_VIDEO) $(QEMU_NETWORK) $(QEMU_AUDIO) -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 -device usb-mouse,bus=xhci.0 $(QEMU_STORAGE) $(QEMU_EXTRA_ARGS)
 
 # These developer checks consume the in-tree userland staging area.
 USERLAND_TESTS := test test-pixel-blend test-configure-shell test-gcc-generators \

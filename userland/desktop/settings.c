@@ -4,6 +4,9 @@ typedef struct {
   int scroll, focus, page, profile_selection;
   SmoothScroll animation;
   uint64_t save_at;
+  uint64_t mode_until;
+  unsigned mode_previous_width, mode_previous_height;
+  unsigned mode_seconds;
   unsigned account_op, account_target;
   char new_password[128];
 } Settings;
@@ -11,6 +14,13 @@ typedef struct {
 enum { SETTINGS_ROWS = 16 };
 static void choose_setting(Window *,int,int);
 static const int scales[] = {100, 125, 150, 200};
+static const struct {
+  unsigned width, height;
+  const char *label;
+} display_modes[] = {
+    {2560, 1600, "2560 x 1600"}, {1920, 1200, "1920 x 1200"},
+    {1600, 1000, "1600 x 1000"}, {1280, 800, "1280 x 800"},
+    {1024, 768, "1024 x 768"}};
 static const uint32_t accents[]={THEME_ACCENT,0x3C709A,0x80709F,0x9B5CC4,0xC25D8C,0xCB655D,0xBF833D,0x438D72};
 static const uint32_t selections[]={THEME_SELECTION,0xE0EBF4,0xEBE5F3,0xEEE3F7,0xF5E1EC,0xF7E3DF,0xF4E9D9,0xDEEFE6};
 static const uint32_t accent_texts[]={THEME_SELECTION_TEXT,0x315E83,0x665684,0x70418D,0x954368,0x9B4842,0x8B602E,0x316B55};
@@ -147,6 +157,8 @@ static void config_load_root(void) {
   desk.editor_highlight = true;
   desk.scale = 100;
   desk.scale_index = 0;
+  desk.preferred_width = desk.width;
+  desk.preferred_height = desk.height;
   desk.workspace_count = 3;
   desk.wallpaper_index = 0;
   desk.wallpaper_mode = WALLPAPER_FILL;
@@ -220,6 +232,10 @@ static void config_load_root(void) {
         copy_text(desk.profile_tagline, sizeof(desk.profile_tagline), value);
     }
     if (numeric) {
+      if (!strcmp(name, "display_width") && v >= 640 && v <= desk.display_max_width)
+        desk.preferred_width = v;
+      if (!strcmp(name, "display_height") && v >= 480 && v <= desk.display_max_height)
+        desk.preferred_height = v;
       if (!strcmp(name, "profile_avatar") && v < 6)
         desk.profile_avatar = v;
       if (!strcmp(name, "terminal_palette") && v < 5)
@@ -344,6 +360,12 @@ static int config_save_root(void) {
   append_text(content, sizeof(content), num);
   append_text(content, sizeof(content), "\nscale=");
   format_uint(num, desk.scale_index);
+  append_text(content, sizeof(content), num);
+  append_text(content, sizeof(content), "\ndisplay_width=");
+  format_uint(num, desk.preferred_width);
+  append_text(content, sizeof(content), num);
+  append_text(content, sizeof(content), "\ndisplay_height=");
+  format_uint(num, desk.preferred_height);
   append_text(content, sizeof(content), num);
   append_text(content, sizeof(content), "\nworkspaces=");
   format_uint(num, desk.workspace_count);
@@ -532,6 +554,8 @@ static void scale_apply(int index) {
 void settings_reload_profile(void) {
   int old_scale = desk.scale, old_index = desk.scale_index;
   config_load();
+  if (desk.display_modeset)
+    desktop_set_resolution(desk.preferred_width, desk.preferred_height);
   int target = desk.scale_index;
   desk.scale = old_scale;
   desk.scale_index = old_index;
@@ -606,8 +630,8 @@ static const char *page_names[] = {"Profiles", "Appearance", "Wallpaper",
 static const Icon page_icons[] = {I_HOME, I_IMAGE, I_IMAGE, I_LAYOUT,
                                   I_MAX,  I_GEAR,  I_GEAR, I_GRID,I_LAYOUT,I_FOLDER};
 static const int row_page[] = {1, 2, 4, 1, 1, 2, 2, 5, 5, 5, 5, 5, 6, 6, 3, 3};
-static const int page_height[] = {760,690,620,340,260,590,380,440,440,330};
-static const int row_y[] = {200, 110, 110, 294, 110, 360, 444, 110,
+static const int page_height[] = {760,690,620,340,425,590,380,440,440,330};
+static const int row_y[] = {200, 110, 252, 294, 110, 360, 444, 110,
                             194, 278, 362, 446, 110, 194, 110, 208};
 static Rect settings_panel(Window *w) {
   Rect b = window_body(w);
@@ -657,6 +681,17 @@ static Rect extra_control(Window *w, int id) {
   int width = (b.w - S(52)) / 2;
   if (id >= 200 && id < 200 + PAGE_COUNT)
     return navigation(w, id - 200);
+  if (id >= 150 && id <= 154) {
+    int col = id - 150, count = col < 3 ? 3 : 2;
+    if (col >= 3) col -= 3;
+    int gap = S(8), cell = (b.w - S(44) - (count - 1) * gap) / count;
+    return (Rect){b.x + S(22) + col * (cell + gap),
+                  b.y + S(count == 3 ? 130 : 171) - s->scroll,
+                  cell, S(32)};
+  }
+  if (id == 155 || id == 156)
+    return (Rect){b.x + S(22) + (id - 155) * (width + S(8)),
+                  b.y + S(370) - s->scroll, width, S(32)};
   if (id >= 300 && id < 308)
     return profile_row(w, id - 300);
   if (id >= 320 && id <= 325)
@@ -903,6 +938,7 @@ static void personal_draw(Window *w) {
 }
 
 static Rect focus_rect(Window *w, int id) {
+  if (id >= 150 && id <= 156) return extra_control(w, id);
   if(id>=600 && id<600+PERSONAL_COUNT*8)return personal_rect(w,(id-600)/8,(id-600)%8);
   Slider v;
   if (slider_for(id, &v))
@@ -914,6 +950,15 @@ static Rect focus_rect(Window *w, int id) {
   return extra_control(w, id);
 }
 static bool focus_enabled(Window *w, int id) {
+  if (id >= 150 && id <= 154) {
+    unsigned at = id - 150;
+    return ((Settings *)w->state)->page == PAGE_DISPLAY && desk.display_modeset &&
+           display_modes[at].width <= (unsigned)desk.display_max_width &&
+           display_modes[at].height <= (unsigned)desk.display_max_height;
+  }
+  if (id == 155 || id == 156)
+    return ((Settings *)w->state)->page == PAGE_DISPLAY &&
+           ((Settings *)w->state)->mode_until != 0;
   if(id>=600 && id<600+PERSONAL_COUNT*8)return personal[(id-600)/8].page==((Settings *)w->state)->page && (id-600)%8<personal[(id-600)/8].count;
   if (id == 412)
     return desk.pointer_inventory.relative_touchpads > 0;
@@ -963,7 +1008,9 @@ static int controls(Window *w, int *out) {
         out[n++] = 500 + g * 7 + col;
     out[n++] = 416;
     out[n++] = 417;
-  } else
+  } else {
+    if (s->page == PAGE_DISPLAY)
+      for (int mode = 0; mode < 5; mode++) out[n++] = 150 + mode;
     for (int at = 0; at < SETTINGS_ROWS; at++) {
       static const int order[] = {4, 0, 3, 1, 5,  6,  14, 15,
                                   2, 7, 8, 9, 10, 11, 12, 13};
@@ -977,6 +1024,11 @@ static int controls(Window *w, int *out) {
         for (int col = 0; col < row_counts[row]; col++)
           out[n++] = choice_focus(row, col);
     }
+    if (s->page == PAGE_DISPLAY && s->mode_until) {
+      out[n++] = 155;
+      out[n++] = 156;
+    }
+  }
   if (s->page == PAGE_WALLPAPER) {
     out[n++] = 31;
     out[n++] = 32;
@@ -1374,12 +1426,43 @@ void settings_draw(Window *w) {
             FONT_SMALL, THEME_SECONDARY_TEXT, b.w - S(44));
     if (s->page == PAGE_DISPLAY) {
       label(b.x + S(22), y + S(64),
-            "Use a comfortable native scale for this VM display.", FONT_SMALL,
+            "Choose a display resolution and a comfortable interface scale.", FONT_SMALL,
             THEME_SECONDARY_TEXT, b.w - S(44));
-      label(b.x + S(22), y + S(174),
-            "Scaling changes logical UI size. Host display settings are "
-            "separate.",
+      char current[72], number[24];
+      copy_text(current, sizeof(current), "Current: ");
+      format_uint(number, desk.width);
+      append_text(current, sizeof(current), number);
+      append_text(current, sizeof(current), " x ");
+      format_uint(number, desk.height);
+      append_text(current, sizeof(current), number);
+      label(b.x + S(22), y + S(96), current, FONT_BOLD, THEME_TEXT,
+            b.w - S(44));
+      for (int mode = 0; mode < 5; mode++) {
+        int id = 150 + mode;
+        button(extra_control(w, id), display_modes[mode].label, I_MAX,
+               desk.width == (int)display_modes[mode].width &&
+                   desk.height == (int)display_modes[mode].height,
+               focus_enabled(w, id), s->focus == id);
+      }
+      label(b.x + S(22), y + S(316),
+            desk.display_modeset
+                ? "Resolution changes the pixels; scale changes UI size."
+                : "This display uses a fixed firmware framebuffer.",
             FONT_SMALL, THEME_SECONDARY_TEXT, b.w - S(44));
+      if (s->mode_until) {
+        char remaining[64];
+        copy_text(remaining, sizeof(remaining), "Keep this resolution? Reverting in ");
+        format_uint(number, (s->mode_until > now_ms()
+                                ? s->mode_until - now_ms() + 999 : 0) / 1000);
+        append_text(remaining, sizeof(remaining), number);
+        append_text(remaining, sizeof(remaining), " s");
+        label(b.x + S(22), y + S(348), remaining, FONT_BOLD,
+              THEME_TEXT, b.w - S(44));
+        button(extra_control(w, 155), "Keep resolution", I_CHECK, true,
+               true, s->focus == 155);
+        button(extra_control(w, 156), "Revert", I_RELOAD, false,
+               true, s->focus == 156);
+      }
     }
     if (s->page == PAGE_DOCK) {
       label(b.x + S(22), y + S(64),
@@ -1576,9 +1659,64 @@ static void save_preferences(Window *w) {
   }
 }
 
+static void display_restore(Window *w) {
+  Settings *s = w->state;
+  if (!s->mode_until) return;
+  unsigned width = s->mode_previous_width, height = s->mode_previous_height;
+  s->mode_until = 0;
+  int error = desktop_set_resolution(width, height);
+  if (error) dialog_error(w, "Revert display resolution", error);
+  invalidate_window(w);
+}
+
+static void display_choose(Window *w, unsigned at) {
+  Settings *s = w->state;
+  if (at >= 5 || !focus_enabled(w, 150 + at)) return;
+  unsigned width = display_modes[at].width, height = display_modes[at].height;
+  if (width == (unsigned)desk.width && height == (unsigned)desk.height) return;
+  if (!s->mode_until) {
+    s->mode_previous_width = desk.width;
+    s->mode_previous_height = desk.height;
+  }
+  int error = desktop_set_resolution(width, height);
+  if (error) {
+    dialog_error(w, "Change display resolution", error);
+    return;
+  }
+  if (width == s->mode_previous_width && height == s->mode_previous_height)
+    s->mode_until = 0;
+  else {
+    s->mode_until = now_ms() + 15000;
+    s->focus = 155;
+  }
+  invalidate_all();
+}
+
+static void display_keep(Window *w) {
+  Settings *s = w->state;
+  if (!s->mode_until) return;
+  s->mode_until = 0;
+  desk.preferred_width = desk.width;
+  desk.preferred_height = desk.height;
+  preferences_save(w);
+  invalidate_window(w);
+}
+
 static void activate(Window *w, int focus) {
   if(focus>=600 && focus<600+PERSONAL_COUNT*8){personal_set(w,(focus-600)/8,(focus-600)%8);return;}
   Settings *s = w->state;
+  if (focus >= 150 && focus <= 154) {
+    display_choose(w, focus - 150);
+    return;
+  }
+  if (focus == 155) {
+    display_keep(w);
+    return;
+  }
+  if (focus == 156) {
+    display_restore(w);
+    return;
+  }
   if (focus >= 320 && focus <= 325) {
     desk.profile_avatar = focus - 320;
     profiles_avatar_changed();
@@ -1815,6 +1953,15 @@ void settings_key(Window *w, Key k) {
 }
 void settings_tick(Window *w) {
   Settings *s = w->state;
+  if (s->mode_until) {
+    uint64_t now = now_ms();
+    if (now >= s->mode_until)
+      display_restore(w);
+    else if (s->mode_seconds != (s->mode_until - now + 999) / 1000) {
+      s->mode_seconds = (s->mode_until - now + 999) / 1000;
+      invalidate_window(w);
+    }
+  }
   if (s->save_at && slider_owner != w && now_ms() >= s->save_at) {
     s->save_at = 0;
     preferences_save(w);
@@ -1837,6 +1984,7 @@ void settings_tick(Window *w) {
 bool settings_close(Window *w) {
   account_cancel(w,NULL);
   Settings *s = w->state;
+  if (s->mode_until) display_restore(w);
   if (slider_owner == w)
     slider_owner = NULL;
   if (s->save_at) {

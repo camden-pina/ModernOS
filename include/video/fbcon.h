@@ -11,6 +11,7 @@ void fbcon_init(struct boot_framebuffer *fb);
 void fbcon_clear(void);
 void fbcon_putc(char c);
 bool fbcon_display_info(struct os_display_info *info);
+void fbcon_mode_changed(uint32_t width, uint32_t height);
 void fbcon_graphics(bool enabled);
 void fbcon_present(const struct os_display_rect *rect, const uint32_t *pixels);
 struct address_space;

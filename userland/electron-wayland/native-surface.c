@@ -80,6 +80,7 @@ struct output {
     uint64_t scanned_pixels,presented_pixels,possible_pixels,unchanged_frames;
     int attached,lost,selected,fatal,hold,closed,role,surface_has_buffer,close_fallback,checker,electron,workbench,browser;
     uint64_t first_ms,next_frame_us;
+    uint64_t display_polled_at;
 };
 static volatile sig_atomic_t stopping;
 static int frame_limit(const char *p,unsigned *out) {
@@ -217,8 +218,29 @@ static void commit(struct wl_client *c,struct wl_resource *r) {
            letterboxed old content as if it were a complete new-size frame. */
         int max_width=(o->electron?MAX_WIDTH:o->width)+(o->electron?64*o->buffer_scale:0);
         int max_height=(o->electron?MAX_HEIGHT:o->height)+(o->electron?64*o->buffer_scale:0);
-        if(buffer && (width<1 || width>max_width || height<1 || height>max_height || stride<width*4 || stride>(o->electron?max_width*4:4096) ||
-            (format!=WL_SHM_FORMAT_XRGB8888 && format!=WL_SHM_FORMAT_ARGB8888))) {fail(r,"buffer exceeds output/format bounds");return;}
+        if(buffer && o->electron && o->frames && o->xdg.initial &&
+           (width>max_width || height>max_height) &&
+           width>0 && height>0 && width<=MAX_WIDTH*2+128 && height<=MAX_HEIGHT*2+128 &&
+           (int64_t)stride>=(int64_t)width*4 &&
+           (format==WL_SHM_FORMAT_XRGB8888 || format==WL_SHM_FORMAT_ARGB8888)) {
+            /* A DPI change can leave an old-scale Chromium buffer in flight
+               after the new configure is acknowledged. It cannot fit the
+               bounded native window. Release it and retain the last valid
+               frame so the client can render against the new output scale. */
+            printf("NATIVE_RESIZE_RETAIN oversized=%dx%d stride=%d output=%dx%d scale=%d\n",
+                   width,height,stride,o->width,o->height,o->scale);
+            wl_buffer_send_release(buffer);o->releases++;
+            pending_unlink(o);o->attached=0;
+            struct frame_callback *callback;
+            wl_list_for_each(callback,&o->callbacks,link)callback->committed=1;
+            return;
+        }
+        if(buffer && (width<1 || width>max_width || height<1 || height>max_height || (int64_t)stride<(int64_t)width*4 || stride>(o->electron?max_width*4:4096) ||
+            (format!=WL_SHM_FORMAT_XRGB8888 && format!=WL_SHM_FORMAT_ARGB8888))) {
+            fprintf(stderr,"P6_BUFFER_REJECT source=%dx%d stride=%d format=%u bound=%dx%d output=%dx%d scale=%d\n",
+                    width,height,stride,format,max_width,max_height,o->width,o->height,o->scale);
+            fail(r,"buffer exceeds output/format bounds");return;
+        }
         if(!o->window.id) {
             o->window=(struct os_window_info){.version=OS_WINDOW_PIXEL_CLIENT_VERSION,.width=o->width,.height=o->height};
             strcpy(o->window.title,o->browser?"Chromium Browser":o->workbench?"Coast - Code OSS":o->electron?"Coast - upstream Electron":o->checker?"Wayland xdg - protocol lifecycle check":"Wayland xdg - upstream Weston simple-shm");
@@ -584,6 +606,10 @@ int main(int argc,char **argv) {
             if(delivered)o.next_frame_us=callback_us+(o.workbench && !o.browser?8333:16667);
         }
         if(o.window.id) {
+            if(o.electron && now-o.display_polled_at>=250) {
+                o.display_polled_at=now;
+                output_refresh(&o);
+            }
             native_geometry(&o);
             if(o.stall_ms && !o.stall_started && o.key_focused) {o.stall_started=now_ms();printf("I1_INPUT_STALL_BEGIN ms=%u\n",o.stall_ms);}
             if(o.stall_started && now_ms()-o.stall_started<o.stall_ms)continue;

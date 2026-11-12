@@ -533,7 +533,7 @@ static void service_decoder(void) {
 }
 static int request_wallpaper(int index, const char *path) {
   if (!spare) {
-    spare_bytes = (size_t)desk.width * desk.height * 4;
+    spare_bytes = (size_t)desk.display_max_width * desk.display_max_height * 4;
     spare = allocate(spare_bytes);
     if (!spare)
       return -E_NOMEM;
@@ -663,9 +663,21 @@ void wallpaper_generate(void) {
   generated_width = desk.width;
   generated_height = desk.height;
   if (!spare) {
-    spare_bytes = (size_t)desk.width * desk.height * 4;
+    spare_bytes = (size_t)desk.display_max_width * desk.display_max_height * 4;
     spare = allocate(spare_bytes);
   }
+}
+void wallpaper_display_changed(void) {
+  /* Both wallpaper buffers were allocated at the boot mode's maximum size.
+     Restart any partial row job using the new stride, and show a clean
+     placeholder until the selected wallpaper has been regenerated. */
+  for (size_t i = 0, count = (size_t)desk.width * desk.height; i < count; i++)
+    desk.wallpaper[i] = 0x182c35;
+  generated = false;
+  if (job.busy)
+    job.row = 0;
+  else
+    wallpaper_generate();
 }
 void wallpaper_prepare_previews(void) {
   previews_requested = true;

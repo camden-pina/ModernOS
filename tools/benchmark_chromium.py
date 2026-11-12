@@ -31,6 +31,8 @@ def main():
     p.add_argument('--network-backend', choices=['user', 'passt'], default='user')
     p.add_argument('--google-only', action='store_true')
     p.add_argument('--profile', action='store_true')
+    p.add_argument('--drag', action='store_true',
+                   help='measure native-window dragging after the navigation fixture')
     args = p.parse_args()
     out = args.output_root.resolve(); out.mkdir(parents=True, exist_ok=False)
     (out / 'HARNESS.py').write_bytes(Path(__file__).read_bytes())
@@ -122,7 +124,7 @@ def main():
         vm.shell_command("printf 'scale=3\\nterminal_shell=1\\n' > /home/user/.config/desktop.ini")
         vm.send("build-sh -c 'COAST_BROWSER_QA=1 " + ('COAST_BROWSER_PROFILE=1 ' if args.profile else '') + "exec /bin/gui --trace --stats'\n")
         vm.until(rb'GUI_READY:', 60); d = desktop.DesktopTest(vm)
-        began = time.monotonic(); d.launch('Chromium Browser')
+        began = time.monotonic(); window_id = d.launch('Chromium Browser')
         wait(r'COAST_BROWSER .*"event":"page"[^\n]*Welcome to Coast', timeout=90)
         report['launch_seconds'] = time.monotonic() - began
         print('Launch seconds:', report['launch_seconds'], flush=True)
@@ -180,6 +182,19 @@ def main():
             start = len(raw()); d.key('l', 'ctrl'); d.key('v', 'ctrl'); d.key('ret')
             wait(r'COAST_BROWSER .*"event":"navigation"[^\n]*' + re.escape(origin + '/address-pasted'), start, timeout=10)
             report['native_to_address'] = True
+        if args.drag:
+            geometry = d.geometry(window_id)
+            anchor_x = geometry['x'] + geometry['width'] // 2
+            anchor_y = geometry['y'] + 20
+            d.move(anchor_x, anchor_y)
+            d.button(True)
+            drag_start = time.monotonic()
+            for index in range(120):
+                d.move(anchor_x + (index % 60) * 2, anchor_y + index % 30,
+                       delay=1 / 120)
+            d.button(False)
+            report['drag_wall_seconds'] = time.monotonic() - drag_start
+            print('Drag wall seconds:', report['drag_wall_seconds'], flush=True)
         d.key('f4', 'alt'); wait(r'C1_RUNTIME_WAIT status=0 exit=0 signal=0 timeout=0', timeout=30)
         d.exit()
         if args.network_checks:
@@ -209,6 +224,11 @@ def main():
         server.shutdown(); server.server_close()
         log = out / f'uefi-{args.cpus}cpu-chromium-benchmark.log'
         if log.is_file():
+            timing = re.findall(r'GUI_TIMING compose_us=(\d+) upload_us=(\d+) drag_frames=(\d+) drag_us=(\d+) drag_max_us=(\d+) surface_updates=(\d+)',
+                                log.read_text(errors='replace'))
+            if timing:
+                report['desktop_timing'] = dict(zip(('compose_us', 'upload_us', 'drag_frames',
+                    'drag_us', 'drag_max_us', 'surface_updates'), map(int, timing[-1])))
             observations = []
             for line in log.read_text(errors='replace').splitlines():
                 if line.startswith('COAST_BROWSER '):

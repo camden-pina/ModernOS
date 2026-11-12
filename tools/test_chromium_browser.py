@@ -118,8 +118,13 @@ fetch('/data').then(r=>r.text()).then(text=>{document.getElementById('proof').te
         vm.until(rb'GUI_READY:', 60); d = desktop.DesktopTest(vm); before = d.screenshot('00-desktop')
         window = d.launch('Chromium Browser'); wait(r'COAST_BROWSER .*"event":"ready"', timeout=60)
         wait(r'COAST_BROWSER .*"event":"page"[^\n]*Welcome to Coast', timeout=30)
-        time.sleep(2); home = d.screenshot('01-home')
-        assert home.count(bytes.fromhex('f8fafc')) > 10000, 'Actual home page pixels missing'
+        for _ in range(20):
+            home = d.screenshot('01-home')
+            if home.count(bytes.fromhex('f8fafc')) > 10000:
+                break
+            time.sleep(.5)
+        else:
+            raise AssertionError('Actual home page pixels missing after 10 s')
         geometry = d.geometry(window)
         body_top = geometry['y'] + geometry['body'] + 1
         for px in (geometry['x'] + 8, geometry['x'] + geometry['width'] - 9):
@@ -129,16 +134,22 @@ fetch('/data').then(r=>r.text()).then(text=>{document.getElementById('proof').te
         launch_geometry = re.findall(r'DESKTOP GEOMETRY window=' + str(window) +
             r' workspace=\d+ x=(\d+) y=(\d+) width=(\d+) height=(\d+)', raw())
         assert launch_geometry, 'Missing launch placeholder geometry'
-        old_x, old_y, _, old_height = map(int, launch_geometry[0])
-        assert geometry['x'] - old_x > 40, 'Expected the native client to replace its launch placeholder'
-        exposed_x = old_x + (geometry['x'] - old_x) // 2
-        exposed_y = old_y + old_height // 2
-        at = (exposed_y * d.width + exposed_x) * 3
-        old_pixel, exposed_pixel = before[at:at + 3], home[at:at + 3]
-        assert len(old_pixel) == len(exposed_pixel) == 3 and max(old_pixel) > 120
-        assert max(exposed_pixel) > max(old_pixel) // 2, (
-            'Launch placeholder frame remained after the native window moved',
-            exposed_x, exposed_y, old_pixel, exposed_pixel)
+        old_x, old_y, old_width, old_height = map(int, launch_geometry[0])
+        assert abs(geometry['x'] - old_x) > 40, 'Expected the native client to replace its launch placeholder'
+        if geometry['x'] > old_x:
+            exposed_x = old_x + (geometry['x'] - old_x) // 2
+            exposed_y = old_y + old_height // 2
+            at = (exposed_y * d.width + exposed_x) * 3
+            old_pixel, exposed_pixel = before[at:at + 3], home[at:at + 3]
+            assert len(old_pixel) == len(exposed_pixel) == 3 and max(old_pixel) > 120
+            assert max(exposed_pixel) > max(old_pixel) // 2, (
+                'Launch placeholder frame remained after the native window moved',
+                exposed_x, exposed_y, old_pixel, exposed_pixel)
+        else:
+            # At 2560x1600 the real native window encloses its smaller
+            # placeholder, so there is no exposed strip to sample.
+            assert geometry['x'] < old_x and geometry['x'] + geometry['width'] > old_x + old_width
+            assert geometry['y'] <= old_y and geometry['y'] + geometry['height'] > old_y + old_height
         wait('BROWSER_NETWORK_CHECK_PASS')
         passed('Native desktop launches sandboxed Chromium with square client corners, clears its launch frame and paints its home page')
         start = navigate(origin + '/')

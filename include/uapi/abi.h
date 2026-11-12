@@ -463,12 +463,15 @@ enum {
     DISPLAY_PRESENT_BATCH,
     DISPLAY_CAPS,
     DISPLAY_PRESENT_SWAP,
-    DISPLAY_KEYBOARD_SNAPSHOT
+    DISPLAY_KEYBOARD_SNAPSHOT,
+    DISPLAY_SET_MODE,
+    DISPLAY_MODE_LIMITS
 };
 
 #define DISPLAY_CAP_PAGE_FLIP 1
 #define DISPLAY_CAP_WRITE_COMBINING 2
 #define DISPLAY_CAP_LARGE_PAGES 4
+#define DISPLAY_CAP_MODESET 8
 #define DISPLAY_BACKEND_LINEAR 0
 #define DISPLAY_BACKEND_QEMU_VBE 1
 
@@ -478,6 +481,12 @@ struct os_display_caps {
 
 struct os_display_info {
     uint32_t version, width, height, format, max_pixels, reserved[3];
+};
+
+/* A display owner may change the active QEMU VGA mode without replacing its
+   framebuffer mapping. The current boot mode is the maximum advertised size. */
+struct os_display_mode {
+    uint32_t width, height;
 };
 
 struct os_display_rect {

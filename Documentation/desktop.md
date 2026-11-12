@@ -71,8 +71,14 @@ and Code OSS currently run in the owner profile. See [accounts](accounts.md).
 
 ## Appearance, input and clipboard
 
-Settings controls the desktop theme, appearance, scaling, profiles and Terminal
-preferences. UI scales are 100%, 125%, 150% and 200%. The software compositor
+Settings controls display resolution, the desktop theme, appearance, scaling,
+profiles and Terminal preferences. The 2560×1600 QEMU mode is the default,
+shown fullscreen by `make run`.
+On supported QEMU VGA, Display offers 2560×1600, 1920×1200, 1600×1000,
+1280×800 and 1024×768 within the framebuffer size reserved at boot. A new
+resolution reverts after 15 seconds unless kept. The selected resolution is
+saved with preferences; a writable disk is needed to keep it across reboots.
+UI scales are 100%, 125%, 150% and 200%. The software compositor
 uses cached surfaces, damage tracking, clipping, shadows and backdrop blur;
 application pixels are not stretched during window resize or layout changes.
 The wallpaper, theme and icons are project artwork.
@@ -89,8 +95,9 @@ brokers/backends. See [input and clipboard](input-and-clipboard.md).
 records application/window actions for guest tests. The desktop, Qt, browser,
 editor and nested VM suites operate actual guest windows with USB input.
 
-The default boot mode is 1920×1200; the boot configuration can select another
-firmware-supported 32-bit mode. Coast runs as a RAM-backed live system. Persist files on a supported writable
+The default boot mode is 2560×1600; the boot configuration can select another
+firmware-supported 32-bit mode. Unsupported video devices retain their
+firmware framebuffer and expose only scaling controls. Coast runs as a RAM-backed live system. Persist files on a supported writable
 mount before shutdown. Hardware, filesystem, application and website support
 is bounded by the implemented kernel interfaces and the tested ports. The
 native desktop is a software-rendered userspace desktop; generic GPU APIs,

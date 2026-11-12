@@ -13,6 +13,8 @@ static volatile uint16_t *dispi;
 static uint8_t *video;
 static bool wc, synchronized;
 static unsigned front;
+static uint32_t maximum_width, maximum_height;
+static uint64_t video_bytes;
 static struct os_damage_rect previous[OS_DISPLAY_MAX_RECTS];
 static unsigned previous_count;
 
@@ -69,12 +71,15 @@ void scanout_probe(pci_device_header_t *device) {
     wc = candidate_wc;
     video = mapped;
     dispi = regs;
+    maximum_width = scanout_fb->width;
+    maximum_height = scanout_fb->height;
+    video_bytes = capacity;
     pr_info("Display: QEMU VBE buffered scanout, 2 pages, %s video mapping\n", wc ? "WC" : "UC");
 }
 
 void scanout_caps(struct os_display_caps *out) {
     *out = (struct os_display_caps){
-        .flags = (dispi ? DISPLAY_CAP_PAGE_FLIP : 0) | (wc ? DISPLAY_CAP_WRITE_COMBINING : 0) |
+        .flags = (dispi ? DISPLAY_CAP_PAGE_FLIP | DISPLAY_CAP_MODESET : 0) | (wc ? DISPLAY_CAP_WRITE_COMBINING : 0) |
                  (vmem_video_large_pages() ? DISPLAY_CAP_LARGE_PAGES : 0),
         .backend = dispi ? DISPLAY_BACKEND_QEMU_VBE : DISPLAY_BACKEND_LINEAR,
         .buffers = dispi ? 2 : 1};
@@ -92,6 +97,43 @@ void scanout_reset(void) {
     front = 0;
     synchronized = false;
     previous_count = 0;
+}
+
+bool scanout_set_mode(uint32_t width, uint32_t height) {
+    if (!dispi || width < 640 || height < 480 || width > maximum_width ||
+        height > maximum_height || (uint64_t)width * height * 8 > video_bytes)
+        return false;
+    if (width == scanout_fb->width && height == scanout_fb->height)
+        return true;
+
+    /* The mapped two-page aperture was reserved at boot. Restrict later modes
+       to that allocation, then verify every register before publishing new
+       framebuffer dimensions to console or userspace. */
+    uint16_t old[10];
+    for (unsigned i = 1; i <= 9; i++) old[i] = dispi[i];
+    dispi[4] = old[4] & ~1u;
+    dispi[1] = width;
+    dispi[2] = height;
+    dispi[3] = 32;
+    dispi[6] = width;
+    dispi[8] = dispi[9] = 0;
+    dispi[4] = old[4];
+    if (dispi[1] != width || dispi[2] != height || dispi[3] != 32 ||
+        dispi[6] != width || dispi[7] < height * 2 || !(dispi[4] & 1)) {
+        dispi[4] = old[4] & ~1u;
+        for (unsigned i = 1; i <= 3; i++) dispi[i] = old[i];
+        for (unsigned i = 6; i <= 9; i++) dispi[i] = old[i];
+        dispi[4] = old[4];
+        return false;
+    }
+    scanout_reset();
+    fbcon_mode_changed(width, height);
+    pr_info("Display: switched to %ux%u XRGB8888\n", width, height);
+    return true;
+}
+
+void scanout_mode_limits(struct os_display_mode *out) {
+    *out = (struct os_display_mode){maximum_width, maximum_height};
 }
 
 static struct os_damage_rect bounds(struct os_damage_rect a, struct os_damage_rect b) {

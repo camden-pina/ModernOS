@@ -447,6 +447,22 @@ bool fbcon_display_info(struct os_display_info *info) {
     return true;
 }
 
+void fbcon_mode_changed(uint32_t width, uint32_t height) {
+    const struct font_desc *font = get_default_font(width, height);
+    uint64_t f = spin_lock_irqsave(&framebuffer_lock);
+    fb_ctx->width = width;
+    fb_ctx->height = height;
+    fb_ctx->pitch = (uint64_t)width * 4;
+    current_font = font;
+    fb_cols = width / (size_t)current_font->width;
+    fb_rows = height / (size_t)current_font->height;
+    cursor_x = cursor_y = saved_x = saved_y = 0;
+    scroll_top = 0;
+    scroll_bottom = fb_rows - 1;
+    pending_wrap = false;
+    spin_unlock_irqrestore(&framebuffer_lock, f);
+}
+
 void fbcon_winsize(struct os_winsize *size) {
     *size = (struct os_winsize){.rows = fb_ctx ? fb_rows : 25,
                                 .cols = fb_ctx ? fb_cols : 80,

@@ -235,7 +235,8 @@ typedef struct {
   uint64_t material_epoch, glass_updates, glass_pixels, glass_time_us,
       glass_fallbacks;
 
-  int width, height, scale, scale_index, workspace, workspace_count, focused, z,
+  int width, height, display_max_width, display_max_height,
+      preferred_width, preferred_height, scale, scale_index, workspace, workspace_count, focused, z,
       next_id;
 
   uint32_t accent, selection, accent_text;
@@ -259,7 +260,7 @@ typedef struct {
 
   bool running, trace, launcher,
       super_used, quit_pending;
-  bool dark_mode, buffered_display;
+  bool dark_mode, buffered_display, display_modeset;
 
   int mouse_x, mouse_y, old_mouse_x, old_mouse_y;
   Rect cursor_rect;
@@ -315,6 +316,7 @@ typedef struct {
 } Desktop;
 
 extern Desktop desk;
+int desktop_set_resolution(unsigned width, unsigned height);
 int game_open(Window *, const char *);
 void game_draw(Window *);
 bool game_mouse(Window *, int, int, unsigned, int);
@@ -400,6 +402,7 @@ bool input_key(char *value, size_t capacity, int *cursor, int *anchor, Key key);
 void scrollbar(Rect viewport, int content_height, int scroll);
 
 void wallpaper_generate(void);
+void wallpaper_display_changed(void);
 extern const char *const wallpaper_names[WALLPAPER_COUNT];
 extern const uint32_t wallpaper_backgrounds[3];
 int wallpaper_set(int index, const char *path);

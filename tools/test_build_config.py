@@ -123,9 +123,10 @@ class ConfigurationTests(unittest.TestCase):
         argv = shlex.split(next(line for line in launch.splitlines() if line.startswith('env ')))
         self.assertEqual(argv[:3], ['env', 'GDK_BACKEND=x11', 'qemu-system-x86_64'])
         self.assertEqual(argv[argv.index('-display') + 1], 'gtk,gl=on')
+        self.assertIn('-full-screen', argv)
         self.assertEqual(argv[argv.index('-bios') + 1], str(firmware))
         self.assertEqual(argv[argv.index('-m') + 1], '16G')
-        self.assertEqual(argv[argv.index('-device') + 1], 'VGA,vgamem_mb=32,refresh_rate=60000')
+        self.assertEqual(argv[argv.index('-device') + 1], 'VGA,vgamem_mb=32,edid=on,xres=2560,yres=1600,refresh_rate=60000')
         self.assertEqual(argv[argv.index('-cdrom') + 1],
                          str(ROOT / 'build/coast/image/Coast.iso'))
         alternate = self.make('-n', 'run', 'QEMU_DISPLAY=sdl,gl=on',
@@ -134,6 +135,11 @@ class ConfigurationTests(unittest.TestCase):
                                           if line.startswith('env ')))
         self.assertEqual(alternate_argv[:2], ['env', 'SDL_VIDEODRIVER=wayland'])
         self.assertEqual(alternate_argv[alternate_argv.index('-display') + 1], 'sdl,gl=on')
+        windowed = self.make('-n', 'run', 'QEMU_FULLSCREEN=0',
+                             environment=environment).stdout.replace(chr(92) + chr(10), ' ')
+        windowed_argv = shlex.split(next(line for line in windowed.splitlines()
+                                          if line.startswith('env ')))
+        self.assertNotIn('-full-screen', windowed_argv)
 
     def test_saved_output_parent_changes_build_and_launch_together(self):
         config.save(self.path, {**config.defaults(), 'O': str(self.directory / 'output')})

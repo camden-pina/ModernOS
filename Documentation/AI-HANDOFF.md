@@ -19,7 +19,8 @@ assembly and optional qualification. `APPS` and `WITHOUT` select optional apps;
 build requirements and installed-app requirements are separate. Keep one public
 `make iso`/`make run` interface without named image editions.
 `make run` boots `build/coast/image/Coast.iso` without rebuilding it.
-It defaults to UEFI, KVM when available, GTK/OpenGL and 1920×1200. The guest
+It defaults to UEFI, KVM when available, fullscreen GTK/OpenGL and 2560×1600.
+`make run QEMU_FULLSCREEN=0` opens a window. The guest
 starts the desktop automatically as owner UID 1000; its initial sudo password
 is `root`. Ctrl+Alt+Enter exits to the physical console and, at its shell prompt,
 starts a new desktop session. Leaving the GUI closes windows after unsaved-work
@@ -123,7 +124,7 @@ that build's exact artifact hashes and record
 owned-VM shutdown. The desktop screenshot in `images/desktop.png` is an actual
 capture of Coast's Files application.
 
-The latest fresh run also passed Chromium's square-client-corner and
+An earlier run also passed Chromium's square-client-corner and
 cleared-launch-frame screenshot checks and Code OSS's zero-mismatch desktop
 recomposition check. A two-vCPU local Chromium benchmark launched in 6.87 s
 versus 8.74 s in the earlier baseline. On this host, 120 KVM window-drag frames
@@ -131,17 +132,31 @@ averaged 5.25 ms with GTK/OpenGL; its display trace reported about 102 updates/s
 versus about 19 surface publications/s with SDL/OpenGL. Coast still renders in
 software inside emulated VGA; the host OpenGL backend only displays those pixels.
 
-The current 1920×1200 image was rebuilt with `make iso JOBS=16 QUALIFY=0` and
+The current 2560×1600 image was rebuilt with `make iso JOBS=16 QUALIFY=0` and
 passed all 25 selected stages. Its exact SHA-256 is
-`3bdeebce8e06010f2e194ce26728b7877823c651adc99f24d7d98262cd90c8d5`.
-UEFI and BIOS boots with four CPUs passed automatic desktop startup,
-Ctrl+Alt+Enter console switching, native health and USB input. The host
-GTK/XWayland mouse test passed motion, clicks, dragging and pixel restoration;
-the 120-frame GTK drag check reported about 102 host display updates/s. The
-Qt Widgets guest check passed launch, input, resize, save and clean exit.
-Reports are under `build/desktop-boot-1610-20261112-r1/` and
-`build/qt6-1610-20261112-r1/`. The full 11-phase qualification was not rerun
-for this image hash.
+`a461e3230a8069bb4f8ca3c7fc0cc566ae0803907a56dd4ddfcb37a78eb905e7`.
+UEFI and BIOS four-CPU boots passed automatic desktop startup, console
+switching, native health and USB input. The Qt Widgets guest check passed
+launch, input, resize, save and clean exit. The resolution test passed the
+2560×1600 default, 1920×1200 preview and timeout rollback, keep/reload, and
+Chromium repaint while shrinking and expanding an open browser. The full
+Chromium suite passed sandbox, page painting, HTTP/JavaScript, forms, history,
+tabs, fullscreen, TLS rejection, downloads and clean helper exit. Code OSS also
+passed its 17 desktop, file, redraw, relaunch and cleanup checks on the same
+ISO; forced full recomposition matched the incremental pixels exactly. Reports
+are under `build/desktop-boot-final-20261112/`, `build/qt6-final-20261112/`,
+`build/display-resolution-final-20261112/`, `build/browser-final-20261112/`
+and `build/codeoss-final-20261112/`.
+The 120-frame native Chromium drag benchmark averaged about 9 ms per frame at
+2560×1600. The first local 8 MiB page took 0.44 s with passt and 0.46 s with
+QEMU user networking on the same ISO; one run does not establish a broad
+network speedup. Cold launch took 7.5 s and 8.3 s respectively. The host
+GTK/XWayland window was observed at the exact 2560×1600 fullscreen geometry;
+XTest on Wayland delivered mouse motion and buttons but placed its synthetic
+pointer below the intended title bar. Physical host-pointer automation was
+blocked by a pending Wayland portal permission, so actual host dragging still
+needs a manual check on this image. The full 11-phase qualification was not
+rerun for this image hash.
 
 A source kit was transferred into a disposable Coast VM. Coast GCC compiled the
 desktop kernel and native userland; pinned NASM, xorriso and mtools were also

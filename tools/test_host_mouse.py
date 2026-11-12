@@ -241,7 +241,8 @@ def test(cpus, input_backend='xtest'):
     vm = None
     try:
         vm = VM(cpus, storage=False, accel='kvm', display='gtk,gl=on',
-                label='host-mouse-x11', trace_display=True)
+                label='host-mouse-x11', trace_display=True,
+                extra_args=['-full-screen'])
         assert vm.qmp('query-kvm')['enabled']
         fixtures(vm)
         vm.send('gui --stats --trace\n')

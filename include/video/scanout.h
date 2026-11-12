@@ -10,5 +10,7 @@ void scanout_probe(pci_device_header_t *);
 void scanout_caps(struct os_display_caps *);
 bool scanout_streaming_copy(void);
 void scanout_reset(void);
+bool scanout_set_mode(uint32_t width, uint32_t height);
+void scanout_mode_limits(struct os_display_mode *out);
 bool scanout_present(const struct address_space *, const struct os_display_batch *);
 #endif

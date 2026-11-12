@@ -46,6 +46,27 @@ static void bind_output(struct wl_client *c,void *data,uint32_t version,uint32_t
 static int output_init(struct output *o) {
     return wl_global_create(o->display,&wl_output_interface,2,o,bind_output)?0:-1;
 }
+static void output_refresh(struct output *o) {
+    struct os_display_info info={0};
+    if(syscall(SYS_display,DISPLAY_INFO,&info,sizeof(info)) ||
+       !info.width || !info.height ||
+       (o->display_width==(int)info.width && o->display_height==(int)info.height))return;
+    o->display_width=info.width;o->display_height=info.height;
+    int scale=info.width>=2200 && info.height>=1400?2:1;
+    o->scale=scale;
+    for(unsigned i=0;i<OUTPUT_LIMIT;i++)if(o->outputs[i].resource) {
+        struct wl_resource *r=o->outputs[i].resource;
+        wl_output_send_mode(r,WL_OUTPUT_MODE_CURRENT|WL_OUTPUT_MODE_PREFERRED,
+                            o->display_width,o->display_height,
+                            o->workbench && !o->browser?120000:60000);
+        if(wl_resource_get_version(r)>=2) {
+            wl_output_send_scale(r,scale);
+            wl_output_send_done(r);
+        }
+    }
+    printf("P6_DISPLAY_MODE width=%d height=%d scale=%d\n",
+           o->display_width,o->display_height,scale);
+}
 static void region_destroyed(struct wl_resource *r) {
     struct o1_region *region=wl_resource_get_user_data(r);
     if(region->output->region_count)region->output->region_count--;else region->output->fatal=1;

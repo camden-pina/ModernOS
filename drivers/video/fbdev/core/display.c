@@ -4,12 +4,16 @@
 #include <video/display.h>
 #include <video/fbcon.h>
 #include <video/scanout.h>
+#include <uapi/screen.h>
 #include <sched.h>
 #include <tty.h>
 #include <mm/pmm.h>
 #include <string.h>
 
 static mutex_t display_mutex;
+_Static_assert(COAST_SCREEN_SYSCALL == SYS_display && COAST_SCREEN_INFO == DISPLAY_INFO &&
+               sizeof(struct coast_screen_info) == sizeof(struct os_display_info),
+               "Qt display query ABI");
 static spinlock_t event_lock;
 static unsigned owner, head, tail, dropped;
 static struct {
@@ -127,7 +131,17 @@ long display_call(struct task *t, unsigned op, uint64_t pointer, uint64_t size) 
         return user_copy_out(&t->space, pointer, &caps, sizeof(caps)) ? 0 : -E_FAULT;
     }
 
-    if (op > DISPLAY_PRESENT_SWAP)
+    if (op == DISPLAY_MODE_LIMITS) {
+        struct os_display_mode limits;
+        if (size != sizeof(limits))
+            return -E_INVAL;
+        scanout_mode_limits(&limits);
+        if (!limits.width || !limits.height)
+            limits = (struct os_display_mode){info.width, info.height};
+        return user_copy_out(&t->space, pointer, &limits, sizeof(limits)) ? 0 : -E_FAULT;
+    }
+
+    if (op > DISPLAY_MODE_LIMITS)
         return -E_INVAL;
     if (!tty_is_foreground(task_input_identity(t)))
         return -E_PERM;
@@ -160,6 +174,15 @@ long display_call(struct task *t, unsigned op, uint64_t pointer, uint64_t size) 
         }
     } else if (owner != t->pid)
         result = -E_PERM;
+    else if (op == DISPLAY_SET_MODE) {
+        struct os_display_mode mode;
+        if (size != sizeof(mode) || !user_copy_in(&t->space, &mode, pointer, sizeof(mode)))
+            result = -E_INVAL;
+        else if (!scanout_set_mode(mode.width, mode.height))
+            result = -E_NOTSUP;
+        else
+            canvas.owner = 0;
+    }
     else if (op == DISPLAY_PRESENT_BATCH || op == DISPLAY_PRESENT_SWAP) {
         struct os_display_batch batch = {0};
         if (size != sizeof(batch) && size != OS_DISPLAY_LEGACY_BATCH_SIZE)

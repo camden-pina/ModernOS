@@ -36,7 +36,11 @@ source build: reserve more than 100 GB for it plus space for the other build
 trees. The desktop VM uses 16 GiB RAM. `make run` uses KVM when available and
 GTK with host OpenGL; on Wayland hosts with XWayland, it selects GTK's X11
 backend for reliable relative mouse input. Coast's desktop still renders
-in software through emulated VGA at a 1920×1200 default boot resolution. [Run options](Documentation/build-system.md#run-arguments)
+in software through emulated VGA at a 2560×1600 default boot resolution. QEMU
+starts fullscreen so the same-size host display does not crop the guest;
+`make run QEMU_FULLSCREEN=0` opens a window instead. Coast
+Settings → Display offers resolution and interface-scale choices; changes
+revert after 15 seconds unless kept. [Run options](Documentation/build-system.md#run-arguments)
 cover alternate host display backends.
 
 `make iso` defaults to the complete desktop: the kernel, native desktop and account
@@ -119,9 +123,11 @@ UEFI/BIOS boot checks at one and four CPUs. This build reused verified
 source-built Electron/Node components; a build of their full graph from an
 empty checkout remains unverified. [Source builds](Documentation/source-builds.md)
 records the precise coverage and remaining prebuilt inputs.
-The current 1920×1200 revision also passed UEFI/BIOS desktop boots,
-GTK/XWayland host mouse dragging and a Qt Widgets guest check; the full
-11-phase qualification has not been rerun for this image hash.
+This 2560×1600 revision passed UEFI/BIOS desktop boots, Qt Widgets, Code OSS,
+Chromium's browser suite and live display resizing with an open browser. The exact ISO
+hash, performance measurements and remaining host-pointer check are recorded
+in [the handoff](Documentation/AI-HANDOFF.md). The full 11-phase qualification
+has not been rerun for this revision.
 
 See [the build guide](Documentation/build-system.md), [desktop](Documentation/desktop.md),
 [browser](Documentation/chromium-browser.md), [accounts](Documentation/accounts.md),
