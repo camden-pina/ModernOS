@@ -141,7 +141,7 @@ public:
 class ModernScreen:public QPlatformScreen {
  mutable ModernCursor pointer;
 public:
- QRect geometry() const override {return QRect(0,0,2560,1600);}
+ QRect geometry() const override {return QRect(0,0,1920,1080);}
  int depth() const override {return 32;}
  QImage::Format format() const override {return QImage::Format_ARGB32_Premultiplied;}
  QDpi logicalDpi() const override {return QDpi(96,96);}

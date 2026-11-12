@@ -1,7 +1,7 @@
 # Chromium browser for Coast
 
-Build with `make iso`, boot with `make run`, and enter
-`gui` at the Coast console. Super+B opens Chromium. Super+Space also opens
+Build with `make iso` and boot with `make run`; the desktop starts automatically.
+Super+B opens Chromium. Super+Space also opens
 Spotlight; search for Chromium Browser. Reopening the application restores its
 running window.
 
@@ -9,6 +9,9 @@ Coast uses Electron 43.7.3 / Chromium 150.0.7871.250 with the project's
 Linux-compatible ABI profile, native display bridge, networking and renderer
 sandbox. Page rendering and JavaScript run inside Coast. The browser uses
 software rendering and the port's jitless execution policy.
+`make run` uses host OpenGL for QEMU's GTK window; Chromium and the Coast
+desktop still render their pixels in software inside the guest. Complex or
+animated sites are therefore more demanding than simple pages.
 
 ## Navigation
 

@@ -199,6 +199,10 @@ static void dispatch_key(Key k) {
     dialog_key(k);
     return;
   }
+  if (k.down && (k.mods & MOD_CTRL) && (k.mods & MOD_ALT) && k.code == 0x0a) {
+    desktop_quit();
+    return;
+  }
   if (k.down && (k.mods & MOD_CTRL) && (k.mods & MOD_ALT) &&
       k.code == KEY_ESCAPE) {
     Window *focused = wm_focused();

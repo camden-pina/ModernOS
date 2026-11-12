@@ -103,7 +103,15 @@ static int load_policy(void) {
     if(e && store){vfs_close(store);store=NULL;}
     mutex_unlock(&vfs_mutex);
     if(e)return e;
-    if(fresh) {memset(&policy,0,sizeof(policy));policy.magic=0x41434354;policy.version=2;policy.root=(struct account){.flags=OS_ACCOUNT_ADMIN,.rounds=ROUNDS};e=persist();}
+    if(fresh) {
+        memset(&policy,0,sizeof(policy));policy.magic=0x41434354;policy.version=2;
+        policy.root=(struct account){.flags=OS_ACCOUNT_ADMIN,.rounds=ROUNDS};
+        struct account *owner=&policy.users[0];
+        *owner=(struct account){.uid=OS_ACCOUNT_FIRST,
+            .flags=OS_ACCOUNT_ADMIN|OS_ACCOUNT_PASSWORD,.timeout=5,.rounds=ROUNDS};
+        if(random_bytes(owner->salt,sizeof(owner->salt))!=(int)sizeof(owner->salt))e=-E_IO;
+        else {derive("root",owner->salt,owner->digest);e=persist();}
+    }
     if(e && store){mutex_lock(&vfs_mutex);vfs_close(store);store=NULL;mutex_unlock(&vfs_mutex);}
     loaded=!e;return e;
 }

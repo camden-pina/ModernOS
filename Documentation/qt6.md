@@ -93,7 +93,7 @@ This is a raster Widgets port, with **one native top-level window per process**.
 The demo uses embedded controls and keyboard editing; native popup windows,
 menus, dialogs, multiple top-level windows,
 input-method composition and multiple displays need further QPA work. The
-initial backend exposes one virtual 2560×1600 screen while the desktop supplies
+initial backend exposes one virtual 1920×1080 screen while the desktop supplies
 the actual client size. Qt Quick/QML, Qt Network, multimedia and hardware
 OpenGL/Vulkan rendering are not part of this build. It does not make arbitrary
 Qt applications compatible automatically.

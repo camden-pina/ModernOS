@@ -115,13 +115,32 @@ fetch('/data').then(r=>r.text()).then(text=>{document.getElementById('proof').te
         vm.command('mkdir -p /home/user/.config')
         vm.shell_command("printf 'scale=3\\nterminal_shell=1\\n' > /home/user/.config/desktop.ini")
         vm.send("build-sh -c 'COAST_BROWSER_QA=1 exec /bin/gui --trace --stats'\n")
-        vm.until(rb'GUI_READY:', 60); d = desktop.DesktopTest(vm); d.screenshot('00-desktop')
+        vm.until(rb'GUI_READY:', 60); d = desktop.DesktopTest(vm); before = d.screenshot('00-desktop')
         window = d.launch('Chromium Browser'); wait(r'COAST_BROWSER .*"event":"ready"', timeout=60)
         wait(r'COAST_BROWSER .*"event":"page"[^\n]*Welcome to Coast', timeout=30)
         time.sleep(2); home = d.screenshot('01-home')
         assert home.count(bytes.fromhex('f8fafc')) > 10000, 'Actual home page pixels missing'
+        geometry = d.geometry(window)
+        body_top = geometry['y'] + geometry['body'] + 1
+        for px in (geometry['x'] + 8, geometry['x'] + geometry['width'] - 9):
+            pixel = home[(body_top * d.width + px) * 3:(body_top * d.width + px) * 3 + 3]
+            assert len(pixel) == 3 and min(pixel) > 180, (
+                'Electron client has a dark rounded cutout inside the native frame', px, body_top, pixel)
+        launch_geometry = re.findall(r'DESKTOP GEOMETRY window=' + str(window) +
+            r' workspace=\d+ x=(\d+) y=(\d+) width=(\d+) height=(\d+)', raw())
+        assert launch_geometry, 'Missing launch placeholder geometry'
+        old_x, old_y, _, old_height = map(int, launch_geometry[0])
+        assert geometry['x'] - old_x > 40, 'Expected the native client to replace its launch placeholder'
+        exposed_x = old_x + (geometry['x'] - old_x) // 2
+        exposed_y = old_y + old_height // 2
+        at = (exposed_y * d.width + exposed_x) * 3
+        old_pixel, exposed_pixel = before[at:at + 3], home[at:at + 3]
+        assert len(old_pixel) == len(exposed_pixel) == 3 and max(old_pixel) > 120
+        assert max(exposed_pixel) > max(old_pixel) // 2, (
+            'Launch placeholder frame remained after the native window moved',
+            exposed_x, exposed_y, old_pixel, exposed_pixel)
         wait('BROWSER_NETWORK_CHECK_PASS')
-        passed('Native desktop launches sandboxed Chromium and paints its home page')
+        passed('Native desktop launches sandboxed Chromium with square client corners, clears its launch frame and paints its home page')
         start = navigate(origin + '/')
         wait(r'COAST_BROWSER .*"event":"page"[^\n]*network works / storage ok / node undefined / require undefined', start)
         time.sleep(1); pixels = d.screenshot('02-http')
@@ -162,7 +181,8 @@ fetch('/data').then(r=>r.text()).then(text=>{document.getElementById('proof').te
         assert layouts, 'Missing the actual pre-fullscreen client layout'
         restored_width, restored_height = layouts[-1]
         start = len(raw()); d.key('f11'); wait(r'DESKTOP FULLSCREEN window=' + str(window), start)
-        wait(r'DESKTOP NATIVE_LAYOUT window=' + str(window) + r' width=2560 height=1600', start)
+        wait(r'DESKTOP NATIVE_LAYOUT window=' + str(window) +
+             r' width=' + str(d.width) + r' height=' + str(d.height), start)
         time.sleep(.3); full = d.screenshot('03b-fullscreen')
         assert full.count(bytes.fromhex('1964ae')) > 10000, 'Fullscreen page pixels missing'
         start = len(raw()); d.key('f11'); wait(r'DESKTOP UNFULLSCREEN window=' + str(window), start)

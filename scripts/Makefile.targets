@@ -21,10 +21,10 @@ ifeq ($(QEMU_ACCEL),auto)
 override QEMU_ACCEL := $(shell test -r /dev/kvm && test -w /dev/kvm && echo kvm || echo tcg)
 endif
 QEMU_CPU ?= $(if $(filter kvm,$(QEMU_ACCEL)),host,max)
-# GTK without GL also works on hosts without accelerated display support.
-# VGA refresh_rate sets EDID metadata, not the frontend refresh timer.
-QEMU_DISPLAY ?= gtk,gl=off
-FIRMWARE ?= bios
+# GTK's refresh path keeps up with Coast's drag cadence on the tested host.
+# VGA refresh_rate is guest-visible EDID metadata in millihertz.
+QEMU_DISPLAY ?= gtk,gl=on
+FIRMWARE ?= uefi
 ifeq ($(filter bios uefi,$(FIRMWARE)),)
 $(error Unsupported FIRMWARE=$(FIRMWARE); choose bios or uefi)
 endif
@@ -40,7 +40,7 @@ QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_SDL_DRIVER)),SDL_VIDEODRIVER=$(call coas
 else ifneq ($(filter gtk%,$(QEMU_DISPLAY)),)
 QEMU_DISPLAY_ENV := $(if $(strip $(QEMU_GTK_BACKEND)),GDK_BACKEND=$(call coast_quote,$(QEMU_GTK_BACKEND)),)
 endif
-QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,refresh_rate=120
+QEMU_VIDEO ?= -vga none -device VGA,vgamem_mb=32,refresh_rate=60000
 QEMU_NETWORK ?= -nic user,model=e1000e
 QEMU_AUDIO ?= -audiodev sdl,id=audio0 -device AC97,audiodev=audio0
 LINUX_DISK ?=

@@ -5,7 +5,7 @@ The artifact directory supplies the original ISO/runtime modules, Electron build
 and pinned Wayland/glibc build dependencies. Kernel and display adapter sources
 come from this main development tree. The original R2 image is preserved.
 
-After booting, enter `gui` in the native shell, open a Terminal (Super+T), and
+After booting to the desktop, open a Terminal (Super+T), and
 run `electron-wayland-demo --electron`. This runs the real Electron test app;
 the full Code OSS workbench is not yet packaged or validated.
 """

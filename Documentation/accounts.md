@@ -1,11 +1,13 @@
 # Accounts, root and sudo
 
-The physical console and desktop Terminal start as UID/GID 1000, rather than
-root. Settings opens to **Profiles**, where each profile has a stable UID/GID,
+The physical console and desktop Terminal start as the owner, UID/GID 1000.
+The owner has administrator access through sudo and an initial password of
+`root`. Change it with `passwd` or Settings → Profiles if desired. The root
+account remains locked until its password is explicitly set. Settings opens
+to **Profiles**, where each profile has a stable UID/GID,
 private home, password, standard/administrator role, sudo timeout, terminal
 shell, avatar and description. The first profile is the owner/administrator;
-additional profiles start as standard users. Set an owner password before
-creating other accounts or using sudo. Password dialogs mask input and clear
+additional profiles start as standard users. Password dialogs mask input and clear
 their buffers on completion or cancellation.
 
 `passwd` changes the current account's password. Administrators use `sudo
@@ -91,8 +93,8 @@ environment sanitization, `no_new_privs`, failed authentication and lockout.
 verifies private homes, role authorization, password timeouts, session closure,
 console identity and forged preference rejection. The KDF is independently
 compared with Python's PBKDF2 implementation by `test_account_kdf_host.py`.
-`tools/test_code_launcher.py` checks ordinary CLI launch before setting any
-password, loader-environment sanitization and the unprivileged shell identity
+`tools/test_code_launcher.py` checks ordinary CLI launch without elevation,
+loader-environment sanitization and the unprivileged shell identity
 after editor shutdown.
 
 References: [Linux credentials](https://www.kernel.org/doc/html/latest/security/credentials.html),

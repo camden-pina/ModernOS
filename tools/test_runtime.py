@@ -218,7 +218,7 @@ class VM:
                "-display", display, "-monitor", "none", "-serial", "stdio", "-no-reboot",
                "-qmp", f"pipe:{self.qmp_path}"]
         cmd += ["-vga", "none", "-device",
-                "VGA,vgamem_mb=32,refresh_rate=120" + ("" if buffered else ",mmio=off")]
+                "VGA,vgamem_mb=32,refresh_rate=60000" + ("" if buffered else ",mmio=off")]
 
         assert network_model in ('e1000e', 'e1000', 'igb'), network_model
         backend = PASST_OPTIONS if network_backend == 'passt' else 'user'
@@ -306,7 +306,15 @@ class VM:
 
                 # The saved shell is already at its prompt; request a new one.
                 self.send('\n')
-            self.until_prompt(boot_timeout)
+            boot=self.until(rb'GUI_READY: Coast desktop|os:[^\n]*\$ $',boot_timeout)
+            if 'GUI_READY: Coast desktop' in boot:
+                # The installed image starts its desktop automatically. Return
+                # to the physical console before exercising shell commands.
+                def key_event(key, down):
+                    return {'type':'key','data':{'down':down,'key':{'type':'qcode','data':key}}}
+                self.qmp('input-send-event',{'events':[key_event(k,True) for k in ('ctrl','alt','g')]})
+                self.qmp('input-send-event',{'events':[key_event(k,False) for k in ('g','alt','ctrl')]})
+                self.until_prompt(boot_timeout)
             self.boot_elapsed_seconds = time.monotonic() - boot_started
             if root_commands:
                 probe=self.raw_command('id -u')
@@ -316,7 +324,7 @@ class VM:
                     self.send('passwd\n')
                     prompt=self.until(rb'Current password:|New password:',30)
                     if 'Current password:' in prompt:
-                        self.send(self.qa_password+'\n');self.until(rb'New password:',30)
+                        self.send((self.qa_password if resume else 'root')+'\n');self.until(rb'New password:',30)
                     self.send(self.qa_password+'\n');self.until(rb'Confirm new password:',30)
                     self.send(self.qa_password+'\n')
                     assert 'Password updated' in self.until_prompt(30)

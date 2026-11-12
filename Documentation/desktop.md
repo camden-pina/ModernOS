@@ -1,8 +1,8 @@
 # Coast desktop
 
 Source repository: https://github.com/camden-pina/ModernOS.git.
-Build Coast with `make iso`, start it with `make run`, and enter `gui` at the
-Coast console. See [host setup](host-setup.md).
+Build Coast with `make iso` and start it with `make run`. It boots directly to
+the desktop. See [host setup](host-setup.md).
 
 ![Coast desktop and Files](images/desktop.png)
 
@@ -21,7 +21,12 @@ from a configured signed package repository.
 | Super+T | Open Terminal |
 | Alt+Space | Open window actions |
 | Ctrl+Alt+M | Open the focused native application's menu bar |
+| Ctrl+Alt+G | Switch between the desktop and physical console |
 | Ctrl+Alt+Escape | Return to the console after resolving unsaved documents |
+
+Ctrl+Alt+G at the physical console prompt starts the desktop again. Leaving the
+desktop closes its open windows; save work before switching. Unsaved native
+documents prompt for a decision.
 
 The menu bar follows the focused application. File, Edit, View and Go expose
 that application's operations; Window manages windows/workspaces and Help
@@ -56,8 +61,8 @@ The desktop uses source-built Bash/Readline with pipes, command and
 process substitution, redirections and foreground/background jobs. Terminal
 provides the PTY, scrollback, selection/copy, paste and profile preferences.
 
-The console and Terminal start as the active ordinary account. Set the owner
-password in Settings → Profiles before using sudo or creating more accounts.
+The console and Terminal start as the active ordinary account. The owner
+has sudo access with the initial password `root`; use `passwd` to change it.
 Profiles have private homes, stable UID/GID values and standard/administrator
 roles. The trusted desktop broker authorizes operations for the signed-in
 profile; ordinary applications retain their own credentials. Switching profiles
@@ -84,7 +89,8 @@ brokers/backends. See [input and clipboard](input-and-clipboard.md).
 records application/window actions for guest tests. The desktop, Qt, browser,
 editor and nested VM suites operate actual guest windows with USB input.
 
-Coast runs as a RAM-backed live system. Persist files on a supported writable
+The default boot mode is 1920×1080; the boot configuration can select another
+firmware-supported 32-bit mode. Coast runs as a RAM-backed live system. Persist files on a supported writable
 mount before shutdown. Hardware, filesystem, application and website support
 is bounded by the implemented kernel interfaces and the tested ports. The
 native desktop is a software-rendered userspace desktop; generic GPU APIs,

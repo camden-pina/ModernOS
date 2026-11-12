@@ -75,6 +75,24 @@ static void dock_art_uncached(Rect r, int item) {
 static const App app_order[] = {APP_FILES, APP_CHROMIUM, APP_TERMINAL,
                                 APP_DISKS, APP_SETTINGS, APP_EDITOR,
                                 APP_POWER, APP_GAME, APP_WORKBENCH, APP_CODE, APP_QT};
+static unsigned available_apps;
+static uint64_t availability_checked_at;
+static bool availability_checked;
+
+static unsigned dock_available_apps(void) {
+  uint64_t now = now_ms();
+  if (!availability_checked || now - availability_checked_at >= 500) {
+    unsigned mask = 0;
+    for (unsigned i = 0; i < sizeof(app_order) / sizeof(app_order[0]); i++) {
+      App app = app_order[i];
+      if (app_available(app)) mask |= 1u << app;
+    }
+    available_apps = mask;
+    availability_checked_at = now;
+    availability_checked = true;
+  }
+  return available_apps;
+}
 static int magnify[APP_COUNT + 2];
 static uint64_t tick_at, trace_at, animation_frames, sprite_builds;
 static bool animating;
@@ -85,7 +103,8 @@ typedef struct {
 } DockSprite;
 static DockSprite sprites[128];
 static size_t sprite_bytes, sprite_peak;
-static unsigned replacement, prior_visible = ~0u, prior_pins = ~0u;
+static unsigned replacement, prior_visible = ~0u, prior_pins = ~0u,
+                prior_available = ~0u;
 static unsigned running_mask(void) {
   unsigned mask = 0;
   for (int i = 0; i < MAX_WINDOWS; i++)
@@ -95,12 +114,13 @@ static unsigned running_mask(void) {
 }
 static int roles(int *out) {
   unsigned running = running_mask();
+  unsigned available = dock_available_apps();
   int count = 0;
   out[count++] = APP_COUNT;
   for (int pass = 0; pass < 2; pass++)
     for (unsigned i = 0; i < sizeof(app_order) / sizeof(app_order[0]); i++) {
       int app = app_order[i];
-      if (!app_available((App)app))
+      if (!(available & (1u << app)))
         continue;
       bool pinned = (desk.dock_pins & (1u << app)) != 0;
       if ((pass == 0 && pinned) ||
@@ -117,11 +137,14 @@ static int dock_step(void) {
 static int base_size(void) {
   return MAX(S(12), MIN(S(desk.dock_size), dock_step() - S(8)));
 }
-static void layout(Rect *body, Rect *cells, Rect *tiles) {
-  int list[APP_COUNT + 2], n = roles(list), sizes[APP_COUNT + 2];
+static int layout(Rect *body, Rect *cells, Rect *tiles, int *out) {
+  int local[APP_COUNT + 2], *list = out ? out : local;
+  int n = roles(list), sizes[APP_COUNT + 2];
   int total = 0, gap = S(10), available = MAX(S(20), desk.width - S(28));
+  int step = MAX(S(20), MIN(S(desk.dock_size + 10), available / n));
+  int base = MAX(S(12), MIN(S(desk.dock_size), step - S(8)));
   for (int i = 0; i < n; i++) {
-    sizes[i] = (base_size() * MAX(1024, magnify[list[i]]) + 512) / 1024;
+    sizes[i] = (base * MAX(1024, magnify[list[i]]) + 512) / 1024;
     total += sizes[i];
   }
   int ratio = MIN(1024, MAX(n, available - n * gap) * 1024 / MAX(1, total));
@@ -130,7 +153,7 @@ static void layout(Rect *body, Rect *cells, Rect *tiles) {
     sizes[i] = MAX(1, sizes[i] * ratio / 1024);
     width += sizes[i] + gap;
   }
-  int height = base_size() + S(14), x = (desk.width - width) / 2;
+  int height = base + S(14), x = (desk.width - width) / 2;
   *body = (Rect){x - S(6), desk.height - height - S(8), width + S(12), height};
   for (int i = 0; i < n; i++) {
     cells[i] = (Rect){x, body->y, sizes[i] + gap, height};
@@ -138,10 +161,11 @@ static void layout(Rect *body, Rect *cells, Rect *tiles) {
                       sizes[i]};
     x += sizes[i] + gap;
   }
+  return n;
 }
 Rect taskbar_dock_rect(void) {
   Rect b, c[APP_COUNT + 2], t[APP_COUNT + 2];
-  layout(&b, c, t);
+  layout(&b, c, t, NULL);
   return b;
 }
 int desktop_bottom(void) {
@@ -149,21 +173,21 @@ int desktop_bottom(void) {
 }
 static Rect cell(int at) {
   Rect b, c[APP_COUNT + 2], t[APP_COUNT + 2];
-  layout(&b, c, t);
+  layout(&b, c, t, NULL);
   return c[at];
 }
 static Rect tile(int at, int role) {
   (void)role;
   Rect b, c[APP_COUNT + 2], t[APP_COUNT + 2];
-  layout(&b, c, t);
+  layout(&b, c, t, NULL);
   return t[at];
 }
 static Rect dock_bounds(void) {
-  int list[APP_COUNT + 2], n = roles(list);
-  Rect b = taskbar_dock_rect();
+  Rect b, cells[APP_COUNT + 2], tiles[APP_COUNT + 2];
+  int n = layout(&b, cells, tiles, NULL);
   int top = b.y;
   for (int i = 0; i < n; i++)
-    top = MIN(top, tile(i, list[i]).y);
+    top = MIN(top, tiles[i].y);
   return (Rect){b.x - S(5), top - S(4), b.w + S(10), desk.height - top + S(4)};
 }
 Rect taskbar_dock_bounds(void) { return dock_bounds(); }
@@ -179,10 +203,14 @@ Rect taskbar_dock_cache_rect(void) {
   return (Rect){(desk.width - width) / 2, b.y, width, b.h};
 }
 static Rect previous_bounds;
-static int dock_hit(int x, int y) {
-  int list[APP_COUNT + 2], n = roles(list), best = -1, distance = 0x7fffffff;
+static int dock_hit(int x, int y, Rect *hit_cell) {
+  Rect body, cells[APP_COUNT + 2], tiles[APP_COUNT + 2];
+  int n = layout(&body, cells, tiles, NULL), best = -1, distance = 0x7fffffff;
+  int top = body.y;
+  for (int i = 0; i < n; i++) top = MIN(top, tiles[i].y);
+  if (y < top - S(3) || y >= desk.height) return -1;
   for (int i = 0; i < n; i++) {
-    Rect r = tile(i, list[i]), c = cell(i);
+    Rect r = tiles[i], c = cells[i];
     r = (Rect){r.x - S(3), r.y - S(3), r.w + S(6), r.h + S(6)};
     if (!contains(r, x, y) && !contains(c, x, y))
       continue;
@@ -193,11 +221,13 @@ static int dock_hit(int x, int y) {
       distance = dx;
     }
   }
+  if (best >= 0 && hit_cell) *hit_cell = cells[best];
   return best;
 }
 Rect dock_hover(int x, int y) {
-  int at = dock_hit(x, y);
-  return at < 0 ? (Rect){0} : cell(at);
+  Rect cell = {0};
+  dock_hit(x, y, &cell);
+  return cell;
 }
 static int artwork(int role) {
   if (role == APP_COUNT)
@@ -278,16 +308,17 @@ static void sprite_draw(Rect r, int role) {
     }
 }
 void dock_draw(void) {
-  Rect b = taskbar_dock_rect();
-  int list[APP_COUNT + 2], n = roles(list);
+  Rect b, cells[APP_COUNT + 2], tiles[APP_COUNT + 2];
+  int list[APP_COUNT + 2];
+  int n = layout(&b, cells, tiles, list);
   unsigned running = running_mask();
   glass_system_prepare(1);
   blend((Rect){b.x - S(1), b.y + S(4), b.w + S(2), b.h}, 0x091222, 35);
   glass_system_draw(1, b, S(10));
   border(b, S(10), desk.dark_mode ? 0x667078 : 0xCAD3DF);
   for (int i = 0; i < n; i++) {
-    Rect c = cell(i);
-    sprite_draw(tile(i, list[i]), list[i]);
+    Rect c = cells[i];
+    sprite_draw(tiles[i], list[i]);
     if (list[i] < APP_COUNT && (running & (1u << list[i])))
       rounded((Rect){c.x + c.w / 2 - S(2), b.y + b.h - S(5), S(4), S(3)}, S(2),
               desk.dark_mode ? 0xE9ECF4 : 0x26324A);
@@ -295,19 +326,26 @@ void dock_draw(void) {
 }
 void taskbar_tick(void) {
   unsigned visible = desk.dock_pins | running_mask();
-  if (visible != prior_visible || desk.dock_pins != prior_pins)
+  if (visible != prior_visible || desk.dock_pins != prior_pins ||
+      dock_available_apps() != prior_available)
     taskbar_preferences_changed();
   uint64_t now = now_ms();
   int dt = tick_at ? MIN(1000, now - tick_at) : 8;
   tick_at = now;
   if (dt < 1)
     return;
-  Rect b = taskbar_dock_rect(), old_bounds = dock_bounds();
-  int list[APP_COUNT + 2], n = roles(list), step = dock_step();
+  Rect b, cells[APP_COUNT + 2], tiles[APP_COUNT + 2];
+  int list[APP_COUNT + 2], n = layout(&b, cells, tiles, list);
+  int step = MAX(S(20), MIN(S(desk.dock_size + 10), (desk.width - S(28)) / n));
+  int base = MAX(S(12), MIN(S(desk.dock_size), step - S(8)));
+  int old_top = b.y;
+  for (int i = 0; i < n; i++) old_top = MIN(old_top, tiles[i].y);
+  Rect old_bounds = {b.x - S(5), old_top - S(4), b.w + S(10),
+                     desk.height - old_top + S(4)};
   bool changed = false, active = false;
   bool hover = !desk.dialog.open && !desk.menu.open && !desk.launcher &&
-               contains((Rect){0, b.y - base_size(), desk.width,
-                               b.h + base_size() + S(22)},
+               contains((Rect){0, b.y - base, desk.width,
+                               b.h + base + S(22)},
                         desk.mouse_x, desk.mouse_y);
   for (int i = 0; i < n; i++) {
     int role = list[i], old = MAX(1024, magnify[role]),
@@ -321,7 +359,7 @@ void taskbar_tick(void) {
     int delta = target - old, next = old + (int64_t)delta * dt / (75 + dt);
     if (delta && next == old)
       next += delta > 0 ? 1 : -1;
-    if ((base_size() * old + 512) / 1024 != (base_size() * next + 512) / 1024)
+    if ((base * old + 512) / 1024 != (base * next + 512) / 1024)
       changed = true;
     magnify[role] = next;
     active |= next != target;
@@ -333,10 +371,11 @@ void taskbar_tick(void) {
     desk.dock_revision++;
     animation_frames++;
     compositor_damage(old_bounds);
-    compositor_damage(dock_bounds());
-    previous_bounds = dock_bounds();
+    Rect next_bounds = dock_bounds();
+    compositor_damage(next_bounds);
+    previous_bounds = next_bounds;
     if (desk.trace && now - trace_at >= 45) {
-      int at = dock_hit(desk.mouse_x, desk.mouse_y);
+      int at = dock_hit(desk.mouse_x, desk.mouse_y, NULL);
       if (at >= 0)
         printf("DESKTOP DOCK_ANIMATE role=%d size=%d base=%d time=%lu\n",
                list[at], tile(at, list[at]).w, base_size(), now);
@@ -347,6 +386,7 @@ void taskbar_tick(void) {
 void taskbar_preferences_changed(void) {
   prior_visible = desk.dock_pins | running_mask();
   prior_pins = desk.dock_pins;
+  prior_available = dock_available_apps();
   for (int i = 0; i < APP_COUNT + 2; i++)
     magnify[i] = 1024;
   desk.dock_revision++;
@@ -428,7 +468,7 @@ static void app_activate(int app, bool context, int x, int y) {
 }
 bool dock_mouse(int x, int y, unsigned pressed, int wheel) {
   (void)wheel;
-  int list[APP_COUNT + 2], n = roles(list), at = dock_hit(x, y);
+  int list[APP_COUNT + 2], n = roles(list), at = dock_hit(x, y, NULL);
   Rect b = taskbar_dock_rect();
   if (at < 0 && !contains(b, x, y))
     return false;

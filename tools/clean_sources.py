@@ -123,6 +123,22 @@ def public_fixture(path, root):
                 candidates.extend(p for p in vendor.iterdir() if p.name in archives and p.is_file() and not p.is_symlink())
         if parent == root / 'build':
             break
+    # BuildSession moves verified downloads here before resetting a stage.
+    # Keep recognizing unchanged upstream fixtures after that move, while
+    # still comparing every protected file with the pinned archive contents.
+    shared_downloads = root / 'build/downloads'
+    source_stem = re.split(r'-\d', tree.name, maxsplit=1)[0]
+    source_prefixes = {source_stem}
+    parts = source_stem.split('-')
+    if len(parts) > 1 and parts[0] == parts[1]:
+        source_prefixes.add('-'.join(parts[1:]))
+    for name, expected in archives.items():
+        if not any(name.startswith(prefix + '-') for prefix in source_prefixes):
+            continue
+        for checksum in expected:
+            candidate = shared_downloads / checksum / name
+            if candidate.is_file() and not candidate.is_symlink():
+                candidates.append(candidate)
     # Core archives also use the common vendor directory. Limit this fallback
     # to the source's own name so unrelated caches need not be decompressed.
     common = root / 'userland/vendor'

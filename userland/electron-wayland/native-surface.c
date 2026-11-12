@@ -93,6 +93,25 @@ static void stop_signal(int sig) { (void)sig;stopping=1; }
 static uint64_t now_us(void) { struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
 static uint64_t now_ms(void) { return now_us()/1000; }
 static long native(unsigned op,void *p,size_t n) { return syscall(OS_WINDOW_SYSCALL,op,p,n); }
+/* Chromium's ARGB surface may retain transparent, rounded client corners even
+   though Coast supplies the only window frame. Flatten that small corner over
+   the adjacent client color, instead of showing the bridge's dark fallback
+   as a second rounded border inside the native window. */
+enum { CLIENT_CORNER=24 };
+static uint32_t corner_color(const uint32_t *row,int width,int sample,int direction) {
+    if(sample<0)sample=0;
+    if(sample>=width)sample=width-1;
+    for(int i=0,x=sample;i<64 && x>=0 && x<width;i++,x+=direction)
+        if((row[x]>>24)==255)return row[x]&0xffffff;
+    return 0x18202a;
+}
+static uint32_t corner_over(uint32_t src,uint32_t bg) {
+    unsigned a=src>>24,back=255-a;
+    unsigned r=((src>>16)&255)+(((bg>>16)&255)*back+127)/255;
+    unsigned g=((src>>8)&255)+(((bg>>8)&255)*back+127)/255;
+    unsigned b=(src&255)+((bg&255)*back+127)/255;
+    return (r>255?255:r)<<16 | (g>255?255:g)<<8 | (b>255?255:b);
+}
 static void fail(struct wl_resource *r,const char *why) { wl_resource_post_error(r,WL_DISPLAY_ERROR_IMPLEMENTATION,"P6 diagnostic output: %s",why); }
 static void pending_unlink(struct output *o) {
     if(o->pending) wl_list_remove(&o->pending_destroy.link);
@@ -273,11 +292,51 @@ static void commit(struct wl_client *c,struct wl_resource *r) {
                 const uint8_t *data=wl_shm_buffer_get_data(shm);
                 o->scanned_pixels+=(uint64_t)(x1-x0)*(y1-y0);
                 for(int y=y0;y<y1;y++) {
-                    const uint32_t *restrict row=(const uint32_t *)(data+(size_t)y*stride)+x0;
+                    const uint32_t *source=(const uint32_t *)(data+(size_t)y*stride);
+                    const uint32_t *restrict row=source+x0;
                     uint32_t *restrict target=o->pixels+(top+y)*o->width+left+x0;
+                    struct { int x;uint32_t previous; } corners[CLIENT_CORNER*2];
+                    unsigned corner_count=0;
+                    int left_end=x0,right_start=x1;
+                    bool client_corner=o->electron && format==WL_SHM_FORMAT_ARGB8888 &&
+                        (top+y<CLIENT_CORNER || top+y>=o->height-CLIENT_CORNER);
+                    if(client_corner) {
+                        left_end=x1;
+                        if(CLIENT_CORNER-left<left_end)left_end=CLIENT_CORNER-left;
+                        right_start=o->width-CLIENT_CORNER-left;
+                        if(right_start<x0)right_start=x0;
+                        if(right_start<left_end)right_start=left_end;
+                        if(!full) {
+                            for(int x=x0;x<left_end;x++)corners[corner_count++]=(typeof(corners[0])){x,target[x-x0]};
+                            for(int x=right_start;x<x1;x++)corners[corner_count++]=(typeof(corners[0])){x,target[x-x0]};
+                        }
+                    }
                     struct pixel_span span={0};
                     if(full)pixel_convert(target,row,x1-x0,format==WL_SHM_FORMAT_ARGB8888);
                     else span=pixel_convert_damage(target,row,x1-x0,format==WL_SHM_FORMAT_ARGB8888);
+                    if(client_corner) {
+                        if(x0<left_end) {
+                            uint32_t bg=corner_color(source,width,CLIENT_CORNER-left,1);
+                            for(int x=x0;x<left_end;x++)if(source[x]>>24!=255)
+                                target[x-x0]=corner_over(source[x],bg);
+                        }
+                        if(right_start<x1) {
+                            uint32_t bg=corner_color(source,width,o->width-1-CLIENT_CORNER-left,-1);
+                            for(int x=right_start;x<x1;x++)if(source[x]>>24!=255)
+                                target[x-x0]=corner_over(source[x],bg);
+                        }
+                        if(!full)for(unsigned i=0;i<corner_count;i++) {
+                            int x=corners[i].x;
+                            if(corners[i].previous==target[x-x0])continue;
+                            unsigned at=x-x0;
+                            if(!span.width)span=(struct pixel_span){at,1};
+                            else {
+                                unsigned end=span.x+span.width>at+1?span.x+span.width:at+1;
+                                if(at<span.x)span.x=at;
+                                span.width=end-span.x;
+                            }
+                        }
+                    }
                     if(!full && span.width) {
                         unsigned x=left+x0+span.x,py=top+y,right=x+span.width;
                         if(!changed.width)changed=(struct pixel_rect){x,py,span.width,1};

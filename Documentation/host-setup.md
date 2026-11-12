@@ -76,8 +76,8 @@ container setup, including subordinate UID/GID ranges and applicable AppArmor
 policy. Log in again when group or account mappings change.
 
 `make run` automatically selects KVM when `/dev/kvm` is accessible.
-Otherwise it uses TCG. The default BIOS launch needs no external OVMF file or
-passt backend. VM settings are explicit:
+Otherwise it uses TCG. The default UEFI launch discovers host OVMF and uses
+GTK with host OpenGL. VM settings are explicit:
 
 ```sh
 make run MEMORY=24G SMP=4

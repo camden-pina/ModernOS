@@ -215,7 +215,7 @@ def main():
             vm.until(rb'GUI_READY:', 60)
             display = desktop.DesktopTest(vm)
             display.screenshot('00-desktop')
-            assert (display.width, display.height) == (2560, 1600)
+            assert (display.width, display.height) == (1920, 1080)
 
             if args.usability_check:
                 display.key('n','ctrl','shift');vm.send('native-created\n')

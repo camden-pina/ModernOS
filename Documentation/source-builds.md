@@ -14,7 +14,7 @@ inputs.
 | Kernel and Chromium ABI profile | Kernel sources, Kbuild, `ports/chromium/kernel-flags.json`, pinned lwIP | Compiled and linked on Linux and inside a Coast guest from the repository source kit |
 | Native desktop | `userland/desktop/`, libc and linker script | Linux and native Coast compilation; Chromium guest integration |
 | Boot and base components | Kernel, desktop, BusyBox and Limine sources | Source assembly; UEFI and BIOS kernel/shell/GUI checks |
-| ISO/FAT tools | Pinned GNU xorriso 1.5.8.pl02 and mtools 4.0.49 | Static source cross-builds; native tests |
+| ISO/FAT tools | Pinned GNU xorriso 1.5.8.pl02 and mtools 4.0.49 | Static source cross-builds; both rebuilt inside Coast for native ISO assembly |
 | NASM | Pinned 2.16.03 source, host/cross builder and native PKGBUILD | Host/cross builds, native assembler linked with GCC; native source-recipe test |
 | Limine | Pinned 12.9.0 source and `tools/build_limine.py` | BIOS and x86-64 UEFI outputs compiled from source |
 | Wayland display bridge | Pinned Wayland 1.21.0/libffi, XML protocols, keyboard map and bridge C | Static source build; actual Chromium browser suite |
@@ -204,11 +204,14 @@ transactions, makepkg, Qt input/clipboard and nested QEMU through Chromium.
 All 668 payload ELF checks passed, with 37 source-component package records.
 That qualification reused verified source-built Electron/Node and GNU ABI
 receipts; it did not rebuild the entire Electron graph from an empty checkout.
-The recovery/cleanup and optional-app changes have host/fixture coverage,
-including actual static/dynamic ELF validation and desktop launcher checks;
-they have not had a fresh full Electron build or guest qualification run.
-Independent source-export checks compile the kernel and boot components and
-exercise UEFI/BIOS at one and four CPUs. Report details are in
+Recovery/cleanup and optional-app selections have host/fixture coverage,
+including static/dynamic ELF validation and desktop launcher checks. The
+default all-app ISO has fresh guest qualification; individual omitted-app
+selections have not each been guest-qualified.
+Inside Coast, an exported source kit compiled the desktop kernel and native
+userland, then built BusyBox, Limine and a native ISO using source-built NASM,
+xorriso and mtools. The guest-built ISO passed fresh UEFI/BIOS boots at one and
+four CPUs, including GUI input and the console hotkey. Report details are in
 [development status](AI-HANDOFF.md).
 
 ## Linux host
@@ -243,12 +246,19 @@ cd ~/Builds/coast
 tar -xJf /usr/src/coast/os/coast-source.tar.xz --strip-components=1
 python3 -B tools/build_desktop_kernel.py --jobs 4
 readelf -h build/desktop-kernel/vmlinux
+make -C userland native -j4
+python3 -B tools/build_native_iso.py --kernel build/desktop-kernel/vmlinux --jobs 4
 ```
 
 `coast-source` contains a deterministic source archive with a SHA-256 inventory
 and the exact lwIP source. Extract into the user's build directory; `/usr/src`
 is package-owned. The running kernel is unaffected. This workflow uses native
 Coast GCC, binutils, make and Python, without executing guest programs on Linux.
+The final command builds a native Coast ISO at `build/native-image/Coast-native.iso`.
+It needs NASM, xorriso and mtools, all supplied by `coast-build`; Limine and
+BusyBox use the package's pinned source archives. This native image contains
+the kernel and desktop, while the wider Chromium/Code OSS/Qt/QEMU closure is
+built by the host `make iso` pipeline.
 
 `coast-build` resolves the native build tools and Wayland SDK. The repository
 also has `nasm-source` and `wayland-source` with their exact upstream archives.

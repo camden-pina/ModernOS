@@ -147,6 +147,12 @@ int shell_read_interactive(char *line, size_t capacity, const char *cwd, char hi
             result = 1;
             break;
         }
+        if (key == 29) {
+            line[0] = 0;
+            write_all(1, "\n", 1);
+            result = SHELL_GUI_HOTKEY;
+            break;
+        }
         if (overflow)
             continue;
         if (key == 27) {

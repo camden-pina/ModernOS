@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import time
 
 from build_components import APPS, dependents, graph_for, receipt_path
 from build_progress import run_logged
@@ -49,7 +50,7 @@ class BuildSession:
                 path.unlink()
         self.state.invalidate(names)
 
-    def reset(self, name, directory):
+    def reset(self, name, directory, *, fresh=False):
         if name == 'sources':
             return  # The source synchronizer owns its own resumable phases.
         directory = Path(directory)
@@ -79,6 +80,16 @@ class BuildSession:
                 shutil.rmtree(path)
             else:
                 path.unlink(missing_ok=True)
+        if fresh and name not in {'electron', 'native'} and directory.exists():
+            # A private or modified source tree can prevent cleanup from
+            # removing its preparation stamps. Preserve that residue outside
+            # the active component so changed inputs start in a fresh output.
+            if any(directory.iterdir()):
+                history = self.output / 'history'
+                history.mkdir(exist_ok=True)
+                shutil.move(str(directory), str(history / f'{name}-{time.time_ns()}'))
+            else:
+                directory.rmdir()
 
     def run(self, name, argv, receipt, verify, *, dependencies=(), restart=False,
             step=None, total=None, detail=None, external=False, extra=None):
@@ -109,7 +120,7 @@ class BuildSession:
         inputs_changed = was_interrupted and previous.get('source_snapshot') != self.snapshot
         self.invalidate(name)
         if restart or changed or inputs_changed or (verification_failed and name != 'qualification') or previous.get('status') == 'invalidated':
-            self.reset(name, receipt.parent)
+            self.reset(name, receipt.parent, fresh=changed or inputs_changed or verification_failed or previous.get('status') == 'invalidated')
         elif name == 'application' and was_interrupted and (not read_json(receipt.parent / 'SOURCE.json') or not read_json(receipt.parent / 'PATCHED.json')):
             # Source setup can stop between workspace renames and its checkpoint.
             self.reset(name, receipt.parent)

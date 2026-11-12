@@ -94,7 +94,10 @@ def main():
             raw(); d.key(keys.get(char, char.lower()), *(['shift'] if char.isupper() or char in '_:?&' else []))
 
     def navigate(url, marker, label):
-        d.key('l', 'ctrl'); type_text(url)
+        d.key('l', 'ctrl')
+        # Let the guest process Ctrl release before the first URL character.
+        time.sleep(.25)
+        type_text(url)
         def cpu_time():
             fields = Path(f'/proc/{vm.process.pid}/stat').read_text().split(') ', 1)[1].split()
             return (int(fields[11]) + int(fields[12])) / os.sysconf('SC_CLK_TCK')

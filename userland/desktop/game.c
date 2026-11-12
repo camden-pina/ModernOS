@@ -278,6 +278,10 @@ void game_service_tick(void) {
                 continue;
             }
             copy_text(found->title, sizeof(found->title), info.title);
+            /* Claiming the client replaces the launch placeholder's geometry.
+               Repaint its old frame and shadow before fitting the real
+               surface, or the old outline remains behind Electron windows. */
+            damage_window(found);
             fit_native_window(found,g);
             invalidate_window(found);
             game_focus_changed();

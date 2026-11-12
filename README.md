@@ -33,8 +33,10 @@ saved under `build/coast/logs/`. Rerun `make iso` to resume
 verified components and continue interrupted source preparation. Pinned sources use shallow Git checkouts to avoid downloading
 upstream history. Electron/Chromium is still a large
 source build: reserve more than 100 GB for it plus space for the other build
-trees. The desktop VM uses 16 GiB RAM. QEMU uses KVM when available and falls
-back to slower software emulation.
+trees. The desktop VM uses 16 GiB RAM. `make run` uses KVM when available and
+GTK with host OpenGL; Coast's desktop still renders
+in software through emulated VGA at a 1920×1080 default boot resolution. [Run options](Documentation/build-system.md#run-arguments)
+cover alternate host display backends.
 
 `make iso` defaults to the complete desktop: the kernel, native desktop and account
 tools, Chromium, Code OSS, GCC/G++, Python, Brine/makepkg, Qt Widgets,
@@ -63,14 +65,20 @@ The terminal wizard saves build and VM choices in `.config`. Reopen it with
 `make menuconfig`; later Make commands load the saved settings automatically.
 `make iso` also works with defaults before a configuration is saved.
 
+Coast boots directly to the desktop. Press **Ctrl+Alt+G** to use the physical
+console and press it again to return to the desktop. The owner account is
+UID 1000 with sudo access; its initial password is `root`. Change it with
+`passwd` after boot if you want a different password for that session. Switching
+to the console closes desktop windows after any unsaved-work prompts.
+
 For GitHub Download ZIP, extract it and run `git init` in the extracted folder
 before building. A Coast source archive already includes its source inventory.
 
 ## Use Coast
 
-Enter `gui` at the Coast console. Super+B opens Chromium when installed, Super+T Terminal and
-Super+E Files. Super+Space opens Spotlight; use it to launch Code OSS, Brine, Qt 6 Demo and the other installed applications. Set the owner password
-in Settings → Profiles before using sudo.
+Super+B opens Chromium when installed, Super+T opens Terminal and Super+E opens
+Files. Super+Space opens Spotlight; use it to launch Code OSS, Brine, Qt 6 Demo
+and the other installed applications.
 
 Coast uses **RAM-backed live storage**. Copy work to a supported writable mount
 before shutdown to keep files, passwords and configuration.
@@ -105,7 +113,8 @@ python3 -B tools/test_package_configuration.py
 An integrated `make iso JOBS=16` run with qualification enabled passed all 26
 stages and 11 guest qualification phases, including signed package transactions, Brine, Qt
 input/clipboard and nested QEMU through Chromium/noVNC. Source-export
-component builds pass UEFI/BIOS boot checks. This build reused verified
+components were also compiled inside Coast; the resulting native ISO passed
+UEFI/BIOS boot checks at one and four CPUs. This build reused verified
 source-built Electron/Node components; a build of their full graph from an
 empty checkout remains unverified. [Source builds](Documentation/source-builds.md)
 records the precise coverage and remaining prebuilt inputs.

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #define SC_LINE 512
 #define SC_MATCHES 128
+#define SHELL_GUI_HOTKEY 4096
 struct sc_result {
     char matches[SC_MATCHES][SC_LINE];
     unsigned count;

@@ -112,6 +112,27 @@ class ConfigurationTests(unittest.TestCase):
         argv = shlex.split(next(line for line in launch.splitlines() if line.startswith('env ')))
         self.assertEqual(argv[argv.index('-m') + 1], '24G')
 
+    def test_default_run_uses_gtk_opengl_and_uefi(self):
+        firmware = self.directory / 'OVMF.fd'
+        firmware.write_bytes(b'fixture')
+        config.save(self.path, {**config.defaults(), 'OVMF': str(firmware)})
+        environment = {**os.environ, 'WAYLAND_DISPLAY': 'wayland-test', 'SDL_VIDEODRIVER': ''}
+        launch = self.make('-n', 'run', environment=environment).stdout.replace('\\\n', ' ')
+        argv = shlex.split(next(line for line in launch.splitlines() if line.startswith('env ')))
+        self.assertEqual(argv[:2], ['env', 'qemu-system-x86_64'])
+        self.assertEqual(argv[argv.index('-display') + 1], 'gtk,gl=on')
+        self.assertEqual(argv[argv.index('-bios') + 1], str(firmware))
+        self.assertEqual(argv[argv.index('-m') + 1], '16G')
+        self.assertEqual(argv[argv.index('-device') + 1], 'VGA,vgamem_mb=32,refresh_rate=60000')
+        self.assertEqual(argv[argv.index('-cdrom') + 1],
+                         str(ROOT / 'build/coast/image/Coast.iso'))
+        alternate = self.make('-n', 'run', 'QEMU_DISPLAY=sdl,gl=on',
+                              environment=environment).stdout.replace('\\\n', ' ')
+        alternate_argv = shlex.split(next(line for line in alternate.splitlines()
+                                          if line.startswith('env ')))
+        self.assertEqual(alternate_argv[:2], ['env', 'SDL_VIDEODRIVER=wayland'])
+        self.assertEqual(alternate_argv[alternate_argv.index('-display') + 1], 'sdl,gl=on')
+
     def test_saved_output_parent_changes_build_and_launch_together(self):
         config.save(self.path, {**config.defaults(), 'O': str(self.directory / 'output')})
         recipe = shlex.split(self.make('-n', 'iso').stdout)
@@ -150,6 +171,7 @@ class ConfigurationTests(unittest.TestCase):
         stub.chmod(0o755)
         disk = str(self.directory / ("a 'quoted' # " + payload + '.img'))
         values = {**config.defaults(), 'ISO_IMAGE': str(iso), 'QEMU_ACCEL': 'tcg',
+                  'QEMU_DISPLAY': 'gtk,gl=off',
                   'QEMU_CPU': chr(96) + 'touch ' + str(sentinel) + chr(96),
                   'QEMU_GTK_BACKEND': payload, 'LINUX_DISK': disk,
                   'QEMU_EXTRA_ARGS': '-name ' + shlex.quote(payload)}

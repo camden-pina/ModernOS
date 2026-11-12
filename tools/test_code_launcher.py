@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the protected Code OSS CLI without enabling an account password.
+"""Check the protected Code OSS CLI from the unprivileged owner account.
 
 The target runs only in an owned diskless, networkless QEMU guest. Inherited
 loader variables must never reach the privileged dynamic display bridge.
@@ -70,7 +70,7 @@ def main():
         vm = runtime.VM(2, storage=False, network=False, memory='16G', accel='kvm',
                         iso=args.iso, label='code-launcher', root_commands=False)
         assert '\n1000\n' in vm.raw_command('id -u')
-        assert 'administrator access and a profile password are required' in vm.raw_command('sudo -n id')
+        assert 'authentication required or access denied' in vm.raw_command('sudo -n id')
         vm.send('gui --trace\n')
         vm.until(b'GUI_READY:', 60)
         display = desktop.DesktopTest(vm)
@@ -86,7 +86,7 @@ def main():
         evidence = observed(start)
         assert 'ERROR: ld.so:' not in evidence
         assert 'cannot be preloaded' not in evidence
-        report['checks'].append('An owner terminal without a password launches the real sandboxed UID-1000 editor; inherited LD_PRELOAD is discarded before dynamic loading')
+        report['checks'].append('An unprivileged owner terminal launches the real sandboxed UID-1000 editor; inherited LD_PRELOAD is discarded before dynamic loading')
         display.screenshot('01-cli-editor')
         start = len(raw())
         display.key('f4', 'alt')

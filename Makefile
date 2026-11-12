@@ -613,7 +613,7 @@ help:
 		'                 chromium codeoss bash gcc python packages makepkg qt qemu qemu-viewer' \
 		'  Build options: JOBS=4 ISO_BUILD=path O=path ISO_ARGS="--plan"' \
 		'                 DIAGNOSTICS=0|1 QUALIFY=0|1 WITH_MICROSOFT_AUTH=0|1' \
-		'  Run options:   MEMORY=16G SMP=4 QEMU_ACCEL=kvm|tcg QEMU_DISPLAY=gtk,gl=off' \
+		'  Run options:   MEMORY=16G SMP=4 QEMU_ACCEL=auto|kvm|tcg QEMU_DISPLAY=gtk,gl=on' \
 		'                 ISO_IMAGE=path FIRMWARE=bios|uefi QEMU_EXTRA_ARGS="..."' \
 		'  Use the same ISO_BUILD / O= values for iso and run.' \
 		'  Saved .config loads automatically; CONFIG=path selects another file.' \

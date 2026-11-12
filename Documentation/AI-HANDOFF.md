@@ -1,7 +1,7 @@
 # Coast OS development handoff
 
 Repository: https://github.com/camden-pina/ModernOS.git. Work on `main`, tracking
-`origin/main`. These pending ISO and recovery changes build on `4bcc314`.
+`origin/main`.
 
 ## Build and run
 
@@ -19,6 +19,11 @@ assembly and optional qualification. `APPS` and `WITHOUT` select optional apps;
 build requirements and installed-app requirements are separate. Keep one public
 `make iso`/`make run` interface without named image editions.
 `make run` boots `build/coast/image/Coast.iso` without rebuilding it.
+It defaults to UEFI, KVM when available, GTK/OpenGL and 1920×1080. The guest
+starts the desktop automatically as owner UID 1000; its initial sudo password
+is `root`. Ctrl+Alt+G exits to the physical console and, at its shell prompt,
+starts a new desktop session. Leaving the GUI closes windows after unsaved-work
+prompts. The root account remains locked until explicitly configured.
 
 Keep the README quickstart to setup, `make menuconfig`, `make iso`, `make run`. Build parallelism,
 output locations, verification and VM settings are optional arguments described
@@ -117,6 +122,22 @@ Chromium. The resulting ISO is `build/coast/image/Coast.iso`; its manifest hash
 matches the image. The reports bind results to exact artifact hashes and record
 owned-VM shutdown. The desktop screenshot in `images/desktop.png` is an actual
 capture of Coast's Files application.
+
+The latest fresh run also passed Chromium's square-client-corner and
+cleared-launch-frame screenshot checks and Code OSS's zero-mismatch desktop
+recomposition check. A two-vCPU local Chromium benchmark launched in 6.87 s
+versus 8.74 s in the earlier baseline. On this host, 120 KVM window-drag frames
+averaged 5.25 ms with GTK/OpenGL; its display trace reported about 102 updates/s,
+versus about 19 surface publications/s with SDL/OpenGL. Coast still renders in
+software inside emulated VGA; the host OpenGL backend only displays those pixels.
+
+A source kit was transferred into a disposable Coast VM. Coast GCC compiled the
+desktop kernel and native userland; pinned NASM, xorriso and mtools were also
+compiled there. `tools/build_native_iso.py` built BusyBox and Limine and assembled
+a native ISO inside Coast. The exported image passed UEFI and BIOS boots with
+one and four CPUs, including health, GUI USB and Ctrl+Alt+G checks. Evidence is
+under ignored `build/guest-self-build-20261111/`. The complete Electron graph
+was not rebuilt inside Coast.
 
 Qualification reuses verified source-built Electron/Node and GNU ABI receipts.
 An empty full Electron graph build is not yet verified end to end. Component

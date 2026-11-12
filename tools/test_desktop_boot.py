@@ -43,6 +43,9 @@ def main():
                     try:
                         vm = runtime.VM(cpus, bios=bios, iso=iso, memory=args.memory,
                             accel=args.accel, storage=False, network=False, label='fresh-desktop-boot')
+                        assert 'GUI_READY: Coast desktop' in Path(vm.log.name).read_text(errors='replace'), (
+                            'Fresh Coast boot did not start the desktop')
+                        case['checks'].append('desktop starts automatically on fresh boot')
                         online = vm.command('cpus')
                         assert len(re.findall(r'cpu\d+ lapic=\d+ online=1', online)) == cpus, online
                         case['checks'].append('all requested CPUs are online')
@@ -61,6 +64,13 @@ def main():
                         assert window > 1, window
                         display.screenshot('files')
                         case['checks'].append('native desktop and Files window respond to real USB input')
+                        display.key('g', 'ctrl', 'alt')
+                        vm.until_prompt()
+                        assert '\n1000\n' in vm.raw_command('id -u')
+                        display.key('g', 'ctrl', 'alt')
+                        vm.until(rb'GUI_READY: Coast desktop', 40)
+                        display.screenshot('desktop-return')
+                        case['checks'].append('Ctrl+Alt+G switches from desktop to owner console and back')
                         display.exit()
                         vm.command('check', expect='USERLAND CHECK PASS', timeout=120)
                         case['checks'].append('desktop exits and the shell remains healthy')

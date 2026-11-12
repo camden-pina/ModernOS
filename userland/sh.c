@@ -944,7 +944,10 @@ int main(int argc, char **argv) {
     if(!e)e=call2(SYS_account,OS_ACCOUNT_ENTER,&q);
     if(e) {puts("Secure console setup failed; no root shell is exposed.");for(;;)call0(SYS_sched_yield);}
     call1(SYS_chdir,"/home/user");
-    puts("Console runs as a standard user. Set a password with passwd or Settings > Profiles before using sudo.");
+    puts("Console uses the owner account (UID 1000), with administrator access through sudo.");
+    char *gui_args[] = {"gui", NULL};
+    puts("Starting the Coast desktop. Ctrl+Alt+G switches to the console.");
+    command(1, gui_args);
   }
   int terminal = argc == 2 && !strcmp(argv[1], "--terminal");
   if (terminal) {
@@ -997,6 +1000,11 @@ int main(int argc, char **argv) {
     } else {
       length = shell_read_interactive(line, sizeof(line), cwd, history,
                                       history_count);
+    }
+    if (login_console && length == SHELL_GUI_HOTKEY) {
+      char *gui_args[] = {"gui", NULL};
+      command(1, gui_args);
+      continue;
     }
     if (length < 0) {
       parse_error(length);

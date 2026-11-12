@@ -21,24 +21,27 @@ Rect taskbar_hover(int x, int y) {
   return dock_hover(x, y);
 }
 void taskbar_draw(void) {
-  uint32_t ink = desk.dark_mode ? 0xE9ECF4 : 0x26324A;
-  glass_system_prepare(0);
-  glass_system_draw(0, (Rect){0, 0, desk.width, S(DESKTOP_TOP)}, 0);
-  blend((Rect){0, S(DESKTOP_TOP) - 1, desk.width, 1}, 0xFFFFFF, 28);
-  icon(S(11), S(4), I_GRID, S(13), ink);
-  Window *active = wm_focused();
-  if(!active || active->app!=APP_TERMINAL)
-  label(S(40), S(4), active ? apps[active->app].name : "Coast", FONT_BOLD,
-        ink, MAX(S(50), desk.width - S(248)));
-  if (active)
-    menubar_draw(active);
-  if (desk.width >= S(760))
-    icon(desk.width - S(208), S(4), I_WORKSPACE, S(13), ink);
-  icon(desk.width - S(172), S(4), I_INFO, S(13), ink);
-  label(desk.width - S(142), S(4), desk.date, FONT_NORMAL, ink, S(74));
-  label(desk.width - S(68), S(4), desk.clock, FONT_MEDIUM, ink, S(65));
+  if (!empty(intersect(desk.clip, (Rect){0, 0, desk.width, S(DESKTOP_TOP)}))) {
+    uint32_t ink = desk.dark_mode ? 0xE9ECF4 : 0x26324A;
+    glass_system_prepare(0);
+    glass_system_draw(0, (Rect){0, 0, desk.width, S(DESKTOP_TOP)}, 0);
+    blend((Rect){0, S(DESKTOP_TOP) - 1, desk.width, 1}, 0xFFFFFF, 28);
+    icon(S(11), S(4), I_GRID, S(13), ink);
+    Window *active = wm_focused();
+    if(!active || active->app!=APP_TERMINAL)
+    label(S(40), S(4), active ? apps[active->app].name : "Coast", FONT_BOLD,
+          ink, MAX(S(50), desk.width - S(248)));
+    if (active)
+      menubar_draw(active);
+    if (desk.width >= S(760))
+      icon(desk.width - S(208), S(4), I_WORKSPACE, S(13), ink);
+    icon(desk.width - S(172), S(4), I_INFO, S(13), ink);
+    label(desk.width - S(142), S(4), desk.date, FONT_NORMAL, ink, S(74));
+    label(desk.width - S(68), S(4), desk.clock, FONT_MEDIUM, ink, S(65));
+  }
 
-  dock_draw();
+  if (!empty(intersect(desk.clip, taskbar_dock_bounds())))
+    dock_draw();
 }
 
 static Window launcher_shadow;

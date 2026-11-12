@@ -354,6 +354,14 @@ class SourceCachePrivacyTests(Project):
         self.apply(record)
         self.assertFalse(source.exists() or archive.exists())
 
+    def test_shared_download_cache_still_identifies_pinned_key_fixtures(self):
+        source, archive = self.source_archive()
+        cached = self.root / 'build/downloads' / hashlib.sha256(archive.read_bytes()).hexdigest() / archive.name
+        cached.parent.mkdir(parents=True)
+        archive.rename(cached)
+        self.apply(self.plan(all_generated=True))
+        self.assertFalse(source.exists() or cached.exists())
+
     def test_private_edit_retains_complete_source_tree_instead_of_leaving_partial_sources(self):
         source, _ = self.source_archive()
         (source / 'test.key').write_text('user private bytes')
@@ -495,6 +503,16 @@ if not progress.exists():
         session.reset('application', self.output / 'application')
         self.assertTrue(source.exists() and all(path.exists() for path in markers))
         self.assertFalse((self.output / 'application/PACKAGED.json').exists())
+
+    def test_changed_inputs_move_private_residue_out_of_active_component(self):
+        private = self.file('build/coast/packages/arch/workspace/test.key', 'user private bytes')
+        stamp = self.file('build/coast/packages/SOURCE.json', '{"old": true}')
+        session = BuildSession(self.root, self.output, {'source': 'pin'})
+        session.reset('packages', self.output / 'packages', fresh=True)
+        self.assertFalse(stamp.exists() or private.exists())
+        saved = list((self.output / 'history').glob('packages-*/arch/workspace/test.key'))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0].read_text(), 'user private bytes')
 
     def test_failed_qualification_retains_passed_phase_checkpoint_on_retry(self):
         builder = self.file('qualifier.py', """import pathlib,json,sys

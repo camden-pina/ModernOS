@@ -65,18 +65,19 @@ def measure(cpus, buffered=True, iso=None, sse2=False, accel='tcg', display='non
         d.screenshot(f'drag-initial-{cpus}cpu')
         d.move(d.width - 45, d.height - 70)
         first = d.screenshot(f'drag-start-{cpus}cpu')
-        left = (d.width - d.width * 78 // 100) // 2
-        top = d.height * 8 // 100
-        d.move(left + 52, top + 20)
+        geometry = d.geometry(1)
+        left, top = geometry['x'], geometry['y']
+        anchor_x, anchor_y = left + geometry['width'] // 2, top + 20
+        d.move(anchor_x, anchor_y)
         d.button(True)
         drag_started = time.time()
         for i in range(120):
-            d.move(left + 52 + (i % 60) * 2, top + 20 + (i % 30), delay=1 / 120)
+            d.move(anchor_x + (i % 60) * 2, anchor_y + (i % 30), delay=1 / 120)
         drag_ended = time.time()
         time.sleep(.3)
 
         # Include the final movement in the release report. It must be applied.
-        x, y = left + 52, top + 20
+        x, y = anchor_x, anchor_y
         vm.qmp('input-send-event', {'events': [
             {'type': 'rel', 'data': {'axis': 'x', 'value': x - d.x}},
             {'type': 'rel', 'data': {'axis': 'y', 'value': y - d.y}},
@@ -94,7 +95,7 @@ def measure(cpus, buffered=True, iso=None, sse2=False, accel='tcg', display='non
 
         # Rapid press/move/release retains the actual press position. A second
         # drag immediately afterward must not be mistaken for a double-click.
-        d.move(left + 52, top + 20)
+        d.move(anchor_x, anchor_y)
         vm.qmp('input-send-event',
                {'events': [{'type': 'btn', 'data': {'button': 'left', 'down': True}}]})
 
@@ -103,16 +104,16 @@ def measure(cpus, buffered=True, iso=None, sse2=False, accel='tcg', display='non
         # otherwise QEMU may combine both into one report at the destination.
         press = d.expect('POINTER', 'pressed=1')
         m = re.search(r'position=\((\d+),(\d+)\)', press)
-        assert m and tuple(map(int, m.groups())) == (left + 52, top + 20), press
+        assert m and tuple(map(int, m.groups())) == (anchor_x, anchor_y), press
         time.sleep(.025)
-        d.move(left + 76, top + 38, delay=.025)
+        d.move(anchor_x + 24, anchor_y + 18, delay=.025)
         vm.qmp('input-send-event',
                {'events': [{'type': 'btn', 'data': {'button': 'left', 'down': False}}]})
         geometry = d.expect('GEOMETRY')
         m = re.search(r'x=(\d+) y=(\d+)', geometry)
         assert tuple(map(int, m.groups())) == (left + 24, top + 18), geometry
         d.button(True)
-        d.move(left + 52, top + 20)
+        d.move(anchor_x, anchor_y)
         d.button(False)
         geometry = d.expect('GEOMETRY')
         m = re.search(r'x=(\d+) y=(\d+)', geometry)

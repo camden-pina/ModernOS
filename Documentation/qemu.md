@@ -1,7 +1,7 @@
 # QEMU inside Coast
 
 `make iso` includes QEMU, its dependency SDK, source-built x86 BIOS firmware,
-noVNC and the `coast-vm` launcher. Start Coast with `make run`, enter `gui` and
+noVNC and the `coast-vm` launcher. Start Coast with `make run` and
 open Chromium to use the nested VM viewer.
 
 Coast runs QEMU 10.2.4 with `qemu-system-x86_64`, `qemu-img`, `qemu-io`, QMP,

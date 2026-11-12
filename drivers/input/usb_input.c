@@ -60,6 +60,14 @@ void kernel_usb_input_poll(void) {
     while (usb_keyboard_read_event(&event)) {
         if (display_hid(event.usage, event.ascii, event.modifiers, event.pressed))
             continue;
+        /* Ctrl+Alt+G returns from the physical console to the desktop. Keep
+         * this separate from Ctrl+G so ordinary terminal input is unchanged. */
+        if (event.pressed && event.usage == 0x0a &&
+            (event.modifiers & (USB_MOD_LEFT_CTRL | USB_MOD_RIGHT_CTRL)) &&
+            (event.modifiers & (USB_MOD_LEFT_ALT | USB_MOD_RIGHT_ALT))) {
+            tty_input(29);
+            continue;
+        }
         if (event.pressed && !event.ascii) {
             const char *sequence = NULL;
             switch (event.usage) {

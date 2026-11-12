@@ -1070,7 +1070,9 @@ long desktop_present(void) {
     if (!desk.menu.open && !desk.dialog.open && !desk.launcher) {
       for (int layer=count-1;layer>=0;layer--) {
         Window *w=&desk.windows[order[layer]];
-        if (w->app!=APP_WORKBENCH) continue;
+        /* Both clients arrive as fully composited RGB surfaces. Their body
+           hides lower layers, even when the source buffer had alpha. */
+        if (w->app!=APP_WORKBENCH && w->app!=APP_CHROMIUM) continue;
         Rect body=window_body(w);
         opaque=(Rect){body.x+S(WINDOW_CORNER),body.y+64,
           body.w-2*S(WINDOW_CORNER),body.h-128};

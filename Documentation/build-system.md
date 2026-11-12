@@ -15,7 +15,8 @@ viewer by default. Optional apps and their dependencies can be selected below. T
 `build/coast/image/Coast.iso`.
 
 The build verifies completed components and resumes interrupted stages. `make run` boots the existing ISO
-in QEMU. Enter `gui` at the guest console to open the desktop.
+in QEMU. The guest starts its desktop automatically; Ctrl+Alt+G switches to
+the physical console and back.
 
 ## Build progress and interruption
 
@@ -174,14 +175,15 @@ requiring omitted apps as skipped, rather than claiming they passed.
 
 ## Run arguments
 
-The VM uses BIOS, USB keyboard/mouse, e1000e user networking, four CPUs and
-16 GiB RAM. KVM is selected when `/dev/kvm` is accessible; otherwise QEMU uses
-software emulation.
+The VM uses UEFI, GTK with host OpenGL, USB keyboard/mouse, e1000e user networking,
+four CPUs and 16 GiB RAM. GTK uses the host session's display backend.
+KVM is selected when `/dev/kvm` is accessible; otherwise QEMU uses software CPU
+emulation. Coast's desktop still renders in software through emulated VGA.
 
 ```sh
 make run MEMORY=24G SMP=4
 make run QEMU_ACCEL=kvm
-make run FIRMWARE=uefi OVMF=/path/to/OVMF.fd
+make run FIRMWARE=bios
 make -n run
 ```
 
@@ -195,12 +197,12 @@ make -n run
 | `SMP` | `4` | Guest CPU count. |
 | `QEMU_ACCEL` | `kvm` when accessible, otherwise `tcg` | Accelerator; explicit KVM fails if unavailable. |
 | `QEMU_CPU` | `host` with KVM, otherwise `max` | QEMU CPU model. |
-| `QEMU_DISPLAY` | `gtk,gl=off` | Display backend, such as `sdl,gl=on` or `none`. |
+| `QEMU_DISPLAY` | `gtk,gl=on` | Display backend; use `gtk,gl=off` if host OpenGL is unavailable or `sdl,gl=on` to select SDL. This does not add guest GPU acceleration. |
 | `QEMU_SDL_DRIVER` | Inherited `SDL_VIDEODRIVER`, otherwise `wayland` when available | SDL video backend. |
 | `QEMU_GTK_BACKEND` | Inherited `GDK_BACKEND` | GTK display backend. |
-| `FIRMWARE` | `bios` | `bios` uses QEMU's built-in BIOS; `uefi` uses OVMF. |
+| `FIRMWARE` | `uefi` | `uefi` uses OVMF; `bios` uses QEMU's built-in BIOS. |
 | `OVMF` | Discovered host firmware | UEFI firmware file used with `FIRMWARE=uefi`. |
-| `QEMU_VIDEO` | VGA with 32 MiB video memory, 120 Hz EDID | Full video device arguments. |
+| `QEMU_VIDEO` | VGA with 32 MiB video memory, 60 Hz EDID metadata | Full video device arguments. QEMU expresses the EDID refresh rate in millihertz; this is not its frontend frame timer. |
 | `QEMU_NETWORK` | `-nic user,model=e1000e` | Full network arguments; use `'-nic none'` to disable networking. |
 | `QEMU_AUDIO` | SDL audio and AC97 | Full audio arguments; set `QEMU_AUDIO=` to disable the sound device. |
 | `LINUX_DISK`, `FAT_DISK` | Empty | Paths to raw disk images attached as NVMe devices. |
